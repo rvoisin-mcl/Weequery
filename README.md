@@ -20,7 +20,7 @@ about only those. It's an allow-list. It's beautiful.
 - **Works in memory.** The same condition filters a `List<T>`.
 - **Verified against SQLite, PostgreSQL and SQL Server.**
 
-Scott, put your hand down.
+You, put your hand down.
 
 ## Contents
 

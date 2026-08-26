@@ -8,10 +8,10 @@ You've all been asking me the same question. "Boss, how do I let the field agent
 roster without me shipping a new build of the doomsday console every time somebody wants to sort by pay?"
 
 Well. I've spent the last thirty years in a cryogenic freezer thinking about exactly this, and I've built a
-"library" — called **Weequery**.
+"library" called **Weequery**.
 
-It turns a filter that arrives as *data* — from a form, from a query string, from a client, from a fax, I don't
-care — into a real `IQueryable` expression. You declare which properties may be asked about. Everyone else asks
+It turns a filter that arrives as *data* from a form, from a query string, from a client, from a fax, I don't
+care into a real `IQueryable` expression. You declare which properties may be asked about. Everyone else asks
 about only those. It's an allow-list. It's beautiful.
 
 - **Targets .NET 8 and .NET 10.** The eight is a courtesy to those of you still thawing out.
@@ -56,7 +56,7 @@ var minions = context.Minions
 `WithWeequery()` begins the scheme. `Build()` hands back an `IQueryable<T>` with everything applied. Nothing
 executes until you enumerate it, so it composes with whatever else you had planned.
 
-In a controller, the condition arrives from the caller — a stranger, on the internet, typing. That is the 
+In a controller, the condition arrives from the caller a stranger, on the internet, typing. That is the 
 entire point, and it is only alarming if you skipped the previous section:
 
 ```csharp
@@ -79,7 +79,7 @@ public async Task<IActionResult> Search([FromBody] SearchRequest request)
 
 This is the important part, so put down the shark food and *listen*.
 
-A **binding** maps a **key** — the name outsiders use — to a property on your entity. Only bound properties can
+A **binding** maps a **key** the name outsiders use to a property on your entity. Only bound properties can
 be filtered or sorted on. Nothing else. Ever. If it isn't bound, asking for it gets a `WeequeryException` and a
 very disappointed look from me.
 
@@ -105,7 +105,7 @@ segments:
 ```
 
 Why not just write `minion => minion.BirthDate.Year`? Because C# won't compile it against a `DateTime?`, and
-`minion.BirthDate!.Value.Year` means something *different* — naming `Value` **unwraps**, so you get a plain `int`
+`minion.BirthDate!.Value.Year` means something *different* naming `Value` **unwraps**, so you get a plain `int`
 that has no null of its own and `IsNull` stops applying to it. Segments reach *through*. My father would have
 found this fascinating. He invented the question mark. The details are unimportant.
 
@@ -119,7 +119,7 @@ A binding can stand for a constant **your** code provides, under a name the call
 ```
 
 Do you see it? *Do you see it?* The caller writes the *shape* of the question. I fill in the part they must not
-see — the per-tenant limit, the cutoff date, today's date, the number I am not telling them.
+see the per-tenant limit, the cutoff date, today's date, the number I am not telling them.
 
 It reaches the database as a **parameter**, so the statement is identical whatever the value. It's the same for
 every row, so sorting on it is refused. Obviously.
@@ -137,8 +137,8 @@ static readonly BindingRequest[] MinionBindings =
 query.WithWeequery().BindProperties(MinionBindings);
 ```
 
-`BindProperties` resolves a given set once for the life of the process and keeps it, so calling it per request —
-which is the normal thing to do — costs a copy rather than a property lookup each time.
+`BindProperties` resolves a given set once for the life of the process and keeps it, so calling it per request 
+which is the normal thing to do costs a copy rather than a property lookup each time.
 
 ### The rules for keys
 
@@ -150,7 +150,7 @@ WeequeryException.IsSqlName("my field");  // false
 ```
 
 **They're matched without regard to case.** `pay`, `Pay` and `PAY` all find a property bound as `Pay`. Which
-means two keys differing only in case are the *same key*, and binding both is a duplicate — refused when the
+means two keys differing only in case are the *same key*, and binding both is a duplicate refused when the
 second one is created.
 
 **They may not be named after an operator.** A key is written as a bare field name, so a key called `Contains`
@@ -161,9 +161,9 @@ parser*.
 .BindProperty(minion => minion.Notes, "Contains")    // throws. Obviously it throws.
 ```
 
-The reserved words are the operator names — `IsNull`, `IsNotNull`, `IsIn`, `IsNotIn`, `IsBetween`,
+The reserved words are the operator names `IsNull`, `IsNotNull`, `IsIn`, `IsNotIn`, `IsBetween`,
 `IsNotBetween`, `StartsWith`, `DoesNotStartWith`, `EndsWith`, `DoesNotEndWith`, `Contains`, `DoesNotContain`,
-`IsMatch`, `DoesNotMatch` — and the words SQL spells its operators with: `AND`, `OR`, `NOT`, `IS`, `IN`,
+`IsMatch`, `DoesNotMatch` and the words SQL spells its operators with: `AND`, `OR`, `NOT`, `IS`, `IN`,
 `BETWEEN`, `NULL`. Case does not matter.
 
 ## Conditions
@@ -200,7 +200,7 @@ ICondition condition = new OneValueCondition<string>(
     Operator.LessThan, "HireDate", ConditionValue.Binding("FireDate"));
 ```
 
-Any operand of any shape can be one, and they mix — `Pay IsIn (8000, [Cap])` is a list holding a value *and* a
+Any operand of any shape can be one, and they mix `Pay IsIn (8000, [Cap])` is a list holding a value *and* a
 property. A key is a name whatever the property holds, so only a condition over `string` can carry one.
 
 Both sides must be bound, so this exposes nothing new. They can compare two things I already let them see. That
@@ -244,10 +244,10 @@ Pay IsIn (8000, [Ceiling])            and they mix
 - **Keywords, operator names and field names are case-insensitive.** `AND`, `and` and `&&` are the same word.
 - **Alternate spellings**: `=` for `==`, `<>` for `!=`, `AND`/`OR`/`NOT`, and SQL's own `IN`, `NOT IN`,
   `IS NULL`, `IS NOT NULL`, `BETWEEN`, `NOT BETWEEN`. A range can be written `Pay BETWEEN 1 AND 5` or
-  `Pay IsBetween (1, 5)`. `LIKE` is **not** supported — use `Contains`, `StartsWith`, `EndsWith`.
+  `Pay IsBetween (1, 5)`. `LIKE` is **not** supported use `Contains`, `StartsWith`, `EndsWith`.
 - **Quote a value** when it contains a space, a delimiter, or looks like a keyword. `'single'` or `"double"`,
   and a literal closes on whichever quote opened it, so the other needs no escaping: `"it's"` and `'say "hi"'`
-  both read as written. A backslash escapes a quote or another backslash — and **only** those, so `'\w'` is the
+  both read as written. A backslash escapes a quote or another backslash and **only** those, so `'\w'` is the
   two characters it looks like. `''` and `""` are the empty string.
 - **Values need no quotes** when they're simple: numbers, `true`, enum names, GUIDs, ISO dates and times.
 - **Values are always parsed with the invariant culture**, so a query means the same thing on every machine, in
@@ -286,7 +286,7 @@ Pay IsIn (8000, [Ceiling])            and they mix
 A `bool` accepts only the null tests, equality and the `IsIn` family. Ordering is refused up front, rather than 
 left to fail six layers down with a complaint about Boolean having no comparison operator. You're welcome.
 
-### The "laser" — `IsMatch` and `DoesNotMatch`
+### The "laser" `IsMatch` and `DoesNotMatch`
 
 Right. These match a string against a regular expression, and they are the **only two operators that do not work
 everywhere**, because standard SQL has no regular expression and every provider went off and did its own thing.
@@ -294,7 +294,7 @@ everywhere**, because standard SQL has no regular expression and every provider 
 | Where | What you get |
 |---|---|
 | In memory | .NET's own `Regex`, bounded by `Inquiry<T>.MatchTimeout` |
-| SQLite | `REGEXP`, which Microsoft.Data.Sqlite implements with .NET's `Regex` — so it agrees with memory |
+| SQLite | `REGEXP`, which Microsoft.Data.Sqlite implements with .NET's `Regex` so it agrees with memory |
 | PostgreSQL | the `~` operator, which is POSIX ARE, **not** .NET |
 | SQL Server | **nothing.** The query fails when it is built |
 
@@ -316,7 +316,7 @@ condition must answer the same on both.
 **A pattern is caller input, and a regular expression can be made to cost far more than it looks.** Matching
 `(a+)+$` against a few dozen non-matching characters takes time *exponential* in their number. Every other
 operator is bounded by the size of the data. These are the two that let an outsider turn a search box into a
-denial of service — against *me* — using nothing but punctuation.
+denial of service against *me* using nothing but punctuation.
 
 So where Weequery runs the match, it bounds it. One second by default:
 
@@ -325,7 +325,7 @@ Inquiry<Minion>.MatchTimeout = TimeSpan.FromMilliseconds(250);   // Regex.Infini
 ```
 
 It's a static on the generic type, so it's set **per entity type**. Exceeding it raises
-`RegexMatchTimeoutException` from wherever the query is being enumerated. The bound applies in memory only —
+`RegexMatchTimeoutException` from wherever the query is being enumerated. The bound applies in memory only 
 translated to SQL, the pattern is the database's problem and its own limits apply. It cannot be both: the
 `Regex.IsMatch` overload carrying a timeout is not one any provider can translate, so building with it would stop
 being a query and become a table scan on the client.
@@ -339,14 +339,14 @@ to my favourite subject.
 **A null satisfies nothing except `IsNull`.**
 
 Every other operator is built as *"the property has a value"* ANDed with the test on that value. So a null is not
-caught by the negative operators either — it is not "not equal to 5", it is **unknown**, exactly as a database
+caught by the negative operators either it is not "not equal to 5", it is **unknown**, exactly as a database
 treats it.
 
 Which means for any column, the rows matching an operator, the rows matching its negation, and the null rows
 partition the table between them. One condition gives the same answer whether it runs against a database or in
 memory. That is not an accident. That took me *considerable* time, during which nobody brought me coffee.
 
-`Not` is the exception, because it negates the whole test — the guard included — so the nulls come back:
+`Not` is the exception, because it negates the whole test the guard included so the nulls come back:
 
 ```
 Alias != 'Ghost'        every minion who has an alias, and it isn't Ghost
@@ -372,7 +372,7 @@ guarding it here is what makes the two agree.
 ```
 
 Sorts apply in the order given, each breaking ties in the one before. Sort fields must be bound. Nullable
-properties sort nulls first. A field with no ordering of its own — a collection, a navigation property — is
+properties sort nulls first. A field with no ordering of its own a collection, a navigation property is
 refused: it can be bound and tested for null, but there is no such thing as its first row.
 
 **Page with a sort.** Paging without one is accepted and the contents are arbitrary, which means page two may
@@ -412,7 +412,7 @@ expression builder parses against the bound property's type when the query is bu
 round-trippable, so a `DateTime` keeps its sub-second precision and its `Kind`.
 
 Every operand says whether it is a value or the key of a bound property. A value is written as the value alone,
-and only a key carries a `Source` — so an ordinary condition costs nothing extra:
+and only a key carries a `Source` so an ordinary condition costs nothing extra:
 
 ```jsonc
 // Name IsIn ('Alice Fox', [Alias])
@@ -424,13 +424,13 @@ and only a key carries a `Source` — so an ordinary condition costs nothing ext
   "Values": [ "Alice Fox", "Bob Samuelson" ] }
 ```
 
-Nothing is guessed from the text. The two are told apart by the **shape** they arrive in — a string against an
-object — which no value can be mistaken for whatever it happens to spell. There is nowhere for a key to arrive as
+Nothing is guessed from the text. The two are told apart by the **shape** they arrive in a string against an
+object which no value can be mistaken for whatever it happens to spell. There is nowhere for a key to arrive as
 bare text and be compared against as though it were one. I thought of everything. I always think of everything.
 
 ## Without an IQueryable
 
-For a predicate rather than a query — for `Where`, for `Any`, for filtering objects already in memory:
+For a predicate rather than a query for `Where`, for `Any`, for filtering objects already in memory:
 
 ```csharp
 Expression<Func<Minion, bool>> predicate =
@@ -497,7 +497,7 @@ dotnet build
 dotnet test Tests/Tests.csproj
 ```
 
-The suite runs against SQLite with no setup at all. PostgreSQL and SQL Server are opt-in — set
+The suite runs against SQLite with no setup at all. PostgreSQL and SQL Server are opt-in set
 `WEEQUERY_TEST_POSTGRES` or `WEEQUERY_TEST_SQLSERVER` to a connection string and those tests start running
 instead of reporting as skipped. The throughput comparisons need `WEEQUERY_TEST_THROUGHPUT`.
 

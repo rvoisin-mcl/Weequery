@@ -1,0 +1,17 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+artifacts/
+
+# Visual Studio
+.vs/
+.vscode/
+*.user
+
+# Test output
+[Tt]est[Rr]esult*/
+
+# SQLite databases the tests create, and the scratch one at the root
+*.db
+*.db-shm
+*.db-wal

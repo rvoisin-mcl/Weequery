@@ -1,0 +1,7 @@
+﻿- Dictionary binding
+	- would not be compatible with EF (presumably)
+	- provide path as '<propertyName>[key]', type would be Nullable<Dictionary.GenericType>
+	- Functionality would be basically identical to an accessor property for the given key
+
+- Single query string for conditions and sorting
+	- Would compromise some existing library uses, but would be viable given a blank slate

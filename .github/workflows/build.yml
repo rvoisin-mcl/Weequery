@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      # Warnings are worth seeing rather than scrolling past: the library builds clean today
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # SQLite needs no setup, so the suite runs as it stands. PostgreSQL, SQL Server and the throughput
+      # comparisons are opt in and report as skipped without their environment variables, see TestDatabase.
+      - name: Test
+        run: dotnet test Tests/Tests.csproj --no-build --configuration Release --verbosity normal
+
+      # Proves the package can actually be produced before a tag depends on it
+      - name: Pack
+        run: dotnet pack Weequery/Weequery.csproj --no-build --configuration Release --output artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*
+          if-no-files-found: error

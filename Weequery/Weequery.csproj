@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>Weequery</PackageId>
+    <Version>2.0.0</Version>
+    <Title>Weequery</Title>
+    <Authors>Rene Voisin</Authors>
+    <Copyright>©2026 MacLean Engineering &amp; Marketing Co. Ltd.</Copyright>
+    <Description>Dynamic filtering, sorting and paging for IQueryable, driven by data rather than code. A condition built in code, parsed from a compact query language, or deserialized from a client becomes an expression tree and is applied to a query. You declare which properties are filterable, and callers can filter on those and nothing else. Works with EF Core, where conditions become SQL with values passed as parameters, and in memory over the same data. No dependencies.</Description>
+    <PackageTags>iqueryable;linq;efcore;entity-framework-core;filtering;sorting;paging;expression-trees;dynamic-query;query-language</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/rvoisin-mcl/Weequery</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Packed so it becomes the description on nuget.org, see PackageReadmeFile -->
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

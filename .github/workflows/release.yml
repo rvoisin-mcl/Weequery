@@ -1,0 +1,62 @@
+name: release
+
+# Tag drives the version, so the package and the tag can never disagree:
+#
+#   git tag v2.0.0 && git push origin v2.0.0
+#
+# The Version in Weequery.csproj is what a local build produces; this overrides it from the tag.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Read the version from the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release -p:Version=${{ steps.version.outputs.value }}
+
+      # Nothing is published that has not passed, so a bad tag costs a failed run rather than a listed package
+      - name: Test
+        run: dotnet test Tests/Tests.csproj --no-build --configuration Release
+
+      - name: Pack
+        run: >
+          dotnet pack Weequery/Weequery.csproj
+          --no-build
+          --configuration Release
+          -p:Version=${{ steps.version.outputs.value }}
+          --output artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*
+          if-no-files-found: error
+
+      # Pushing the .nupkg sends the matching .snupkg beside it. --skip-duplicate so re-running a finished
+      # release is not an error; nuget.org refuses to overwrite a published version either way.
+      - name: Push to nuget.org
+        run: >
+          dotnet nuget push "artifacts/*.nupkg"
+          --api-key "${{ secrets.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

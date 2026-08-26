@@ -1,10 +1,14 @@
 name: release
 
-# Tag drives the version, so the package and the tag can never disagree:
-#
+# Tag drives the version, so the package and the tag can never disagree, will override version from .csproj:
 #   git tag v2.0.0 && git push origin v2.0.0
 #
-# The Version in Weequery.csproj is what a local build produces; this overrides it from the tag.
+# Requires matching policy on nuget.org
+#   Repository Owner  rvoisin-mcl
+#   Repository        Weequery
+#   Workflow File     release.yml        (this file, by name, so only this workflow can publish)
+#   Environment       (empty)
+
 on:
   push:
     tags: ['v*']
@@ -16,6 +20,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # Job level, so the token can only be minted here. Restating contents:read because a job level block replaces
+    # the workflow level one rather than adding to it.
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -52,11 +62,23 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
+      # As key is short-lived ask for it immediately prior to push.
+      - name: NuGet login (OIDC, for a short lived key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # Run from inside artifacts, and match on the file name alone: the wildcard is resolved by NuGet rather
+      # than the shell, and it only matches within the working directory. "artifacts/*.nupkg" is not expanded
+      # and fails with "File does not exist".
+      #
       # Pushing the .nupkg sends the matching .snupkg beside it. --skip-duplicate so re-running a finished
       # release is not an error; nuget.org refuses to overwrite a published version either way.
       - name: Push to nuget.org
+        working-directory: artifacts
         run: >
-          dotnet nuget push "artifacts/*.nupkg"
-          --api-key "${{ secrets.NUGET_API_KEY }}"
+          dotnet nuget push "*.nupkg"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate

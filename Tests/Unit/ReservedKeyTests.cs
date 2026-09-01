@@ -35,9 +35,13 @@ public class ReservedKeyTests
             "AND", "OR", "NOT", "NULL",
             // the words SQL spells its operators with
             "IS", "IN", "BETWEEN",
+            // the one word spelling of the sort prefix, which a sort clause reads as the prefix rather than as a
+            // field. ORDER and BY are not reserved, being read only together, so a field named Order still sorts.
+            "OrderBy",
             // and every operator's own name
             "IsNull", "IsNotNull", "IsIn", "IsNotIn", "IsBetween", "IsNotBetween",
-            "StartsWith", "DoesNotStartWith", "EndsWith", "DoesNotEndWith", "Contains", "DoesNotContain");
+            "StartsWith", "DoesNotStartWith", "EndsWith", "DoesNotEndWith", "Contains", "DoesNotContain",
+            "IsMatch", "DoesNotMatch");
     }
 
     [Theory]
@@ -110,6 +114,10 @@ public class ReservedKeyTests
     [InlineData("Nullity")]
     [InlineData("Betweenness")]
     [InlineData("Ins")]
+    [InlineData("Order")]
+    [InlineData("By")]
+    [InlineData("Ordering")]
+    [InlineData("OrderByDate")]
     public void AKeyThatMerelyStartsLikeOneIsFine(string key)
     {
         var matched = Things()

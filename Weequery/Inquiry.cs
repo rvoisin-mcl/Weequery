@@ -272,6 +272,27 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Parse a sort clause and add the sorts it describes, to be applied when built. They apply in the order
+    /// written, each breaking ties in the one before.
+    /// </summary>
+    /// <remarks>
+    /// The clause is a comma separated list of fields, each optionally followed by a direction, and may begin
+    /// with ORDER BY. See <see cref="Sort.Parse"/> for the whole of it.
+    /// <para>
+    /// <paramref name="defaultSort"/> is worth supplying wherever the query is paged, since a page of an
+    /// unordered query holds arbitrary rows, see <see cref="ApplyPagination"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="sortString">eg. "Pay DESC, Name". Null, empty or whitespace takes <paramref name="defaultSort"/></param>
+    /// <param name="defaultSort">what to sort by when the caller asked for nothing; null, or none, is a NOP</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the clause is malformed, see <see cref="Sort.Parse"/></exception>
+    public Inquiry<T> ApplySorts(string? sortString, IEnumerable<Sort>? defaultSort = null)
+    {
+        return ApplySorts(Sort.Parse(sortString, defaultSort));
+    }
+
+    /// <summary>
     /// Add sorts that will be applied to the query when built, sorts will apply in order given
     /// </summary>
     /// <param name="sorts">null, or none, is a NOP. A null element will cause an Exception</param>

@@ -186,7 +186,7 @@ internal static class QueryWriter
     /// Bracket quote a field whose name is a plain identifier or property path, and single quote anything else.
     /// A binding key can be any string the caller chose, including one with spaces or punctuation in it.
     /// </summary>
-    private static string Field(string field)
+    internal static string Field(string field)
     {
         return QueryTokenizer.IsBareWord(field) ? $"[{field}]" : ValueFormat.Quote(field);
     }

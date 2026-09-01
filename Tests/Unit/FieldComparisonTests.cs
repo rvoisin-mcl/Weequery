@@ -107,7 +107,8 @@ public class FieldComparisonTests
     [InlineData("Classification == [Classification]")]
     public void InMemoryAgreesWithTheDatabase(string query)
     {
-        Assert.Equal(InDatabase(query), InMemory(query));
+        // Through the harness rather than a bare Equal, so a disagreement arrives diagnosable, see QueryAgreement
+        QueryAgreement.AssertSameRows(query);
     }
 
     /// <summary>

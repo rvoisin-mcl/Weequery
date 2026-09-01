@@ -22,6 +22,17 @@ namespace Tests.Common;
 /// message worth reading, and passed on every attempt to reproduce it. The next occurrence should be diagnosable
 /// from its output alone.
 /// </para>
+/// <para>
+/// It has since been seen twice more, in the same shaped test in
+/// <see cref="Tests.Unit.FieldComparisonTests.InMemoryAgreesWithTheDatabase"/> and
+/// <see cref="Tests.Unit.NullSemanticsTests.InMemoryAgreesWithTheDatabase"/>, neither of which went through here
+/// at the time, so both failed with a bare row diff and neither reproduced. All four of these tests now use this,
+/// which is the point: the harness is no use sitting beside the failure rather than under it.
+/// </para>
+/// <para>
+/// Nothing about the cause is settled. Each of the four seeds and drops a SQLite database of its own per case,
+/// under xUnit's default parallelism and with no runner configuration, which is where to look first.
+/// </para>
 /// </remarks>
 internal static class QueryAgreement
 {
@@ -44,7 +55,12 @@ internal static class QueryAgreement
 
             if (fromDatabase.SequenceEqual(inMemory)) { return; }
 
-            Assert.Fail(Report(context, provider, query, built, fromDatabase, inMemory));
+            var report = Report(context, provider, query, built, fromDatabase, inMemory);
+
+            // Kept as well as thrown. The message reaches the console, but this failure is rare and does not
+            // reproduce, so the one time it happens the output may already have been filtered, truncated or
+            // interleaved with another test's. A file outlives all three.
+            Assert.Fail($"{report}{Environment.NewLine}  report written to {Capture(report, query)}");
         }
         finally
         {
@@ -134,6 +150,69 @@ internal static class QueryAgreement
     }
 
     /// <summary>
+    /// Write a report where it can be read after the run, and say where that was.
+    /// </summary>
+    /// <remarks>
+    /// Never throws. A diagnostic that fails must not replace the failure being diagnosed, so anything that goes
+    /// wrong here is reported in place of the path rather than raised.
+    /// </remarks>
+    /// <param name="report"></param>
+    /// <param name="query">named in the file, so several failures in one run are told apart by more than time</param>
+    /// <returns>the path written to, or why it was not</returns>
+    internal static string Capture(string report, string query)
+    {
+        try
+        {
+            // Under TestResults, which is already ignored by git and is not swept away by a rebuild the way
+            // anything under bin would be
+            var folder = Path.Combine(RepositoryRoot() ?? AppContext.BaseDirectory, "TestResults", "agreement-failures");
+
+            Directory.CreateDirectory(folder);
+
+            var path = Path.Combine(folder, $"{DateTime.Now:yyyyMMdd-HHmmss-fff}-{FileNameFor(query)}.txt");
+
+            File.WriteAllText(path, report);
+
+            return path;
+        }
+        catch (Exception ex)
+        {
+            return $"<nowhere: {ex.GetType().Name}: {ex.Message}>";
+        }
+    }
+
+    /// <summary>
+    /// The query reduced to something a file system will take, and short enough to read in a listing
+    /// </summary>
+    private static string FileNameFor(string query)
+    {
+        var safe = new string([.. from character in query select char.IsLetterOrDigit(character) ? character : '-']);
+
+        return (safe.Length <= 40) ? safe : safe[..40];
+    }
+
+    /// <summary>
+    /// Where the repository starts, found by walking up from the test binaries, or null where nothing says. Used
+    /// only to put the reports somewhere a rebuild will not remove them.
+    /// </summary>
+    private static string? RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null)
+        {
+            if (directory.EnumerateFileSystemInfos(".git").Any() || directory.EnumerateFiles("*.sln").Any())
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The rows as the database holds them, read without going through the query under question
     /// </summary>
     private static List<string> RawRows(DBContext context)
@@ -155,7 +234,7 @@ internal static class QueryAgreement
         {
             // The same letter composed two ways: one code point, or an e with a combining accent. A culture
             // sensitive comparison calls those equal and an ordinal one does not, which is the difference to detect.
-            return string.Compare("é", "e?", StringComparison.CurrentCulture) != 0;
+            return string.Compare("ï¿½", "e?", StringComparison.CurrentCulture) != 0;
         }
     }
 }

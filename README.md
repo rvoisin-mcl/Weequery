@@ -163,8 +163,8 @@ parser*.
 
 The reserved words are the operator names `IsNull`, `IsNotNull`, `IsIn`, `IsNotIn`, `IsBetween`,
 `IsNotBetween`, `StartsWith`, `DoesNotStartWith`, `EndsWith`, `DoesNotEndWith`, `Contains`, `DoesNotContain`,
-`IsMatch`, `DoesNotMatch` and the words SQL spells its operators with: `AND`, `OR`, `NOT`, `IS`, `IN`,
-`BETWEEN`, `NULL`. Case does not matter.
+`IsMatch`, `DoesNotMatch`, the words SQL spells its operators with: `AND`, `OR`, `NOT`, `IS`, `IN`, `BETWEEN`,
+`NULL`, and `OrderBy`, which a [sort clause](#sorting-and-paging) reads as its own. Case does not matter.
 
 ## Conditions
 
@@ -375,6 +375,46 @@ Sorts apply in the order given, each breaking ties in the one before. Sort field
 properties sort nulls first. A field with no ordering of its own a collection, a navigation property is
 refused: it can be bound and tested for null, but there is no such thing as its first row.
 
+### Or send me a string, if constructing objects is beyond you
+
+Sorts have their own little language, separate from the condition one, so a caller sends the two apart and
+neither has to know about the other:
+
+```csharp
+.ApplySorts("Salary DESC, Name")
+```
+
+A comma separated list of fields, each optionally followed by a direction. Leave the direction off and it runs
+ascending, as it does in SQL. `Asc`, `Ascending`, `Desc` and `Descending` are all accepted, case is ignored, and
+you may open with `ORDER BY` or `OrderBy` if it makes you feel more professional:
+
+```
+Salary                              ascending, which is what a field on its own means
+Salary DESC
+Salary Descending, Name             several, applied in the order written
+ORDER BY Salary DESC, Name ASC      the SQL spelling, and the same clause
+OrderBy Salary DESC, Name ASC       the one word spelling, and the same clause again
+[Lair.Capacity] DESC                a field written the way a condition writes one
+```
+
+**The second argument is the one that saves you.** It is what to sort by when the caller asked for nothing:
+
+```csharp
+.ApplySorts(request.Sort, [new Sort("MinionID", SortDirection.Ascending)])
+```
+
+`Sort.Parse(clause, defaults)` does the same thing without a query attached, if you want the list itself.
+
+**It writes back out**, so a clause survives a round trip intact. `ToQuery()` settles on one spelling the field
+bracketed, the direction always stated, always short and unlike a condition the trip is *exact*: a sort carries
+no value to be read back against a property's type, so what goes out comes back identical.
+
+```csharp
+sorts.ToQuery();                    // "[Salary] DESC, [Name] ASC"
+sorts.ToQuery(QueryStyle.Sql);      // "ORDER BY [Salary] DESC, [Name] ASC"
+```
+
+
 **Page with a sort.** Paging without one is accepted and the contents are arbitrary, which means page two may
 contain the same henchman as page one, and that henchman may be a *plant*. Sort on something that breaks every
 tie:
@@ -427,6 +467,33 @@ and only a key carries a `Source` so an ordinary condition costs nothing extra:
 Nothing is guessed from the text. The two are told apart by the **shape** they arrive in a string against an
 object which no value can be mistaken for whatever it happens to spell. There is nowhere for a key to arrive as
 bare text and be compared against as though it were one. I thought of everything. I always think of everything.
+
+### Filter and order in one string
+
+For the callers who cannot manage two fields on a form, `ParsedQuery` carries both, separated by `ORDER BY` or
+`OrderBy`:
+
+```csharp
+var (condition, sorts) = ParsedQuery.Parse("Pay > 10000 ORDER BY Pay DESC, Name", defaultSort);
+
+query.ApplyCondition(condition).ApplySorts(sorts);
+```
+
+It deconstructs, as you see. Either half may be absent no separator means the whole string is a condition, a
+leading separator means sorts and no filtering at all and the `defaultSort` stands in wherever no sorts were
+named. It writes back out too:
+
+```csharp
+parsed.ToQuery();       // "([Pay] > '10000') ORDER BY [Pay] DESC, [Name] ASC"
+```
+
+If you are typing a combined query yourself, OrderBy (or ORDER BY) is mandatory. Not encouraged. Not a nice 
+touch. Mandatory. It is the only thing standing between your filter and your sort, and without it there is no 
+line, there is just one long condition and a very expensive silence.
+
+And where the split falls is decided by *reading* the condition and seeing where it stops, not by hunting the
+text for the words. So `Name == 'ORDER BY'` is one comparison and no sorts, which is the sort of detail that
+separates a working scheme from a *smouldering crater*.
 
 ## Without an IQueryable
 

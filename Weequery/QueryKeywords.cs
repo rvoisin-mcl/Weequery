@@ -71,6 +71,7 @@ internal static class QueryKeywords
             "IS",
             "IN",
             "BETWEEN",
+            "OrderBy",
         };
 
         // And the canonical name of every operator. The ones spelled with symbols are skipped by the same rule

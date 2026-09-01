@@ -100,19 +100,43 @@ internal sealed class QueryParser
         var tokens = QueryTokenizer.Tokenize(query);
         if (tokens.Count == 0) { return null; }
 
+        var condition = ParseLeading(tokens, query, out var stopped);
+
+        // Anything left over means the query was not a single well-formed expression (eg. "(A) (B)")
+        if (stopped < tokens.Count)
+        {
+            throw new WeequeryException(QueryText.Describe(query, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
+        }
+
+        return condition;
+    }
+
+    /// <summary>
+    /// Read the condition at the front of a token stream, stopping wherever it ends rather than insisting it is
+    /// the whole of the text.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="ParsedQuery"/> needs to split a combined string: where the condition stops is where the
+    /// sort clause begins, and letting the parser find it is exact where searching the text for ORDER BY would
+    /// not be. A value can spell anything, so <c>Name == 'ORDER BY'</c> holds those two words without the query
+    /// having a sort clause at all.
+    /// </remarks>
+    /// <param name="tokens">at least one, since an empty stream has no condition to read</param>
+    /// <param name="query">the text the tokens came from, for the errors to point into</param>
+    /// <param name="stopped">index of the first token the condition did not take, so tokens.Count when it took them all</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the condition is malformed, or nests too deep</exception>
+    internal static ICondition? ParseLeading(List<QueryToken> tokens, string query, out int stopped)
+    {
         var parser = new QueryParser(tokens, query);
 
         var condition = parser.ParseDisjunction();
 
-        // Anything left over means the query was not a single well-formed expression (eg. "(A) (B)")
-        if (!parser.AtEnd)
-        {
-            throw new WeequeryException(parser.Describe($"Unexpected '{parser.Current.Text}'", parser.Current.Position));
-        }
+        stopped = parser.Index;
 
         if (ConditionNesting.IsTooDeep(condition))
         {
-            throw new WeequeryException($"{ConditionNesting.TooDeep().Message}: '{Excerpt(query, 0)}'");
+            throw new WeequeryException($"{ConditionNesting.TooDeep().Message}: '{QueryText.Excerpt(query, 0)}'");
         }
 
         return condition;
@@ -145,39 +169,11 @@ internal sealed class QueryParser
     private int PositionOfCurrentOrEnd { get { return AtEnd ? Query.Length : Current.Position; } }
 
     /// <summary>
-    /// Build an error message that points at the offending part of the query
+    /// Build an error message that points at the offending part of the query, see <see cref="QueryText"/>
     /// </summary>
     private string Describe(string message, int position)
     {
-        return (position >= Query.Length)
-            ? $"{message} but the query ended: '{Excerpt(Query, position)}'"
-            : $"{message} at position {position}: '{Excerpt(Query, position)}'";
-    }
-
-    /// <summary>
-    /// How much of the query an error message quotes. Enough to see what the message is pointing at, and no more:
-    /// a query is caller input, so a malformed one can be any length, and quoting all of it puts that length in an
-    /// exception message and from there into a log.
-    /// </summary>
-    private const int MaxQuotedQuery = 120;
-
-    /// <summary>
-    /// The part of the query worth showing: all of it when it is short, otherwise a window around the position the
-    /// message names, marked with ellipses so it reads as the excerpt it is. The position is always into the whole
-    /// query, not into the excerpt.
-    /// </summary>
-    /// <param name="query"></param>
-    /// <param name="position">where the message is pointing</param>
-    /// <returns></returns>
-    private static string Excerpt(string query, int position)
-    {
-        if (query.Length <= MaxQuotedQuery) { return query; }
-
-        var start = Math.Clamp(position - (MaxQuotedQuery / 2), 0, query.Length - MaxQuotedQuery);
-        var lead = (start > 0) ? "..." : string.Empty;
-        var trail = ((start + MaxQuotedQuery) < query.Length) ? "..." : string.Empty;
-
-        return $"{lead}{query.Substring(start, MaxQuotedQuery)}{trail}";
+        return QueryText.Describe(Query, message, position);
     }
 
     private ICondition ParseDisjunction()

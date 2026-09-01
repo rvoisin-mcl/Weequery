@@ -25,10 +25,18 @@ public class EFTests
     {
         var context = DBContext.GenerateMinionTestSet();
 
-        var cond = new OneValueCondition<bool>(Operator.Equals, nameof(Minion.IsActive), true);
-        var exp = Weequery.Inquiry<Minion>.BuildExpression(Minion.Bindings, cond);
+        try
+        {
+            var cond = new OneValueCondition<bool>(Operator.Equals, nameof(Minion.IsActive), true);
+            var exp = Weequery.Inquiry<Minion>.BuildExpression(Minion.Bindings, cond);
 
-        Assert.True(context.Minions.WithWeequery().BindProperties(Minion.Bindings).ApplyCondition(cond).Build().Any());
-        //Assert.True(context.Where(exp).Count() == 3);
+            Assert.True(context.Minions.WithWeequery().BindProperties(Minion.Bindings).ApplyCondition(cond).Build().Any());
+            //Assert.True(context.Where(exp).Count() == 3);
+        }
+        finally
+        {
+            // Seeded databases are files, and one left behind per run adds up
+            TestDatabase.Drop(context);
+        }
     }
 }

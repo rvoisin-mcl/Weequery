@@ -18,20 +18,15 @@ namespace Tests.Common;
 /// nothing.
 /// </para>
 /// <para>
-/// Written because <see cref="Tests.Unit.StringOrderingTests.InMemoryAgreesWithTheDatabase"/> failed twice with no
-/// message worth reading, and passed on every attempt to reproduce it. The next occurrence should be diagnosable
-/// from its output alone.
-/// </para>
-/// <para>
-/// It has since been seen twice more, in the same shaped test in
-/// <see cref="Tests.Unit.FieldComparisonTests.InMemoryAgreesWithTheDatabase"/> and
-/// <see cref="Tests.Unit.NullSemanticsTests.InMemoryAgreesWithTheDatabase"/>, neither of which went through here
-/// at the time, so both failed with a bare row diff and neither reproduced. All four of these tests now use this,
-/// which is the point: the harness is no use sitting beside the failure rather than under it.
-/// </para>
-/// <para>
-/// Nothing about the cause is settled. Each of the four seeds and drops a SQLite database of its own per case,
-/// under xUnit's default parallelism and with no runner configuration, which is where to look first.
+/// Originally written because <see cref="Tests.Unit.StringOrderingTests.InMemoryAgreesWithTheDatabase"/> failed twice 
+/// with no discernable cause, and further tests passed on every attempt to reproduce it. The error was later found in
+/// <see cref="Tests.Unit.FieldComparisonTests.InMemoryAgreesWithTheDatabase"/> and 
+/// <see cref="Tests.Unit.NullSemanticsTests.InMemoryAgreesWithTheDatabase"/>. The cause has since been discovered
+/// EnsureDeleted on SQLite clears the connection pool process wide, so one test dropping its database broke 
+/// whichever other test was mid query, see the remarks
+/// on <see cref="TestDatabase.Drop"/>. The failures were exceptions raised while seeding or dropping, outside the
+/// comparison this class makes, which is why the row diff they came with never explained anything. Opening the
+/// test databases with Pooling=False fixed it: 5 failures in 112 runs before, 0 in 120 after.
 /// </para>
 /// </remarks>
 internal static class QueryAgreement

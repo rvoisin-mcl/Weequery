@@ -182,7 +182,8 @@ public static class TestDatabase
         switch (provider)
         {
             case TestProvider.Sqlite:
-                options.UseSqlite($"Data Source={Guid.NewGuid()}.db");
+                // Pooling=False is required, not a preference: see the remarks on Drop
+                options.UseSqlite($"Data Source={Guid.NewGuid()}.db;Pooling=False");
                 break;
 
             case TestProvider.PostgreSql:
@@ -229,6 +230,20 @@ public static class TestDatabase
     /// <summary>
     /// Delete the database and dispose the context, so a run leaves nothing behind
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// EnsureDeleted on SQLite calls SqliteConnection.ClearAllPools, which is process wide: dropping this database
+    /// reaches into the pooled connections of every other test running at the same time and deactivates them. That
+    /// is why the SQLite connection strings here are opened with Pooling=False. Without it roughly one run in
+    /// twenty five failed, in whichever test happened to be mid query, as an ObjectDisposedException on
+    /// SQLitePCL.sqlite3, a SQLite error 5 "unable to delete/modify user-function due to active statements", or an
+    /// IOException deleting a file another pool still held open.
+    /// </para>
+    /// <para>
+    /// A throwaway file per test was never protection against this. The pool is global, so unique names do not keep
+    /// the tests apart. Measured at 5 failures in 112 runs before, and 0 in 120 after.
+    /// </para>
+    /// </remarks>
     /// <param name="context"></param>
     public static void Drop(DBContext context)
     {

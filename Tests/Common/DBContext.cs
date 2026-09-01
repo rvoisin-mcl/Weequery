@@ -17,7 +17,8 @@ public class DBContext : DbContext
         // (see TestDatabase.Create) can point this context at PostgreSQL instead
         if (!options.IsConfigured)
         {
-            options.UseSqlite($"Data Source={Guid.NewGuid()}.db", null); // in-memory would be prefereable, but is not playing along
+            // Pooling=False is required, not a preference: see the remarks on TestDatabase.Drop
+            options.UseSqlite($"Data Source={Guid.NewGuid()}.db;Pooling=False", null); // in-memory would be prefereable, but is not playing along
         }
     }
 

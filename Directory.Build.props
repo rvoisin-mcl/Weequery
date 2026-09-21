@@ -1,0 +1,64 @@
+<Project>
+
+	<!--
+	  Shared by every project in the repository. MSBuild imports this before each .csproj body, so everything
+	  here is a default the project can still override: Weequery.Benchmarks targets one framework rather than
+	  two, and neither it nor Tests wants a documentation file.
+
+	  What moved here is what was written out eight or nine times before it was: the frameworks, the nullable and
+	  analyzer settings, the version, and the package metadata that belongs to the repository rather than to any
+	  one package. What stayed behind is what actually differs between them, which is a Description, a set of
+	  PackageTags, and the references.
+	-->
+
+	<PropertyGroup>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<!--
+	  One line to bump for a release rather than seven that have to agree. The release workflow passes
+	  -p:Version from the tag, and a global property beats this, so a tagged build still takes its version from
+	  the tag and a local build takes it from here.
+	-->
+	<PropertyGroup>
+		<Version>3.0.0</Version>
+	</PropertyGroup>
+
+	<!--
+	  PackageId and Title were each the project's own name spelled out again. MSBuildProjectName is that name
+	  already, so a package added later is identified and titled without anyone remembering to say so.
+	-->
+	<PropertyGroup>
+		<PackageId>$(MSBuildProjectName)</PackageId>
+		<Title>$(MSBuildProjectName)</Title>
+		<Authors>Rene Voisin</Authors>
+		<Copyright>&#169;2026 MacLean Engineering &amp; Marketing Co. Ltd.</Copyright>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/rvoisin-mcl/Weequery</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<EnableNETAnalyzers>true</EnableNETAnalyzers>
+		<AnalysisMode>Recommended</AnalysisMode>
+	</PropertyGroup>
+
+	<!-- Every package carried the same licence, and each one said so for itself -->
+	<ItemGroup>
+		<None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>

@@ -747,7 +747,7 @@ public class Inquiry<T> where T : class
     /// </para>
     /// <code>
     /// .IgnoreUnboundFields()
-    /// .ApplyCondition("IsActive = true AND Gizmo = 3")   // Gizmo went away, so this filters on IsActive alone
+    /// .ApplyCondition("IsActive = true AND Gizmo = 3")   // Gizmo is unbound, so will filter on IsActive alone
     /// </code>
     /// <para>
     /// <b>Dropping always widens.</b> A test that is not there does not constrain, so a condition made entirely
@@ -868,7 +868,7 @@ public class Inquiry<T> where T : class
     /// The four calls a request handler was going to make anyway, in the order they have to happen, over a type
     /// that binds straight off a query string.
     /// <code>
-    /// var (page, matches) = _context.Minions
+    /// var (page, total) = _context.Minions
     ///     .WithWeequery()
     ///     .BindProperties(MinionBindings)
     ///     .ApplyRequest(request, DefaultSort)
@@ -926,7 +926,7 @@ public class Inquiry<T> where T : class
     /// </summary>
     /// <remarks>
     /// The rows the caller's filter matched, before any ordering is imposed, or any window applied. This is
-    /// what <see cref="PagedQuery{T}.Matches"/> hands back to be counted.
+    /// what <see cref="PagedQuery{T}.Total"/> is a count of.
     /// </remarks>
     /// <returns></returns>
     private IQueryable<T> Filtered()
@@ -1004,7 +1004,7 @@ public class Inquiry<T> where T : class
                 continue;
             }
 
-            // Sort on the accessor's own type, not the unwrapped one, otherwise a Nullable<> property cannot
+            // Sort on the accessor type, not the unwrapped one, otherwise a Nullable<> property cannot
             // satisfy the Func<T, TKey> the sort methods want. Nullable<> keys sort fine, nulls first.
             Type keyType = binding.PropertyType;
             Expression key = binding.Accessor;
@@ -1131,7 +1131,7 @@ public class Inquiry<T> where T : class
     /// var problems = inquiry.Validate(request, DefaultSort);
     /// if (!problems.IsValid) { return BadRequest(problems.Problems.Select(problem =&gt; problem.ToString())); }
     ///
-    /// var (page, matches) = inquiry.ApplyRequest(request, DefaultSort).BuildPagedProjected();
+    /// var (page, total) = inquiry.ApplyRequest(request, DefaultSort).BuildPagedProjected();
     /// </code>
     /// </para>
     /// <para>
@@ -1207,28 +1207,35 @@ public class Inquiry<T> where T : class
     /// for. It is the size of the filtered set the window was taken from, so it is a second query over the same
     /// conditions, and this builds it alongside the first.
     /// <code>
-    /// var (page, matches) = query.WithWeequery()
+    /// var (page, total) = query.WithWeequery()
     ///     .BindProperties(MinionBindings)
     ///     .ApplyCondition(request.Filter)
     ///     .ApplySorts(request.Sort, DefaultSort)
     ///     .ApplyPagination(request.PageSize, request.Page)
     ///     .BuildPaged();
     ///
-    /// var total = await matches.CountAsync();
-    /// var rows  = await page.ToListAsync();
+    /// var matched = await total.FirstOrDefaultAsync();
+    /// var rows    = await page.ToListAsync();
     /// </code>
     /// </para>
     /// <para>
-    /// <b>Neither query has run.</b> Counting is left to the caller rather than done here, for two reasons. It is
-    /// a database round trip, and the method that makes it without blocking a thread is
-    /// <c>CountAsync</c>, which belongs to Entity Framework Core and not to this library. Weequery takes no
-    /// dependency on whatever is going to execute the query, and doing the count for you would mean either
-    /// taking one or calling the synchronous <c>Count</c> in code that ought to be awaiting. It also stays true
-    /// to what <see cref="Build"/> promises, which is a query and no execution, so both halves compose with
-    /// whatever was planned.
+    /// <b>The second query asks for a number, not for rows.</b> It carries the conditions and nothing else and
+    /// reads back a count, so no column of the entity is in the statement and nothing of a row crosses the
+    /// wire. <see cref="PagedQuery{T}.Total"/> says how to end it, and which ending answers about the count
+    /// query rather than about the count.
     /// </para>
     /// <para>
-    /// Total row count should come from <see cref="PagedQuery{T}.Matches"/> not <see cref="PagedQuery{T}.Page"/>
+    /// <b>Neither query has run.</b> Executing is left to the caller rather than done here, for two reasons. It
+    /// is a database round trip, and the method that reads a number without blocking a thread is
+    /// <c>FirstOrDefaultAsync</c>, which belongs to Entity Framework Core and not to this library. Weequery
+    /// takes no dependency on whatever is going to execute the query, and reading it for you would mean either
+    /// taking one or blocking in code that ought to be awaiting. It also stays true to what
+    /// <see cref="Build"/> promises, which is a query and no execution, so both halves compose with whatever
+    /// was planned.
+    /// </para>
+    /// <para>
+    /// Total row count should come from <see cref="PagedQuery{T}.Total"/> not from the length of
+    /// <see cref="PagedQuery{T}.Page"/>
     /// </para>
     /// <para>
     /// If no pagnation was applied <see cref="ApplyPagination"/> the page is the whole filtered result, and 
@@ -1246,7 +1253,35 @@ public class Inquiry<T> where T : class
 
         var matches = Filtered(); // share the unwindowed portion of the query
 
-        return new PagedQuery<T>(Windowed(Sorted(matches)), matches);
+        return new PagedQuery<T>(Windowed(Sorted(matches)), Counted(matches));
+    }
+
+    /// <summary>
+    /// The filtered query as a count of itself: one row holding how many matched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A grouping on a constant rather than a call to Count, because Count is terminal. It executes, and what
+    /// <see cref="BuildPaged"/> promises is a query that has not. Every row of a grouping keyed on the same
+    /// value lands in one group, so the size of that group is the size of the set, and it is still an
+    /// IQueryable when the caller gets it.
+    /// </para>
+    /// <para>
+    /// Providers reduce it to a single COUNT over the filtered rows, so the entity's own columns are nowhere in
+    /// the statement and nothing of a row is read. See <see cref="PagedQuery{T}.Total"/> for how to end it, and
+    /// for the one ending that gives a wrong answer quietly.
+    /// </para>
+    /// <para>
+    /// A set nothing matched is no group rather than a group of none, so the query comes back empty rather than
+    /// with a zero in it. That is why the ending to reach for is FirstOrDefault, whose default is the zero that
+    /// was wanted, rather than Single.
+    /// </para>
+    /// </remarks>
+    /// <param name="matches">the filtered query, with no sort and no window on it</param>
+    /// <returns>a query of one number</returns>
+    private static IQueryable<int> Counted(IQueryable<T> matches)
+    {
+        return matches.GroupBy(_ => 1).Select(rows => rows.Count());
     }
 
     /// <summary>
@@ -1268,35 +1303,32 @@ public class Inquiry<T> where T : class
     /// </para>
     /// <para>
     /// <b>The columns are the ones asked for.</b> Against a database this is a narrower SELECT rather than a
-    /// whole row thrown away afterwards, which is the point: three columns of a wide table, over a page of
-    /// twenty, is a different amount of work from twenty whole rows. Verified translating on SQLite, PostgreSQL
-    /// and SQL Server.
+    /// whole row thrown away afterwards: three columns of a wide table, over a page of
+    /// twenty, is a different amount of work from twenty whole rows. 
     /// </para>
     /// <para>
     /// <b>Keys come back as the binding spelled them</b>, not as the caller typed them. Fields are matched
-    /// without regard to case, so "name" and "NAME" both reach the binding made as "Name", and all of them read
-    /// back as "Name". Two callers asking differently get the same shape, which is what anything deserializing it
-    /// needs. Entries are added in the order asked for.
+    /// without regard to case, so "name" and "NAME" both reach a binding for "Name", and all of them read
+    /// back as "Name". Two callers asking differently get the same shape, as expected. Entries are added in 
+    /// the order asked.
     /// </para>
     /// <para>
-    /// <b>Values are boxed</b>, so a row is <c>object?</c> whatever the property held, and null where the value
-    /// is null or the path to it runs through a null. A field taken at an index nothing sits at is null too,
-    /// which is the same rule everywhere else, see <see cref="Operator"/>.
+    /// <b>Projected values are untyped and nullable</b>, so a row is <c>object?</c> whatever the property held, 
+    /// and null where the value is null or the path to it runs through a null. A field taken at an index nothing 
+    /// sits at is null too, which is the same rule everywhere else, see <see cref="Operator"/>.
     /// </para>
     /// <para>
-    /// With no projection applied this reads every bound field, which is the allow-list's own answer to "all of
-    /// it". A constant binding projects its value, the same for every row, see <see cref="BindConstant"/>.
+    /// If not projection is applied, this will return every bound field, including bound constants.
     /// </para>
     /// </remarks>
-    /// <returns>the same query <see cref="Build"/> would return, reading dictionaries rather than entities</returns>
+    /// <returns>the same query <see cref="Build"/> would return, as dictionaries rather than entities</returns>
     /// <exception cref="WeequeryException">
     /// whatever <see cref="Build"/> would throw, plus a projected field that no binding claimed or that names a
     /// bound collection
     /// </exception>
     public IQueryable<Dictionary<string, object?>> BuildProjected()
     {
-        // Build resets what was dropped and records the condition's and the sort's share of it, and the
-        // projector adds its own after, so there is nothing to clear here and clearing would lose the first half
+        // Build will clear and (maybe) write to Dropped, Projector can append after
         return Build().Select(Projector());
     }
 
@@ -1304,8 +1336,8 @@ public class Inquiry<T> where T : class
     /// The selector for this Inquiry's projection, see <see cref="ProjectionBuilder{T}"/>.
     /// </summary>
     /// <remarks>
-    /// The builder is handed the drop test only where the caller asked for one, so it does not have to know what
-    /// <see cref="IgnoreUnboundFields"/> is, only if a field survives.
+    /// The builder is handed the drop test only if the caller asked for one, so it does not have to about
+    /// <see cref="IgnoreUnboundFields"/>, only if a field survives.
     /// </remarks>
     private Expression<Func<T, Dictionary<string, object?>>> Projector()
     {
@@ -1320,7 +1352,7 @@ public class Inquiry<T> where T : class
     /// <para>
     /// The two halves a grid needs, narrowed to the columns it draws.
     /// <code>
-    /// var (page, matches) = query.WithWeequery()
+    /// var (page, total) = query.WithWeequery()
     ///     .BindProperties(MinionBindings)
     ///     .ApplyCondition(request.Filter)
     ///     .ApplySorts(request.Sort, DefaultSort)
@@ -1328,15 +1360,14 @@ public class Inquiry<T> where T : class
     ///     .ApplyProjection(request.Fields)
     ///     .BuildPagedProjected();
     ///
-    /// var total = await matches.CountAsync();
-    /// var rows  = await page.ToListAsync();
+    /// var matched = await total.FirstOrDefaultAsync();
+    /// var rows    = await page.ToListAsync();
     /// </code>
     /// </para>
     /// <para>
-    /// <b>Only the page is projected.</b> The count is over rows rather than over what is read off them, so
-    /// narrowing it would change nothing about the number and only give a provider more to think about. Counting
-    /// <see cref="PagedQuery{T}.Matches"/> gives the same total it would without a projection, which is what it
-    /// should: the projection decides what a row says, not which rows there are.
+    /// <b>Only the page is projected.</b> <see cref="PagedQuery{T}.Total"/> gives the same number it would
+    /// without a projection, which is what it should: the projection decides what a row says, not which rows
+    /// there are. The count reads no column at all, so there is nothing there for a projection to narrow.
     /// </para>
     /// </remarks>
     /// <returns>the projected page, and the query counting everything the conditions matched</returns>
@@ -1351,7 +1382,7 @@ public class Inquiry<T> where T : class
 
         return new PagedQuery<Dictionary<string, object?>>(
             Windowed(Sorted(matches)).Select(Projector()),
-            matches.Select(Projector()));
+            Counted(matches));
     }
 
     /// <summary>

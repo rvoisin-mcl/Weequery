@@ -288,7 +288,7 @@ public class ProjectionTests
     [Fact]
     public void OnlyThePageIsProjectedAndTheCountIsUnchanged()
     {
-        var (page, matches) = Bound()
+        var (page, total) = Bound()
             .ApplyCondition("IsActive = true")
             .ApplySorts([new Sort("Name", SortDirection.Ascending)])
             .ApplyPagination(pageSize: 2, page: 0)
@@ -297,8 +297,11 @@ public class ProjectionTests
 
         var rows = page.ToList();
 
-        Assert.Equal(3, matches.Count());
+        Assert.Equal(3, total.FirstOrDefault());
         Assert.Equal(2, rows.Count);
+
+        // Nothing of the projection is on the count half, because a count reads no column to narrow
+        Assert.IsAssignableFrom<IQueryable<int>>(total);
         Assert.Equal(["Alice Fox", "Bob Samuelson"], rows.Select(row => (string)row["Name"]!));
         Assert.Equal(["Name"], rows.First().Keys);
     }

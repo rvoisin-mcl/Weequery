@@ -56,9 +56,9 @@ public class QueryRequestTests
     {
         var request = new QueryRequest { Filter = "Pay > 0", Sort = "Pay DESC", Fields = "Name", PageSize = 2, Page = 1 };
 
-        var (page, matches) = Bound().ApplyRequest(request).BuildPagedProjected();
+        var (page, total) = Bound().ApplyRequest(request).BuildPagedProjected();
 
-        Assert.Equal(3, matches.Count());
+        Assert.Equal(3, total.FirstOrDefault());
         Assert.Equal("David Edgars", Assert.Single(page.ToList())["Name"]);
     }
 

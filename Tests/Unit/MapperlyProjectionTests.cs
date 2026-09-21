@@ -141,26 +141,27 @@ public class MapperlyProjectionTests
     [Fact]
     public void ThePageIsProjectedAndTheCountIsNot()
     {
-        var (page, matches) = Bound()
+        var (page, total) = Bound()
             .ApplyCondition("IsActive = true")
             .ApplySorts([new Sort("Name", SortDirection.Ascending)])
             .ApplyPagination(pageSize: 2, page: 0)
             .ProjectToPaged(Mapper.Project);
 
-        Assert.Equal(3, matches.Count());
+        Assert.Equal(3, total.FirstOrDefault());
         Assert.Equal(["Alice Fox", "Bob Samuelson"], page.ToList().Select(row => row.Name));
 
-        Assert.IsAssignableFrom<IQueryable<Minion>>(matches);
+        // The count reads a number rather than a row, so the mapping is nowhere in it
+        Assert.IsAssignableFrom<IQueryable<int>>(total);
     }
 
     /// <summary>Neither half has run, exactly as BuildPaged promises</summary>
     [Fact]
     public void NeitherHalfHasRun()
     {
-        var (page, matches) = Bound().ApplyPagination(pageSize: 1, page: 0).ProjectToPaged(Mapper.Project);
+        var (page, total) = Bound().ApplyPagination(pageSize: 1, page: 0).ProjectToPaged(Mapper.Project);
 
         Assert.Equal(1, page.Count());
-        Assert.Equal(4, matches.Count());
+        Assert.Equal(4, total.FirstOrDefault());
     }
 
     // ---------- two answers to one question ----------

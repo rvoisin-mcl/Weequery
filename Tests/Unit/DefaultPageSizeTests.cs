@@ -73,10 +73,10 @@ public class DefaultPageSizeTests
     [Fact]
     public void TheDefaultReachesThePagedBuildsToo()
     {
-        var (page, matches) = Sorted(PagesByTwo).BuildPaged();
+        var (page, total) = Sorted(PagesByTwo).BuildPaged();
 
         Assert.Equal(["Charlie", "Alice"], Names(page));
-        Assert.Equal(4, matches.Count());
+        Assert.Equal(4, total.FirstOrDefault());
     }
 
     [Fact]

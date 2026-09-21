@@ -48,9 +48,14 @@ jobs:
       - name: Test
         run: dotnet test Tests/Tests.csproj --no-build --configuration Release
 
+      # The solution rather than a list of projects, so a package added later is released without anyone
+      # remembering to add it here. Tests is the only thing in it that is not packable and marks itself so.
+      #
+      # One version for all of them: -p:Version is a global property, so the companion packages take it too and
+      # each one's dependency on Weequery is pinned to the same number it was built alongside.
       - name: Pack
         run: >
-          dotnet pack Weequery/Weequery.csproj
+          dotnet pack Weequery.sln
           --no-build
           --configuration Release
           -p:Version=${{ steps.version.outputs.value }}

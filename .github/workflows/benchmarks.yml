@@ -1,0 +1,49 @@
+name: benchmarks
+
+# Not on push, and not on pull requests. A full run takes about fifteen minutes, and a GitHub hosted runner is a
+# shared vCPU whose numbers drift by tens of percent for reasons that have nothing to do with this code, so per
+# push it would cost a quarter hour to learn very little. Nightly for the trend, and on demand for a change that
+# is meant to move something.
+on:
+  workflow_dispatch:
+  schedule:
+    # 04:00 UTC, when the shared runners are quietest
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmarks
+  cancel-in-progress: false
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Weequery.Benchmarks/Weequery.Benchmarks.csproj
+
+      # BenchmarkDotNet refuses to measure a build it cannot trust, so Release is not optional here
+      - name: Build
+        run: dotnet build Weequery.Benchmarks/Weequery.Benchmarks.csproj --no-restore --configuration Release
+
+      - name: Run
+        run: dotnet run --project Weequery.Benchmarks --no-build --configuration Release -- --filter '*'
+
+      # The markdown is what BENCHMARKS.md is made of, and the full JSON is what a comparison over time reads.
+      # Kept as an artifact rather than committed: the numbers a shared runner produces are for spotting a cliff,
+      # not for publishing, and what goes in BENCHMARKS.md should come from a machine someone can name.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: BenchmarkDotNet.Artifacts/results/*
+          if-no-files-found: error

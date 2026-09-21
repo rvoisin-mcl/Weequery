@@ -37,9 +37,11 @@ jobs:
       - name: Test
         run: dotnet test Tests/Tests.csproj --no-build --configuration Release --verbosity normal
 
-      # Proves the package can actually be produced before a tag depends on it
+      # Proves the packages can actually be produced before a tag depends on them. The solution rather than a
+      # list of projects, so a package added later is built here without anyone remembering to say so; Tests is
+      # the only thing in it that is not packable and marks itself so.
       - name: Pack
-        run: dotnet pack Weequery/Weequery.csproj --no-build --configuration Release --output artifacts
+        run: dotnet pack Weequery.sln --no-build --configuration Release --output artifacts
 
       - uses: actions/upload-artifact@v4
         with:

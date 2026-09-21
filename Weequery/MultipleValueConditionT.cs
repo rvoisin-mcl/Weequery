@@ -80,7 +80,7 @@ public class MultipleValueCondition<T> : BoundCondition, IMultipleValueCondition
     /// <returns></returns>
     public override List<ConditionValue<string>> StringifyOperands()
     {
-        // Values is public, so what the list holds now is not necessarily what it was built from
+        // Values is public, so the list may have changed since construction
         for (var index = 0; index < Values.Count; index++)
         {
             Validate(Operator, Field, Values[index], index, Values.Count);

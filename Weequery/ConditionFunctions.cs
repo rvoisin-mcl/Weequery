@@ -821,6 +821,88 @@ public static class ConditionFunctions
     }
 
     /// <summary>
+    /// Every operator a condition uses, including the ones inside a quantifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The counterpart of <see cref="FieldsUsed"/>, and it differs from it in exactly one way that matters: a
+    /// quantifier's children are a different <i>allow-list</i>, which is why fields stop at the boundary, but
+    /// they are not a different <i>backend</i>, so operators do not. An <see cref="Operator.IsMatch"/> inside
+    /// <c>Assignments Any (...)</c> still has to be run by whatever runs the query.
+    /// </para>
+    /// <para>
+    /// Structural operators count too, <see cref="Operator.And"/>, <see cref="Operator.Or"/> and
+    /// <see cref="Operator.Not"/>, since something has to evaluate those as well. See
+    /// <see cref="OperatorSupport"/>, which is what this exists for.
+    /// </para>
+    /// </remarks>
+    /// <param name="condition">null gives an empty list</param>
+    /// <returns>each operator once, in the order it was first met; never null</returns>
+    public static List<Operator> OperatorsUsed(this ICondition? condition)
+    {
+        List<Operator> seen = [];
+
+        foreach (var (op, _) in Used(condition, 0))
+        {
+            if (!seen.Contains(op)) { seen.Add(op); }
+        }
+
+        return seen;
+    }
+
+    /// <summary>
+    /// The first operator in a condition that <paramref name="support"/> does not allow, and the field it was
+    /// used on where it named one.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="OperatorsUsed"/> so the refusal can name where it happened, which a list of
+    /// operators cannot. Stops at the first, for the reason every other validation stops at the first: see the
+    /// remarks on <see cref="ValidationResult"/>.
+    /// </remarks>
+    /// <param name="condition"></param>
+    /// <param name="support"></param>
+    /// <returns>null where every operator used is allowed, which includes the condition that is null</returns>
+    internal static (Operator Operator, string? Field)? FirstUnsupported(ICondition? condition, OperatorSupport support)
+    {
+        foreach (var used in Used(condition, 0))
+        {
+            if (!support.Allows(used.Operator)) { return used; }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Walk a condition, yielding each operator as it is met with the field it was used on.
+    /// </summary>
+    /// <remarks>
+    /// Stops at <see cref="ConditionNesting.MaxDepth"/>, as the field walk does, so a tree deep enough to
+    /// overflow the stack is refused for its depth rather than by falling over here.
+    /// </remarks>
+    /// <param name="condition"></param>
+    /// <param name="depth">levels entered to get to this condition</param>
+    /// <returns>one entry per condition met, in the order met, with duplicates left in</returns>
+    private static IEnumerable<(Operator Operator, string? Field)> Used(ICondition? condition, int depth)
+    {
+        if ((condition is null) || ConditionNesting.IsTooDeep(depth)) { yield break; }
+
+        yield return (condition.Operator, (condition as IBound)?.Field);
+
+        // Two shapes of container, since a packed tree holds packed children, see IConditionContainer
+        IEnumerable<ICondition> children = condition switch
+        {
+            IConditionContainer<ICondition> container => container.Conditions,
+            IConditionContainer<PackedCondition> packed => packed.Conditions,
+            _ => [],
+        };
+
+        foreach (var child in children)
+        {
+            foreach (var used in Used(child, depth + 1)) { yield return used; }
+        }
+    }
+
+    /// <summary>
     /// A field with its index put back on, which is how a key carrying one is written everywhere else
     /// </summary>
     private static string Indexed(string field, string? index)

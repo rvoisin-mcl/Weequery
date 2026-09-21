@@ -26,9 +26,14 @@ namespace Weequery;
 /// </para>
 /// <para>
 /// <b>It answers about the query, not about the data.</b> Nothing here runs, so a valid query is one that will
-/// build, which is a different claim from one that will return rows, or one the database will accept: a
-/// <see cref="Operator.IsMatch"/> against SQL Server validates here and fails there, being refused by the
-/// provider rather than by the allow-list.
+/// build, which is a different claim from one that will return rows.
+/// </para>
+/// <para>
+/// <b>What a backend cannot do is something it can be told.</b> Left alone, a query this calls valid is still
+/// one a provider may refuse: an <see cref="Operator.IsMatch"/> against SQL Server validates here and fails
+/// there. Naming the operators the backend does not have, on <see cref="InquirySettings.Operators"/>, moves
+/// that refusal here where the caller who typed it can be told. What no set of operators can answer is whether
+/// a query using only supported ones will translate; building it and asking the provider is what answers that.
 /// </para>
 /// </remarks>
 /// <param name="Problems">

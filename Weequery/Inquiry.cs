@@ -903,6 +903,44 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Refuse a condition using an operator whatever runs this query cannot run, see
+    /// <see cref="InquirySettings.Operators"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Checked here rather than in <see cref="ApplyCondition(ICondition)"/> because this is where
+    /// <see cref="Build"/> and <see cref="Validate()"/> meet: one throws what the other reports, and putting it
+    /// anywhere else would part them. Applying a condition has never been where anything about it is decided.
+    /// </para>
+    /// <para>
+    /// Every operator counts, including the conjunctions and the ones inside a quantifier, see
+    /// <see cref="ConditionFunctions.OperatorsUsed"/>. The first one refused is the one reported, as everywhere
+    /// else, see <see cref="ValidationResult"/>.
+    /// </para>
+    /// <para>
+    /// The default set is everything, so a caller who has not said what their backend cannot do pays one
+    /// comparison and no walk at all.
+    /// </para>
+    /// </remarks>
+    /// <param name="condition"></param>
+    /// <exception cref="WeequeryException">it uses an operator the set does not allow</exception>
+    private void RefuseUnsupportedOperators(ICondition condition)
+    {
+        if (Settings.Operators.IsEverything) { return; }
+
+        var unsupported = ConditionFunctions.FirstUnsupported(condition, Settings.Operators);
+        if (unsupported is null) { return; }
+
+        var (op, field) = unsupported.Value;
+
+        throw new WeequeryException(
+            WeequeryError.NotTranslatable,
+            string.IsNullOrEmpty(field)
+                ? $"{op} is not supported by this data source"
+                : $"'{field}' is tested with {op}, which this data source does not support");
+    }
+
+    /// <summary>
     /// The predicate for one condition, bounded where it is this process that will run it.
     /// </summary>
     /// <remarks>
@@ -914,6 +952,8 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     private Expression<Func<T, bool>> Predicate(ICondition condition)
     {
+        RefuseUnsupportedOperators(condition);
+
         var predicate = ExpressionBuilder.BuildExpression(Bindings, condition, Collections);
 
         // LINQ to Objects, which is what AsQueryable over a list gives. Anything else is a provider that will be
@@ -1089,7 +1129,9 @@ public class Inquiry<T> where T : class
     /// </para>
     /// <para>
     /// <b>Valid means it will build</b>, which doesn't necessarily mean it will work. A provider may still refuse
-    /// what it is handed <see cref="Operator.IsMatch"/> against SQL Server is the standing example.
+    /// what it is handed <see cref="Operator.IsMatch"/> against SQL Server is the standing example. Where what a
+    /// backend cannot do is known, say so on <see cref="InquirySettings.Operators"/> and that much of it is
+    /// refused here instead of there.
     /// </para>
     /// </remarks>
     /// <returns>any problems found, it order of discovery; never null</returns>
@@ -1365,19 +1407,17 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// <b>Only the page is projected.</b> <see cref="PagedQuery{T}.Total"/> gives the same number it would
-    /// without a projection, which is what it should: the projection decides what a row says, not which rows
-    /// there are. The count reads no column at all, so there is nothing there for a projection to narrow.
+    /// <b>Only the page is projected.</b> <see cref="PagedQuery{T}.Total"/> will return the same row 
+    /// count as an unprojected query.
     /// </para>
     /// </remarks>
     /// <returns>the projected page, and the query counting everything the conditions matched</returns>
     /// <exception cref="WeequeryException">whatever <see cref="BuildProjected"/> would throw</exception>
     public PagedQuery<Dictionary<string, object?>> BuildPagedProjected()
     {
-        // Each build describes its own query, so what the last one dropped is not carried into this one
-        Dropped.Clear();
+        Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
 
-        // Shared, so the count is over exactly the rows the page was taken from and cannot drift from it
+        // Share the common portion of the query
         var matches = Filtered();
 
         return new PagedQuery<Dictionary<string, object?>>(
@@ -1390,13 +1430,7 @@ public class Inquiry<T> where T : class
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Where the resulting expression is evaluated changes what the substring operators match. Handed to EF Core
-    /// it becomes SQL and the column's collation applies; run against an in-memory collection it uses the
-    /// framework's string methods, where StartsWith and EndsWith are culture sensitive and Contains is ordinal.
-    /// See the remarks on <see cref="Operator"/> for the detail and for how to get agreement between the two.
-    /// </para>
-    /// <para>
-    /// Every predicate built for one entity type is built over the same parameter, which is what lets the bindings
+    /// Every predicate built for one entity type is built over the same parameter, which lets the bindings
     /// be resolved once and reused. Independent predicates do not care, but a predicate from here nested inside
     /// another over the same type (a predicate over Minion used inside "minion =&gt; minion.Peers.Any(...)", say)
     /// would have the inner parameter shadow the outer, so the inner test would read the inner element. Build the
@@ -1427,9 +1461,9 @@ public class Inquiry<T> where T : class
     /// <para>
     /// Because there is no provider here, three things are settled that <see cref="BuildExpression"/> has to
     /// leave open: the comparison rules above, an IsMatch is bounded by <see cref="MatchTimeout"/>, and the
-    /// values are written in as constants
-    /// rather than read out of the boxes that exist to become query parameters, see <see cref="ValueInliner"/>.
-    /// The predicate selects exactly what the uncompiled expression selects; it is cheaper to compile and to run.
+    /// values are written in as constants rather than read out of the boxes that exist to become query 
+    /// parameters, see <see cref="ValueInliner"/>. The predicate selects exactly what the uncompiled 
+    /// expression selects; it is cheaper to compile and to run.
     /// </para>
     /// </remarks>
     /// <param name="bindingRequests"></param>
@@ -1439,9 +1473,8 @@ public class Inquiry<T> where T : class
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static Func<T, bool> BuildDelegate(IEnumerable<BindingRequest> bindingRequests, ICondition condition, InquirySettings? settings = null)
     {
-        // Nothing is going to translate this one, so an IsMatch in it is bounded by MatchTimeout, the string
-        // comparisons are told how to compare, and the values need not stay reachable as parameters. Inlining
-        // last, so anything the other two put in is covered too.
+        // This will not be translated to EF, so an IsMatch in it is bounded by MatchTimeout, the string
+        // comparisons are told how to compare, and the values need not stay reachable as parameters. 
         return ValueInliner.Apply(StringComparisonRules.Apply(RegexTimeout.Apply(BuildExpression(bindingRequests, condition)), settings ?? InquirySettings.Default)).Compile();
     }
 }

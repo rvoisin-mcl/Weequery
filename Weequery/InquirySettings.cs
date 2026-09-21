@@ -1,8 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Weequery;
 
 /// <summary>
-/// What one query decides for itself, rather than taking from the library. Held on the
-/// <see cref="Inquiry{T}"/> it was given to and carried by every copy an Apply or a Bind makes of it.
+/// Settings that can be configured per query
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,66 +13,44 @@ namespace Weequery;
 /// </para>
 /// </remarks>
 /// <param name="StringComparison">
-/// How the string operators compare, <b>where Weequery is the one comparing</b>: equality, the ordering
+/// How the string operators compare, <b>when Weequery is the one comparing</b>: equality, the ordering
 /// comparisons, the substring family (<see cref="Operator.StartsWith"/>, <see cref="Operator.EndsWith"/>,
 /// <see cref="Operator.Contains"/> and their negatives), the ranges built from the ordering comparisons, and the
 /// <see cref="Operator.IsIn"/> family. <see cref="System.StringComparison.Ordinal"/> by default.
 /// <para>
-/// Ordinal for two reasons. It compares the characters that were stored, which is what a database does, so a
-/// condition answers the same either side of that line unless a query asks it not to. And it is the cheaper
-/// comparison by a wide margin: a linguistic equality over ten thousand rows costs an order of magnitude more
-/// than an ordinal one, see the filtering benchmarks. Ask for a culture where a filter is meant to read the way
-/// a person reads, which is the case worth paying for.
-/// </para>
-/// <para>
-/// The null tests are not comparisons and are unaffected, and neither is an equality against a null: what those
-/// ask is whether the value is there at all, which no rule has an opinion about.
-/// </para>
-/// <para>
-/// Translated to a database this says nothing: the column collation decides there, and the forms carrying a
-/// <see cref="System.StringComparison"/> are not ones a provider translates. So this settles the in-memory half
-/// only. Under the default the two halves agree; asking for a culture is what parts them, and a value differing
-/// only by an ignorable character is then equal in memory and not equal in the database, see
-/// <see cref="Operator"/>.
+/// When the query is handled by EF, this setting will not be applied, and string comparison will be up to the DB
+/// settings
 /// </para>
 /// </param>
 /// <param name="DefaultPageSize">
-/// How many rows a page holds where the caller named no size of its own, see
-/// <see cref="Inquiry{T}.ApplyPagination"/>. Null by default, which is no default: a query that asks for no
-/// window does not get one, and reads every row the conditions matched.
+/// How many rows a page holds if no value was provided. Only application if pagnation is requested,  
+/// <see cref="Inquiry{T}.ApplyPagination"/>. Must be greater than 0
+/// </param>
+/// <param name="Operators">
+/// Which operators whatever is going to run this query can actually run. Null is
+/// <see cref="OperatorSupport.Everything"/>, which is how this library has always behaved.
 /// <para>
-/// Give it a number and the sense of that inverts, which is the whole point of it. <b>Every</b> query built off
-/// these settings is windowed, including the one that never called <see cref="Inquiry{T}.ApplyPagination"/> at
-/// all, so a caller cannot ask for a table by omitting a field. A size the caller does name still wins; this is
-/// the floor under the ones who name nothing, not a ceiling over the ones who do.
-/// </para>
-/// <para>
-/// Which makes it worth saying out loud that it is not a cap. A caller asking for a page of a million gets a page
-/// of a million. Where that matters, clamp <see cref="QueryRequest.PageSize"/> before you hand the request over,
-/// somewhere you can say why in the refusal.
-/// </para>
-/// <para>
-/// Must be greater than zero where it is given at all, and refused where it is written rather than read as the
-/// null it is not. This is the one end of it that is <b>yours</b>: a default is something you write once, in
-/// your own startup, where a zero is a typo and hearing about it immediately is the whole point. The size a
-/// <i>caller</i> sends is the other end, is not yours, and is folded rather than refused, see
-/// <see cref="Inquiry{T}.ApplyPagination"/>.
+/// A condition using one that is not in the set is refused where every other refusal happens: thrown by
+/// <see cref="Inquiry{T}.Build"/> and reported by <see cref="Inquiry{T}.Validate()"/>. Set it where the
+/// backend is chosen, which is where what it cannot do is known.
 /// </para>
 /// </param>
-public record InquirySettings(StringComparison StringComparison = StringComparison.Ordinal, int? DefaultPageSize = null)
+public record InquirySettings(StringComparison StringComparison = StringComparison.Ordinal, int? DefaultPageSize = null, OperatorSupport? Operators = null)
 {
     /// <summary>
-    /// What a query takes when it is given nothing.
+    /// Default query settings if none were provided
     /// </summary>
     public static InquirySettings Default { get; } = new();
 
     /// <summary>
-    /// Held rather than generated, so that the check below runs on a <c>with</c> as well as on a construction.
-    /// The copy constructor a record generates copies fields and then sets only what changed, which means an
-    /// initializer on the property would be skipped by every copy and the rule would hold on the first way of
-    /// arriving at a bad value and not on the second.
+    /// Held instead of evaluating on request, so that the check runs on a <c>with</c> as well as a ctor.
     /// </summary>
     private readonly int? PageSize = Checked(DefaultPageSize);
+
+    /// <summary>
+    /// Held so the null a caller can pass becomes the everything they meant, on a <c>with</c> as on a ctor.
+    /// </summary>
+    private readonly OperatorSupport Support = Operators ?? OperatorSupport.Everything;
 
     /// <summary>
     /// <inheritdoc cref="InquirySettings" path="/param[@name='DefaultPageSize']/node()"/>
@@ -82,6 +61,21 @@ public record InquirySettings(StringComparison StringComparison = StringComparis
         get { return PageSize; }
 
         init { PageSize = Checked(value); }
+    }
+
+    /// <summary>
+    /// <inheritdoc cref="InquirySettings" path="/param[@name='Operators']/node()"/>
+    /// </summary>
+    /// <remarks>
+    /// Null is allowed in and never comes out: a caller saying nothing about their backend means everything,
+    /// and reading it back should not be a null check for that.
+    /// </remarks>
+    [AllowNull]
+    public OperatorSupport Operators
+    {
+        get { return Support; }
+
+        init { Support = value ?? OperatorSupport.Everything; }
     }
 
     /// <summary>
@@ -98,7 +92,7 @@ public record InquirySettings(StringComparison StringComparison = StringComparis
     {
         if (size is not (null or > 0))
         {
-            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(DefaultPageSize)} must be > 0 where it is given, {size} is not");
+            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(DefaultPageSize)} must be > 0, {size} is not");
         }
 
         return size;

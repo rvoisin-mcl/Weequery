@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Weequery;
 
@@ -8,14 +8,8 @@ namespace Weequery;
 /// <remarks>
 /// <para>
 /// Note on nulls. A null satisfies nothing except <see cref="IsNull"/>. Every other operator is built as "the
-/// property has a value" ANDed with the test on that value, so a null is not caught by the negative operators
-/// either: it is not "not equal to 5", it is unknown, exactly as a database treats it. So for any column,
-/// the rows matching an operator, the rows matching its negation, and the rows that are null partition the table
-/// between them, and one condition gives the same answer if it runs against a database or in memory.
-/// <see cref="Not"/> is the exception, because it negates the whole test rather than the value test: the guard is
-/// inside what it negates, so the null rows come back. That makes "!(Alias == 'Ghost')" and "Alias != 'Ghost'"
-/// two different questions where the column is nullable, the first including the rows with no alias and the
-/// second not. Both are useful, so neither is normalised into the other, but they are not interchangeable.
+/// property has a value" ANDed with the test on that value. It is not "not equal to 5", it is unknown, exactly 
+/// as a database treats it. 
 /// </para>
 /// <para>
 /// This extends to a property reached through a nullable. A path may step into a Nullable&lt;T&gt;, so
@@ -181,7 +175,7 @@ public enum Operator
     /// </description></item>
     /// <item><description>
     /// <b>SQL Server</b> does not translate it at all, and the query fails when it is built rather than returning
-    /// the wrong rows. There is no fallback: evaluating it on the client would mean fetching every row.
+    /// the wrong rows. There is no fallback: client evaluation would mean fetching every row.
     /// </description></item>
     /// </list>
     /// <para>

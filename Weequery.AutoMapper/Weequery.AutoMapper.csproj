@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<Description>AutoMapper support for Weequery. Filter, sort and page with Weequery, then read the rows back as your own DTO through AutoMapper's ProjectTo, so only the columns the DTO needs leave the database. Adds ProjectTo and ProjectToPaged to Inquiry.</Description>
+		<PackageTags>weequery;automapper;projectto;iqueryable;linq;efcore;dto;projection</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!--
+      While 14 is the last MIT licensed version, it does have a severe CVE attached to it (of debatable merit) 
+	  that will not be patched, so rather than have this project be tagged as containing a vulnerability we will 
+	  use 15, which is dual licensed. Required functionality is present in 14+, and consumers can use 14 if they are
+	  comportable with the tradeoff.
+    -->
+		<PackageReference Include="AutoMapper" Version="15.1.3" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Weequery\Weequery.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>

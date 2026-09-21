@@ -9,7 +9,7 @@ namespace Tests.Unit;
 /// </summary>
 /// <remarks>
 /// A message names the offending input and is written for a person, so it is free to be reworded. Anything that
-/// has to act on the reason needs something that is not, and that is <see cref="WeequeryError"/> — reachable as
+/// has to act on the reason needs something that is not, and that is <see cref="WeequeryError"/>, reachable as
 /// <see cref="WeequeryException.Error"/>, and as <see cref="System.Exception.HResult"/> for the callers who only
 /// see the base type.
 /// </remarks>

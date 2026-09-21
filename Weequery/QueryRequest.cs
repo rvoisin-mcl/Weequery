@@ -103,7 +103,7 @@ public class QueryRequest
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Anything that could not hold a page — null, zero, a negative — takes
+    /// Anything that could not hold a page (null, zero, a negative) takes
     /// <see cref="InquirySettings.DefaultPageSize"/>, and where that was not set either there is no window and
     /// the whole result comes back. A caller that leaves the field out and a caller that sends
     /// <c>pageSize=0</c> have made the same mistake and get the same answer, see

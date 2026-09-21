@@ -7,8 +7,8 @@ namespace Tests.Unit;
 /// The page size a query takes where the caller named none, see <see cref="InquirySettings.DefaultPageSize"/>.
 /// <para>
 /// The behaviour worth pinning is the one that inverts: with a default set, a query that never mentioned paging
-/// is windowed anyway. That is the whole point of it — a caller cannot ask for the whole table by leaving a field
-/// out — and it is also the thing that would be a surprise if it were on without being asked for, which is why
+/// is windowed anyway. That is the whole point of it (a caller cannot ask for the whole table by leaving a field
+/// out) and it is also the thing that would be a surprise if it were on without being asked for, which is why
 /// the default default is no default at all.
 /// </para>
 /// </summary>

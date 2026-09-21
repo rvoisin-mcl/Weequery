@@ -1,0 +1,47 @@
+# EditorConfig, see https://editorconfig.org
+#
+# Written to match what this repository already is rather than what a template says it should be: every
+# setting below was measured across the tracked files, so adopting it reformats almost nothing.
+#
+# The one exception: 28 of the 197 C# files carry a UTF-8 BOM and the other 169 do not. charset = utf-8
+# means no BOM, so an editor enforcing it drops the BOM from those 28 the first time each is saved. Roslyn
+# does not care either way, and the result is a tree that agrees with itself.
+#
+# charset is here for the C# files, and it does not reach the project files. Visual Studio's EditorConfig
+# support covers "all Visual Studio-supported languages except XML", so nothing in this file changes how a
+# .csproj is encoded on save; the indent_style below applies to them only in editors that do read XML.
+#
+# That mattered because a .csproj carrying a copyright sign was being read as Latin-1 and written back as
+# UTF-8, which doubles the character and packs the mangled version into the .nuspec for nuget.org to show.
+# The fix is not in this file and could not be: those projects now spell it &#169;, an XML character
+# reference, so they are pure ASCII and nothing can mis-detect them whatever it does on save. There is
+# deliberately no copyright sign in this comment either, for the same reason.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+
+# Deliberately off. 142 of the 197 C# files carry trailing whitespace, nearly all of it inside XML doc
+# comments, so trimming on save would rewrite most of the repository the first time anyone opened it. In
+# Markdown two trailing spaces are also a hard line break, which trimming would silently delete.
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# Tabs, which is what these already use and what the tooling that rewrites them produces
+[*.{csproj,props,targets,sln}]
+indent_style = tab
+
+[*.{ts,js,json,md}]
+indent_style = space
+indent_size = 2
+
+# YAML cannot be indented with tabs at all
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2

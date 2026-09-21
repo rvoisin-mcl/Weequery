@@ -229,7 +229,7 @@ internal static class QueryAgreement
         {
             // The same letter composed two ways: one code point, or an e with a combining accent. A culture
             // sensitive comparison calls those equal and an ordinal one does not, which is the difference to detect.
-            return string.Compare("�", "e?", StringComparison.CurrentCulture) != 0;
+            return string.Compare("\u00e9", "e\u0301", StringComparison.CurrentCulture) != 0;
         }
     }
 }

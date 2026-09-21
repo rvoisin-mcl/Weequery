@@ -234,7 +234,7 @@ public class FluentConditionTests
     /// <summary>
     /// A helper builds the same condition the query language writes, so it inherits the same null rule: a negative
     /// operator does not catch a row that has no value at all. Bob has no alias, and is in neither answer to
-    /// "is it Ghost" — which is the whole of what separates the operator from a negation of its opposite.
+    /// "is it Ghost", which is the whole of what separates the operator from a negation of its opposite.
     /// </summary>
     [Fact]
     public void TheNotEqualHelperCarriesTheNullGuardTheWrittenFormCarries()

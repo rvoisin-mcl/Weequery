@@ -43,7 +43,7 @@ public class Inquiry<T> where T : class
     /// All the bindings used together have to share it: a lambda is built from one binding's parameter and a body
     /// assembled from several, so accessors rooted in different parameters would not compose. Sharing it for the
     /// whole type is what lets a binding built once be used by every query after it, see
-    /// <see cref="BindingSetCache{T}"/>, and costs nothing to do ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â an expression tree is immutable, and a parameter is an
+    /// <see cref="BindingSetCache{T}"/>, and costs nothing to do: an expression tree is immutable, and a parameter is an
     /// identity rather than a value, so two lambdas built over the same one are still two independent lambdas.
     /// </para>
     /// </summary>
@@ -1204,7 +1204,7 @@ public class Inquiry<T> where T : class
     /// <remarks>
     /// <para>
     /// For the caller that has to answer "showing 21 to 40 of 387". The 387 is not something a page can be asked
-    /// for. It is the size of the filtered set the window was taken from, so it is a second query over the same
+    /// for. It is the size of the filtered set the window was taken from, so it is a second query over the same
     /// conditions, and this builds it alongside the first.
     /// <code>
     /// var (page, matches) = query.WithWeequery()
@@ -1367,7 +1367,7 @@ public class Inquiry<T> where T : class
     /// <para>
     /// Every predicate built for one entity type is built over the same parameter, which is what lets the bindings
     /// be resolved once and reused. Independent predicates do not care, but a predicate from here nested inside
-    /// another over the same type ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â a predicate over Minion used inside "minion =&gt; minion.Peers.Any(...)", say ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â
+    /// another over the same type (a predicate over Minion used inside "minion =&gt; minion.Peers.Any(...)", say)
     /// would have the inner parameter shadow the outer, so the inner test would read the inner element. Build the
     /// outer lambda by hand around this one, rather than combining two of these.
     /// </para>

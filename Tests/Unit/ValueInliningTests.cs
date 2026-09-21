@@ -17,8 +17,8 @@ namespace Tests.Unit;
 /// </para>
 /// <para>
 /// <b>"The same answer" is the whole of what has to be proved</b>, so most of this file is the same condition
-/// run both ways over the same rows. The interesting failures would be quiet ones — a value arriving as its
-/// underlying type instead of its enum, a null failing to construct, a converted accessor rewritten by accident —
+/// run both ways over the same rows. The interesting failures would be quiet ones: a value arriving as its
+/// underlying type instead of its enum, a null failing to construct, a converted accessor rewritten by accident,
 /// which is why the cases below are a type per test rather than one condition.
 /// </para>
 /// </remarks>

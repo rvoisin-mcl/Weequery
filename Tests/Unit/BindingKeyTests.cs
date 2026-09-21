@@ -341,17 +341,80 @@ public class BindingKeyTests
     }
 
     /// <summary>
-    /// The path-segments constructor takes the last segment as the key, so it already produces a valid name for a
-    /// nested path without the caller naming it
+    /// The path-segments constructor keys by the joined path, the same as the string constructor does for the
+    /// same path, so a nested path keys alike however it is written. A period is a legal key character, so the
+    /// derived key needs no naming by the caller.
     /// </summary>
     [Fact]
-    public void ThePathSegmentsConstructorDerivesAValidKeyFromTheLastSegment()
+    public void ThePathSegmentsConstructorDerivesAValidKeyFromTheWholePath()
     {
         var request = new BindingRequest(["LairAssignments", "LairID"], null);
 
         Assert.Equal("LairAssignments.LairID", request.PropertyPath);
-        Assert.Equal("LairID", request.Key);
-        Assert.True(WeequeryException.IsSqlName(request.Key));
+        Assert.Equal("LairAssignments.LairID", request.Key);
+        Assert.True(WeequeryException.IsBindingKey(request.Key));
+
+        // and the two spellings of the one path agree
+        Assert.Equal(new BindingRequest("LairAssignments.LairID", null).Key, request.Key);
+    }
+
+    /// <summary>
+    /// The two constructors derive the same key for the same path, so they refuse the same ones alike: the same
+    /// error, with the same words, from whichever spelling of the path the caller used.
+    /// </summary>
+    [Theory]
+    [InlineData("my key")]      // a space
+    [InlineData("1Lair")]       // does not start with a letter or underscore
+    [InlineData("Labels[0]")]   // brackets, which are how a condition asks for one element
+    [InlineData("In")]          // a word the query language reads as an operator
+    [InlineData("")]            // given but empty, which is not the same as not given
+    public void TheTwoConstructorsRefuseAGivenKeyAlike(string key)
+    {
+        var fromString = Assert.Throws<WeequeryException>(() => new BindingRequest("Lair.Capacity", key));
+        var fromSegments = Assert.Throws<WeequeryException>(() => new BindingRequest(["Lair", "Capacity"], key));
+
+        Assert.Equal(fromString.Error, fromSegments.Error);
+        Assert.Equal(fromString.Message, fromSegments.Message);
+    }
+
+    /// <summary>
+    /// And alike for the key neither was given, which each derives from the path it was handed
+    /// </summary>
+    [Theory]
+    [InlineData("And")]         // a conjunction, which the tokenizer promotes wherever it appears
+    [InlineData("1Lair")]
+    public void TheTwoConstructorsRefuseADerivedKeyAlike(string path)
+    {
+        var fromString = Assert.Throws<WeequeryException>(() => new BindingRequest(path, null));
+        var fromSegments = Assert.Throws<WeequeryException>(() => new BindingRequest([path], null));
+
+        Assert.Equal(fromString.Error, fromSegments.Error);
+        Assert.Equal(fromString.Message, fromSegments.Message);
+    }
+
+    /// <summary>
+    /// And alike for a path that names nothing: null, nothing at all, and nothing but an empty segment are the
+    /// one mistake however the path is spelled, and are reported against the path rather than against a key the
+    /// caller never gave.
+    /// </summary>
+    [Fact]
+    public void TheTwoConstructorsRefuseAPathThatNamesNothingAlike()
+    {
+        var fromNullString = Assert.Throws<WeequeryException>(() => new BindingRequest((string)null!, null));
+        var fromNullArray = Assert.Throws<WeequeryException>(() => new BindingRequest((string[])null!, null));
+        var fromEmptyString = Assert.Throws<WeequeryException>(() => new BindingRequest("", null));
+        var fromEmptyArray = Assert.Throws<WeequeryException>(() => new BindingRequest([], null));
+        var fromEmptySegment = Assert.Throws<WeequeryException>(() => new BindingRequest([""], null));
+
+        foreach (var thrown in new[] { fromNullArray, fromEmptyString, fromEmptyArray, fromEmptySegment })
+        {
+            Assert.Equal(fromNullString.Error, thrown.Error);
+            Assert.Equal(fromNullString.Message, thrown.Message);
+        }
+
+        // named for the argument actually at fault
+        Assert.Equal(WeequeryError.ArgumentMissing, fromNullString.Error);
+        Assert.Contains("propertyPath", fromNullString.Message);
     }
 
     // ---------- the predicate on its own ----------

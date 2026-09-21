@@ -63,7 +63,7 @@ public class BindingUseTests
         var error = Assert.Throws<WeequeryException>(() => Names("Departure Contains 'shark'"));
 
         Assert.Contains("Departure", error.Message);
-        Assert.Contains("condition", error.Message);
+        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
         Assert.Contains(nameof(BindingUse.Projection), error.Message);
     }
 
@@ -88,7 +88,7 @@ public class BindingUseTests
         var error = Assert.Throws<WeequeryException>(() => Names("Name = [Departure]"));
 
         Assert.Contains("Departure", error.Message);
-        Assert.Contains("condition", error.Message);
+        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
     }
 
     // ---------- Condition only ----------
@@ -119,7 +119,7 @@ public class BindingUseTests
         var error = Assert.Throws<WeequeryException>(() => Bound().ApplyProjection("Vetted").BuildProjected().ToList());
 
         Assert.Contains("Vetted", error.Message);
-        Assert.Contains("projected", error.Message);
+        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
         Assert.Contains(nameof(BindingUse.Condition), error.Message);
     }
 
@@ -152,7 +152,7 @@ public class BindingUseTests
     {
         var error = Assert.Throws<WeequeryException>(() => Names("Alias = 'Ghost'"));
 
-        Assert.Contains("Unbound", error.Message);
+        Assert.Equal(WeequeryError.UnboundField, error.Error);
     }
 
     /// <summary>Nested as deep as you like, it is still the same field being asked about</summary>
@@ -244,7 +244,7 @@ public class BindingUseTests
             .Build()
             .ToList());
 
-        Assert.Contains("it is a constant", error.Message);
+        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
 
         // And the two it does grant still work
         Assert.Equal(2, WithConstant().ApplyCondition("Pay >= [Threshold]").Build().Count());

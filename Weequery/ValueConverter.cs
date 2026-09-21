@@ -154,12 +154,12 @@ public sealed class ValueConverter
         }
         catch (Exception ex)
         {
-            throw new WeequeryException($"The converter for a {ValueType.Name} failed on '{value}': {ex.Message}", ex);
+            throw new WeequeryException(WeequeryError.ConversionFailed, $"The converter for a {ValueType.Name} failed on '{value}': {ex.Message}", ex);
         }
 
         // A comparison needs something on its right, and the guard every operator carries is about the property
         // rather than the value, so a null here would build a test nothing satisfies for a reason nobody can see
-        return converted ?? throw new WeequeryException($"The converter for a {ValueType.Name} turned '{value}' into nothing, and a comparison needs a value");
+        return converted ?? throw new WeequeryException(WeequeryError.ConversionFailed, $"The converter for a {ValueType.Name} turned '{value}' into nothing, and a comparison needs a value");
     }
 
     private Func<object, object?> Compile()

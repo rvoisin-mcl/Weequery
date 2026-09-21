@@ -67,7 +67,7 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
         WeequeryException.ThrowIfNull(field);
         WeequeryException.ThrowIfNullOrEmpty(field.Key, nameof(field));
 
-        if (Fields.ContainsKey(field.Key)) { throw new WeequeryException($"A field is already declared for '{field.Key}'"); }
+        if (Fields.ContainsKey(field.Key)) { throw new WeequeryException(WeequeryError.KeyTaken, $"A field is already declared for '{field.Key}'"); }
 
         Fields[field.Key] = field;
 
@@ -82,14 +82,6 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
         return ((key is not null) && Fields.TryGetValue(key, out var field)) ? field : default;
     }
 
-    /// <summary>Whether a key is declared</summary>
-    /// <param name="key"></param>
-    /// <returns></returns>
-    public bool Has(string? key)
-    {
-        return (key is not null) && Fields.ContainsKey(key);
-    }
-
     /// <summary>
     /// The field a key means, refusing what nobody declared.
     /// </summary>
@@ -99,7 +91,7 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
     /// <exception cref="WeequeryException">nothing declared the key</exception>
     public TField Resolve(string? key, string what)
     {
-        return Find(key) ?? throw new WeequeryException($"Unbound field: '{key}' is not declared in the {GetType().Name}, so it cannot be {what}");
+        return Find(key) ?? throw new WeequeryException(WeequeryError.UnboundField, $"Unbound field: '{key}' is not declared in the {GetType().Name}, so it cannot be {what}");
     }
 
     /// <summary>How many fields are declared</summary>

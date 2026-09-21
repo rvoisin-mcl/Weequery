@@ -189,6 +189,127 @@ public class FluentConditionTests
         Assert.Throws<WeequeryException>(() => Conjunction().AddIsEqualTest(nameof(Minion.Pay), 10000m, ValueSource.Binding));
     }
 
+    // ---------- the inclusive half of each ordering pair ----------
+
+    /// <summary>
+    /// The OrEqual helpers differ from their strict siblings at exactly one value, so that value is what they are
+    /// worth testing at. Alice is paid 12000, and is the only one of the four who sits on the boundary.
+    /// </summary>
+    [Fact]
+    public void TheOrEqualHelpersIncludeTheBoundaryWhereTheStrictOnesDoNot()
+    {
+        Assert.Equal(["Alice", "Bob", "David"], Matching(Conjunction().AddIsLessThanOrEqualToTest(nameof(Minion.Pay), 12000m)));
+        Assert.Equal(["Bob", "David"], Matching(Conjunction().AddIsLessThanTest(nameof(Minion.Pay), 12000m)));
+
+        Assert.Equal(["Alice", "Charlie"], Matching(Conjunction().AddIsGreaterThanOrEqualToTest(nameof(Minion.Pay), 12000m)));
+        Assert.Equal(["Charlie"], Matching(Conjunction().AddIsGreaterThanTest(nameof(Minion.Pay), 12000m)));
+    }
+
+    [Fact]
+    public void TheOrEqualHelpersAddAOneValueConditionOfTheValuesOwnType()
+    {
+        var atMost = Only<OneValueCondition<decimal>>(Conjunction().AddIsLessThanOrEqualToTest(nameof(Minion.Pay), 12000m));
+
+        Assert.Equal(Operator.LessThanOrEqual, atMost.Operator);
+        Assert.Equal(ConditionValue.Raw(12000m), atMost.Value);
+
+        var atLeast = Only<OneValueCondition<decimal>>(Conjunction().AddIsGreaterThanOrEqualToTest(nameof(Minion.Pay), 12000m));
+
+        Assert.Equal(Operator.GreaterThanOrEqual, atLeast.Operator);
+        Assert.Equal(ConditionValue.Raw(12000m), atLeast.Value);
+    }
+
+    // ---------- the negative helpers, which is where the null guard shows ----------
+
+    [Fact]
+    public void TheNotEqualHelperAddsAOneValueConditionOfTheValuesOwnType()
+    {
+        var condition = Only<OneValueCondition<decimal>>(Conjunction().AddIsNotEqualTest(nameof(Minion.Pay), 12000m));
+
+        Assert.Equal(Operator.NotEqual, condition.Operator);
+        Assert.Equal(nameof(Minion.Pay), condition.Field);
+        Assert.Equal(ConditionValue.Raw(12000m), condition.Value);
+    }
+
+    /// <summary>
+    /// A helper builds the same condition the query language writes, so it inherits the same null rule: a negative
+    /// operator does not catch a row that has no value at all. Bob has no alias, and is in neither answer to
+    /// "is it Ghost" — which is the whole of what separates the operator from a negation of its opposite.
+    /// </summary>
+    [Fact]
+    public void TheNotEqualHelperCarriesTheNullGuardTheWrittenFormCarries()
+    {
+        var built = Conjunction().AddIsNotEqualTest(nameof(Minion.Alias), "Ghost");
+
+        Assert.Equal(["Charlie", "David"], Matching(built));
+        Assert.Equal(Matching(ConditionFunctions.ParseQuery("Alias <> 'Ghost'")!), Matching(built));
+
+        // and the negation of the positive operator does catch him, as it is documented to
+        Assert.Equal(["Bob", "Charlie", "David"], Matching(ConditionFunctions.ParseQuery("NOT (Alias = 'Ghost')")!));
+    }
+
+    // ---------- the pattern helpers ----------
+
+    [Fact]
+    public void ThePatternHelpersAddAOneValueConditionOverString()
+    {
+        Assert.Equal(Operator.IsMatch, Only<OneValueCondition<string>>(Conjunction().AddIsMatchTest(nameof(Minion.Name), "^Al")).Operator);
+        Assert.Equal(Operator.DoesNotMatch, Only<OneValueCondition<string>>(Conjunction().AddDoesNotMatchTest(nameof(Minion.Name), "^Al")).Operator);
+    }
+
+    /// <summary>
+    /// The two are opposites over rows that have a value, so between them they should account for every row once.
+    /// Every Name here is non-null, so there is nothing for the guard to withhold from either side.
+    /// </summary>
+    [Fact]
+    public void ThePatternHelpersPartitionTheRowsBetweenThem()
+    {
+        var matched = Matching(Conjunction().AddIsMatchTest(nameof(Minion.Name), "^Al"));
+        var didNot = Matching(Conjunction().AddDoesNotMatchTest(nameof(Minion.Name), "^Al"));
+
+        Assert.Equal(["Alice"], matched);
+        Assert.Equal(["Bob", "Charlie", "David"], didNot);
+        Assert.Empty(matched.Intersect(didNot));
+    }
+
+    // ---------- adding a condition that was built some other way ----------
+
+    /// <summary>
+    /// The one helper that adds no comparison of its own: it takes a condition already built and puts it in as it
+    /// is. What it is for is nesting, since everything else here adds a comparison at the top level and an OR
+    /// inside an AND cannot be said any other way.
+    /// </summary>
+    [Fact]
+    public void AConditionBuiltElsewhereIsAddedAsItIs()
+    {
+        var either = new ConjunctionCondition(Operator.Or, [])
+            .AddIsEqualTest(nameof(Minion.Name), "Alice Fox")
+            .AddIsEqualTest(nameof(Minion.Name), "Bob Samuelson");
+
+        var built = Conjunction()
+            .AddIsGreaterThanOrEqualToTest(nameof(Minion.Pay), 0m)
+            .AddCondition(either);
+
+        Assert.Equal(2, built.Conditions.Count);
+        Assert.Same(either, built.Conditions[1]);
+
+        // both are paid at least nothing, and the nested OR is what narrows it to the two of them
+        Assert.Equal(["Alice", "Bob"], Matching(built));
+    }
+
+    /// <summary>
+    /// And a parsed condition is a condition like any other, so the two ways of building one compose
+    /// </summary>
+    [Fact]
+    public void AParsedConditionCanBeAddedToABuiltOne()
+    {
+        var built = Conjunction()
+            .AddIsNotEqualTest(nameof(Minion.Name), "Charlie Smith")
+            .AddCondition(ConditionFunctions.ParseQuery("Pay >= 8000")!);
+
+        Assert.Equal(["Alice", "David"], Matching(built));
+    }
+
     // ---------- chaining ----------
 
     /// <summary>

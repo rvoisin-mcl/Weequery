@@ -86,9 +86,10 @@ public static class ConditionNesting
     /// <summary>
     /// The one exception for the one limit, so every walk reports it the same way
     /// </summary>
+    /// <param name="exerpt">[OPT] to indicate the clause inside the query causing the exception</param>
     /// <returns></returns>
-    public static WeequeryException TooDeep()
+    public static WeequeryException TooDeep(string? exerpt = null)
     {
-        return new WeequeryException($"Condition nests deeper than the limit of {MaxDepth}");
+        return new WeequeryException(WeequeryError.NestingTooDeep, $"Condition nests deeper than the limit of {MaxDepth}{((exerpt is null) ? "" : $"'{exerpt}'")}");
     }
 }

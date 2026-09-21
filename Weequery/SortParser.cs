@@ -80,7 +80,7 @@ internal sealed class SortParser
         // Anything left over means the clause was not a well formed list (eg. "Pay Name")
         if (!parser.AtEnd)
         {
-            throw new WeequeryException(parser.Describe($"Unexpected '{parser.Current.Text}'", parser.Current.Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, parser.Describe($"Unexpected '{parser.Current.Text}'", parser.Current.Position));
         }
 
         return sorts;
@@ -129,7 +129,7 @@ internal sealed class SortParser
         {
             if (style == QueryStyle.Native)
             {
-                throw new WeequeryException($"'ORDER BY' at position {tokens[index].Position} is not valid in the {nameof(QueryStyle.Native)} style, write 'OrderBy'");
+                throw new WeequeryException(WeequeryError.QuerySyntax, $"'ORDER BY' at position {tokens[index].Position} is not valid in the {nameof(QueryStyle.Native)} style, write 'OrderBy'");
             }
 
             return 2;
@@ -222,7 +222,7 @@ internal sealed class SortParser
 
         if (!(Check(QueryTokenKind.Word) || Check(QueryTokenKind.Text)))
         {
-            throw new WeequeryException(Describe($"Expected an index for field '{field}'", open));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected an index for field '{field}'", open));
         }
 
         var index = Tokens[Index++].Text;
@@ -256,7 +256,7 @@ internal sealed class SortParser
 
     private QueryToken Take(QueryTokenKind kind, string expected)
     {
-        if (!Check(kind)) { throw new WeequeryException(Describe($"Expected {expected}", PositionOfCurrentOrEnd)); }
+        if (!Check(kind)) { throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected {expected}", PositionOfCurrentOrEnd)); }
 
         return Tokens[Index++];
     }

@@ -49,7 +49,7 @@ internal static class ProjectionBuilder<T> where T : class
             : Projectable(keep, projected.Fields);
 
         var add = typeof(Dictionary<string, object?>).GetMethod(nameof(Dictionary<string, object?>.Add))
-            ?? throw new WeequeryException($"(Should be impossible) {nameof(Dictionary<string, object?>)} has no Add");
+            ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) {nameof(Dictionary<string, object?>)} has no Add");
 
         var entries = from field in fields
                       select Expression.ElementInit(add, Expression.Constant(CanonicalKey(bindings, collections, field)), Value(bindings, field));
@@ -84,7 +84,7 @@ internal static class ProjectionBuilder<T> where T : class
         // holds many values and a column holds one, so there is nothing for this to read.
         if (collections.ContainsKey(key))
         {
-            throw new WeequeryException($"'{key}' is a collection, so it cannot be projected: it has no single value to read. Project a field of the entity, or ask about its elements with a quantifier");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{key}' is a collection, so it cannot be projected: it has no single value to read. Project a field of the entity, or ask about its elements with a quantifier");
         }
 
         return BindingLookup.CanonicalKey(bindings, field);
@@ -102,7 +102,7 @@ internal static class ProjectionBuilder<T> where T : class
         // looking for a typo in a name that works perfectly well in a condition.
         if (!binding.Allows(BindingUse.Projection))
         {
-            throw new WeequeryException($"'{field}' cannot be projected: it is bound for {binding.Use}");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field}' cannot be projected: it is bound for {binding.Use}");
         }
 
         Expression value = Expression.Convert(binding.Accessor, typeof(object));

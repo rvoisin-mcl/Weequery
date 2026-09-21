@@ -618,15 +618,24 @@ public class BindingResolutionTests
     }
 
     /// <summary>
-    /// It adds rather than replaces, so a key already claimed by hand is a duplicate. Worth pinning because the
-    /// remedy, resolving first and removing after, is the opposite order to what a caller would try.
+    /// Resolving adds rather than replaces, so a key already claimed by hand for the same property is that one
+    /// binding rather than a collision, and the hand bound one is the one kept: it may carry a narrower use or a
+    /// converter the resolver knows nothing about, and the resolver must not quietly widen it.
     /// </summary>
     [Fact]
-    public void BindResolveCollidesWithAKeyAlreadyBoundByHand()
+    public void BindResolveKeepsTheBindingAlreadyMadeByHand()
     {
-        var inquiry = MinionTestData.Minions().WithWeequery().BindProperty(minion => minion.Pay);
+        // an Inquiry accumulates its conditions, so the two checks below need one each
+        static Inquiry<Minion> Bound() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Pay, use: BindingUse.Projection)
+            .BindResolve();
 
-        Assert.Throws<WeequeryException>(() => inquiry.BindResolve());
+        // the hand bound Pay survived, so it is still projection only and a condition on it is refused
+        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Pay > 1").Build().ToList());
+
+        // and the rest of the properties resolved around it
+        Assert.NotEmpty(Bound().ApplyCondition("Name != ''").Build().ToList());
     }
 
     [Fact]

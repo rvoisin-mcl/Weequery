@@ -12,7 +12,7 @@ internal class ValueExpressionBuilder<T> : ExpressionBuilderBase<T> where T : st
         var commonExp = ExpressionBuilderFunctions.BuildCommonValueExpression(binding, condition);
         if (commonExp is not null) { return commonExp; }
 
-        throw new WeequeryException($"Operator {condition.Operator} is unsupported for the {typeof(T).Name} binding '{binding.PropertyPath}'");
+        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the {typeof(T).Name} binding '{binding.PropertyPath}'");
     }
 
     /// <summary>
@@ -40,11 +40,11 @@ internal class ValueExpressionBuilder<T> : ExpressionBuilderBase<T> where T : st
         catch (WeequeryException ex)
         {
             // Add some additional detail to the the bubbled exception
-            throw new WeequeryException($"{ex.Message}, for field '{condition.Field}'", ex);
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"{ex.Message}, for field '{condition.Field}'", ex);
         }
         catch (Exception ex)
         {
-            throw new WeequeryException($"Failed to parse a {typeof(T).Name} for field '{condition.Field}': {ex.Message}", ex);
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"Failed to parse a {typeof(T).Name} for field '{condition.Field}': {ex.Message}", ex);
         }
 
         return BuildTypedExpressionFromTypedCondition(binding, typed);

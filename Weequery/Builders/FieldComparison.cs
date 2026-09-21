@@ -108,12 +108,12 @@ internal static class FieldComparison
     {
         if (left.UnwrappedPropertyType == typeof(object))
         {
-            throw new WeequeryException($"Operator {op} is unsupported for Binding '{left.PropertyPath}': a {typeof(object).Name} is not something to compare, only the null tests apply to it");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} is unsupported for Binding '{left.PropertyPath}': a {typeof(object).Name} is not something to compare, only the null tests apply to it");
         }
 
         if (!ExpressionBuilder.HasBuilderForBinding(left))
         {
-            throw new WeequeryException($"No expression builder available for: '{left.UnwrappedPropertyType.Name}'");
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"No expression builder available for: '{left.UnwrappedPropertyType.Name}'");
         }
     }
 
@@ -137,14 +137,14 @@ internal static class FieldComparison
         // Condition: allow it and the value is learnable by bisection, one query at a time
         if (!property.Allows(BindingUse.Condition))
         {
-            throw new WeequeryException($"'{value.Value}', compared against on field '{field}', cannot be used in a condition: it is bound for {property.Use}");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{value.Value}', compared against on field '{field}', cannot be used in a condition: it is bound for {property.Use}");
         }
 
         // The expression api compares like with like, and promoting one side to the other would mean deciding
         // which widens to which for every pair of types, including the pairs C# itself refuses. Same type only.
         if (left.UnwrappedPropertyType != property.UnwrappedPropertyType)
         {
-            throw new WeequeryException($"Cannot compare '{left.PropertyPath}' with '{property.PropertyPath}': one is a {left.UnwrappedPropertyType.Name} and the other a {property.UnwrappedPropertyType.Name}");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot compare '{left.PropertyPath}' with '{property.PropertyPath}': one is a {left.UnwrappedPropertyType.Name} and the other a {property.UnwrappedPropertyType.Name}");
         }
 
         return new Operand<TClass> { Property = property, Expression = property.UnwrappedAccessor };
@@ -168,11 +168,11 @@ internal static class FieldComparison
         }
         catch (WeequeryException ex)
         {
-            throw new WeequeryException($"{ex.Message}, for field '{field}'", ex);
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"{ex.Message}, for field '{field}'", ex);
         }
         catch (Exception ex)
         {
-            throw new WeequeryException($"Failed to parse a {left.UnwrappedPropertyType.Name} for field '{field}': {ex.Message}", ex);
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"Failed to parse a {left.UnwrappedPropertyType.Name} for field '{field}': {ex.Message}", ex);
         }
     }
 
@@ -224,7 +224,7 @@ internal static class FieldComparison
     /// v, since TRUE OR UNKNOWN is TRUE. Guarding each test rather than the condition gives FALSE where SQL gives
     /// UNKNOWN, and at the top of an OR those are the same answer, so both evaluators agree with the database.
     /// The guard is still needed on each test: without it a missing operand would compare equal to a missing
-    /// field, and unwrapping a Nullable&lt;&gt; that holds nothing throws.
+    /// field, and unwrapping a Nullable that holds nothing throws.
     /// </para>
     /// <para>
     /// Negated, that stops being true: NOT(FALSE) is TRUE where NOT(UNKNOWN) is UNKNOWN, so IsNotIn keeps the
@@ -273,13 +273,13 @@ internal static class FieldComparison
             var type = typeof(List<>).MakeGenericType(forType);
 
             return (type, type.GetMethod(nameof(List<object>.Contains), [forType])
-                ?? throw new WeequeryException($"(Should be impossible) No List<{forType.Name}>.Contains method"));
+                ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) No List<{forType.Name}>.Contains method"));
         });
 
         // Non generic, because the element type is only known here. It is still a List<T> underneath, which is
         // what the provider needs to see.
         var list = (IList?)Activator.CreateInstance(listType.List)
-            ?? throw new WeequeryException($"(Should be impossible) Could not hold a list of {left.UnwrappedPropertyType.Name}");
+            ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) Could not hold a list of {left.UnwrappedPropertyType.Name}");
 
         foreach (var value in values) { list.Add(value); }
 
@@ -297,11 +297,11 @@ internal static class FieldComparison
             : CompareValues(left, op, one, other);
 
         return comparison
-            ?? throw new WeequeryException($"Operator {op} cannot compare '{left.PropertyPath}' with another {left.UnwrappedPropertyType.Name}");
+            ?? throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} cannot compare '{left.PropertyPath}' with another {left.UnwrappedPropertyType.Name}");
     }
 
     /// <summary>
-    /// Equality and the ordering operators, on operands with any Nullable&lt;&gt; stepped through and an enum
+    /// Equality and the ordering operators, on operands with any Nullable stepped through and an enum
     /// stepped down to what it is based on
     /// </summary>
     /// <returns>null if the operator does not apply to a pair of values</returns>
@@ -310,7 +310,7 @@ internal static class FieldComparison
         // A bool orders no better against another property than it does against a value
         if ((left.UnwrappedPropertyType == typeof(bool)) && (op is not (Operator.Equals or Operator.NotEqual)))
         {
-            throw new WeequeryException($"Operator {op} is unsupported for the bool property '{left.PropertyPath}', only equality applies to a truth value");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} is unsupported for the bool property '{left.PropertyPath}', only equality applies to a truth value");
         }
 
         if (left.UnwrappedPropertyTypeIsEnum)

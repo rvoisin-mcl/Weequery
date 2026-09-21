@@ -126,7 +126,7 @@ public class CollectionIndexPositionTests
     {
         var error = Assert.Throws<WeequeryException>(() => Depots().WithWeequery().BindProperty("Threshold[0]", "Key"));
 
-        Assert.Contains("cannot be indexed", error.Message);
+        Assert.Equal(WeequeryError.PathInvalid, error.Error);
     }
 
     // ---------- the operand position ----------
@@ -209,7 +209,7 @@ public class CollectionIndexPositionTests
     {
         var error = Assert.Throws<WeequeryException>(() => ByQuery("Id > 0", "Nothing[0] DESC"));
 
-        Assert.Contains("Unbound field", error.Message);
+        Assert.Equal(WeequeryError.UnboundField, error.Error);
     }
 
     // ---------- the four positions agree ----------

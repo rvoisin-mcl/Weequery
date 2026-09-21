@@ -89,7 +89,9 @@ public class PagedQueryTests
 
     // ---------- the statements the two produce ----------
 
-    private static (string Page, string Matches) StatementsFor(TestProvider provider)
+    private sealed record Statements(string Page, string Matches);
+
+    private static Statements StatementsFor(TestProvider provider)
     {
         using var context = TestDatabase.Create(provider);
 
@@ -101,7 +103,7 @@ public class PagedQueryTests
             .ApplyPagination(pageSize: 2, page: 1)
             .BuildPaged();
 
-        return (TestDatabase.StatementOnly(page.ToQueryString()), TestDatabase.StatementOnly(matches.ToQueryString()));
+        return new Statements(TestDatabase.StatementOnly(page.ToQueryString()), TestDatabase.StatementOnly(matches.ToQueryString()));
     }
 
     /// <summary>

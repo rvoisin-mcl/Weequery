@@ -97,7 +97,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
                 var common = ExpressionBuilderFunctions.BuildCommonValueExpression(binding, condition);
                 if (common is not null) { return common; }
 
-                throw new WeequeryException($"Operator {condition.Operator} is unsupported for the string binding '{binding.PropertyPath}'");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the string binding '{binding.PropertyPath}'");
         }
 
         // Guard in front of the call, so a null is never dereferenced and never matches
@@ -107,7 +107,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     }
 
     /// <summary>
-    /// property.Method(value), on the value with any Nullable&lt;&gt; already stepped through
+    /// property.Method(value), on the value with any Nullable already stepped through
     /// </summary>
     private static Expression Call<TClass>(Binding<TClass> binding, MethodInfo method, TypedCondition<string> condition)
     {
@@ -115,7 +115,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     }
 
     /// <summary>
-    /// Regex.IsMatch(property, pattern), on the value with any Nullable&lt;&gt; already stepped through
+    /// Regex.IsMatch(property, pattern), on the value with any Nullable already stepped through
     /// </summary>
     private static Expression Match<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
@@ -157,7 +157,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
 
         if (binding.UnwrappedPropertyType != typeof(string))
         {
-            throw new WeequeryException($"Binding for {binding.PropertyPath} is not a {typeof(string).Name}");
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"Binding for {binding.PropertyPath} is not a {typeof(string).Name}");
         }
 
         return BuildTypedExpressionFromTypedCondition(binding, condition);

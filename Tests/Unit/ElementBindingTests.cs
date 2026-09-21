@@ -151,7 +151,7 @@ public class ElementBindingTests
     {
         var error = Assert.Throws<WeequeryException>(() => Boxes().WithWeequery().BindProperty(box => box.Labels![0]));
 
-        Assert.Contains("one element of a collection", error.Message);
+        Assert.Equal(WeequeryError.KeyInvalid, error.Error);
         Assert.Contains("key of its own", error.Message);
     }
 
@@ -165,7 +165,7 @@ public class ElementBindingTests
         var error = Assert.Throws<WeequeryException>(
             () => Boxes().WithWeequery().BindProperty(box => box.Labels![0], "Labels[0]"));
 
-        Assert.Contains("one element of a collection", error.Message);
+        Assert.Equal(WeequeryError.KeyInvalid, error.Error);
     }
 
     // ---------- the segments form ----------
@@ -204,7 +204,7 @@ public class ElementBindingTests
         var error = Assert.Throws<WeequeryException>(
             () => Boxes().WithWeequery().BindProperty(box => box.Labels![position], "Chosen"));
 
-        Assert.Contains("other than a constant", error.Message);
+        Assert.Equal(WeequeryError.PathInvalid, error.Error);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class ElementBindingTests
     {
         var error = Assert.Throws<WeequeryException>(() => Boxes().WithWeequery().BindProperty("Id[0]", "Key"));
 
-        Assert.Contains("cannot be indexed", error.Message);
+        Assert.Equal(WeequeryError.PathInvalid, error.Error);
     }
 
     // ---------- the two routes agree ----------

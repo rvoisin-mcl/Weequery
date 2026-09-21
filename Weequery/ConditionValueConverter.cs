@@ -54,7 +54,7 @@ internal sealed class ConditionValueConverter : JsonConverterFactory
         var converter = typeof(Converter<>).MakeGenericType(typeToConvert.GetGenericArguments()[0]);
 
         return (JsonConverter?)Activator.CreateInstance(converter)
-            ?? throw new WeequeryException($"(Should be impossible) Could not create a converter for {typeToConvert.Name}");
+            ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) Could not create a converter for {typeToConvert.Name}");
     }
 
     private sealed class Converter<T> : JsonConverter<ConditionValue<T>>

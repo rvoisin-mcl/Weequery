@@ -107,7 +107,7 @@ public static class ConditionFunctions
                 return symbolic ? "!" : native ? "NOT" : "Not";
 
             default:
-                throw new WeequeryException($"Operator {op} is invalid");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator {op} is invalid");
         }
     }
 
@@ -212,14 +212,14 @@ public static class ConditionFunctions
 
         if (count < required.Minimum)
         {
-            throw new WeequeryException($"Not enough values provided for Operator '{op}' on field '{field}', it needs at least {required.Minimum} but got {count}");
+            throw new WeequeryException(WeequeryError.OperandCount, $"Not enough values provided for Operator '{op}' on field '{field}', it needs at least {required.Minimum} but got {count}");
         }
 
         // Naming the limit matters for the IsIn family, where the maximum is a cap rather than a shape,
         // see MaxValuesInList
         if (count > required.Maximum)
         {
-            throw new WeequeryException($"Extra values provided for Operator '{op}' on field '{field}', it accepts at most {required.Maximum} but got {count}");
+            throw new WeequeryException(WeequeryError.OperandCount, $"Extra values provided for Operator '{op}' on field '{field}', it accepts at most {required.Maximum} but got {count}");
         }
     }
 
@@ -272,7 +272,7 @@ public static class ConditionFunctions
                 return new(0, 0);
 
             default:
-                throw new WeequeryException($"Operator {op} is invalid");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator {op} is invalid");
         }
     }
 
@@ -330,7 +330,7 @@ public static class ConditionFunctions
                 return null;
 
             default:
-                throw new WeequeryException($"Operator {op} is invalid");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator {op} is invalid");
         }
     }
 
@@ -359,7 +359,7 @@ public static class ConditionFunctions
             ConditionShape.TwoValue => new TwoValueCondition<string>(op, field, operands[0], operands[1], index),
             ConditionShape.MultipleValue => new MultipleValueCondition<string>(op, field, operands, index),
 
-            _ => throw new WeequeryException($"Cannot determine an appropriate shape for Operator '{op}' on field '{field}'"),
+            _ => throw new WeequeryException(WeequeryError.OperatorInvalid, $"Cannot determine an appropriate shape for Operator '{op}' on field '{field}'"),
         };
     }
 
@@ -769,7 +769,7 @@ public static class ConditionFunctions
     /// <param name="field">a field name, which may carry an index</param>
     /// <returns>the key, and the index or null where there is none</returns>
     /// <exception cref="WeequeryException">the field is null or empty</exception>
-    public static (string Key, string? Index) SplitIndex(string field)
+    public static IndexedField SplitIndex(string field)
     {
         WeequeryException.ThrowIfNullOrEmpty(field);
 

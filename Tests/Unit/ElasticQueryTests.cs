@@ -255,7 +255,7 @@ public class ElasticQueryTests
         var error = Assert.Throws<WeequeryException>(() => Json("Gizmo = 3"));
 
         Assert.Contains("Gizmo", error.Message);
-        Assert.Contains("Unbound", error.Message);
+        Assert.Equal(WeequeryError.UnboundField, error.Error);
     }
 
     /// <summary>The same rules Weequery holds a property to, held to a declared kind instead</summary>
@@ -273,7 +273,7 @@ public class ElasticQueryTests
     {
         var error = Assert.Throws<WeequeryException>(() => Json("Pay > [Pay]"));
 
-        Assert.Contains("script", error.Message);
+        Assert.Equal(WeequeryError.NotTranslatable, error.Error);
     }
 
     /// <summary>An array is flattened into the field, so there is no element zero to address</summary>

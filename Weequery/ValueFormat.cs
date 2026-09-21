@@ -188,7 +188,7 @@ public static class ValueFormat
                 return parsed;
             }
 
-            throw new WeequeryException($"'{text}' is not a member of enum {type.Name}");
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"'{text}' is not a member of enum {type.Name}");
         }
 
         if (Parsers.TryGetValue(type, out var parser))
@@ -217,7 +217,7 @@ public static class ValueFormat
             return InvokeReflected(named, type, text, [text]);
         }
 
-        throw new WeequeryException($"No conversion available from string to {type.Name}: a type outside the supported set has to implement IParsable<{type.Name}>, or have a public static {ParseMethod}(string) that returns one");
+        throw new WeequeryException(WeequeryError.BindingInvalid, $"No conversion available from string to {type.Name}: a type outside the supported set has to implement IParsable<{type.Name}>, or have a public static {ParseMethod}(string) that returns one");
     }
 
     /// <summary>
@@ -245,7 +245,7 @@ public static class ValueFormat
         }
         catch (Exception ex) when ((ex is FormatException) || (ex is OverflowException) || (ex is ArgumentException))
         {
-            throw new WeequeryException($"'{text}' is not a valid {type.Name}");
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"'{text}' is not a valid {type.Name}");
         }
     }
 
@@ -253,11 +253,11 @@ public static class ValueFormat
     {
         try
         {
-            return method.Invoke(null, arguments) ?? throw new WeequeryException($"Parsing '{text}' as {type.Name} produced null");
+            return method.Invoke(null, arguments) ?? throw new WeequeryException(WeequeryError.ValueInvalid, $"Parsing '{text}' as {type.Name} produced null");
         }
         catch (TargetInvocationException ex)
         {
-            throw new WeequeryException($"'{text}' is not a valid {type.Name}: {ex.InnerException?.Message}");
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"'{text}' is not a valid {type.Name}: {ex.InnerException?.Message}");
         }
     }
 }

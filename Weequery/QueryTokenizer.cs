@@ -171,7 +171,7 @@ internal static class QueryTokenizer
             builder.Append(ch);
         }
 
-        throw new WeequeryException($"Unterminated {quote} quote starting at position {start}");
+        throw new WeequeryException(WeequeryError.QuerySyntax, $"Unterminated {quote} quote starting at position {start}");
     }
 
     /// <summary>
@@ -184,7 +184,7 @@ internal static class QueryTokenizer
     /// <param name="position">where it is, so the message can point at it</param>
     private static WeequeryException Refuse(string found, string instead, int position)
     {
-        return new WeequeryException($"'{found}' at position {position} is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'");
+        return new WeequeryException(WeequeryError.QuerySyntax, $"'{found}' at position {position} is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'");
     }
 
     /// <summary>
@@ -243,14 +243,14 @@ internal static class QueryTokenizer
 
             case '&':
                 if (strict) { throw Refuse("&&", "AND", start); }
-                if (peek != '&') { throw new WeequeryException($"Expected '&&' at position {start}"); }
+                if (peek != '&') { throw new WeequeryException(WeequeryError.QuerySyntax, $"Expected '&&' at position {start}"); }
                 tokens.Add(new(QueryTokenKind.And, "&&", start));
                 next = start + 2;
                 return true;
 
             case '|':
                 if (strict) { throw Refuse("||", "OR", start); }
-                if (peek != '|') { throw new WeequeryException($"Expected '||' at position {start}"); }
+                if (peek != '|') { throw new WeequeryException(WeequeryError.QuerySyntax, $"Expected '||' at position {start}"); }
                 tokens.Add(new(QueryTokenKind.Or, "||", start));
                 next = start + 2;
                 return true;

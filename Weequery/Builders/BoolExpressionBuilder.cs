@@ -41,7 +41,7 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
 
         if (!IsSupported(condition.Operator))
         {
-            throw new WeequeryException($"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}', only null tests, equality and the IsIn family apply to a truth value");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}', only null tests, equality and the IsIn family apply to a truth value");
         }
 
         // The shared implementation already handles both the plain and the Nullable<> forms of every operator
@@ -49,7 +49,7 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
         var common = ExpressionBuilderFunctions.BuildCommonValueExpression(binding, condition);
         if (common is not null) { return common; }
 
-        throw new WeequeryException($"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}'");
+        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}'");
     }
 
     public override Expression<Func<TClass, bool>> BuildTypedExpressionFromStringifiedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
@@ -59,7 +59,7 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
 
         if (binding.UnwrappedPropertyType != typeof(bool))
         {
-            throw new WeequeryException($"Binding for {binding.PropertyPath} is not a {typeof(bool).Name}");
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"Binding for {binding.PropertyPath} is not a {typeof(bool).Name}");
         }
 
         return BuildTypedExpressionFromTypedCondition(binding, condition.Transform(text => (bool)ValueFormat.Parse(typeof(bool), text)));

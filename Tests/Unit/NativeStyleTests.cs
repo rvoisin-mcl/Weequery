@@ -205,7 +205,7 @@ public class NativeStyleTests
 
         Assert.Contains(found, error.Message);
         Assert.Contains(instead, error.Message);
-        Assert.Contains(nameof(QueryStyle.Native), error.Message);
+        Assert.Equal(WeequeryError.QuerySyntax, error.Error);
     }
 
     /// <summary>
@@ -254,7 +254,7 @@ public class NativeStyleTests
 
         Assert.Contains("ORDER BY", error.Message);
         Assert.Contains("OrderBy", error.Message);
-        Assert.Contains(nameof(QueryStyle.Native), error.Message);
+        Assert.Equal(WeequeryError.QuerySyntax, error.Error);
     }
 
     [Theory]

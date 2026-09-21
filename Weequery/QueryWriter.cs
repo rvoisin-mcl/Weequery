@@ -117,7 +117,7 @@ internal static class QueryWriter
 
             if (notCondition.Conditions.Count == 0)
             {
-                if (strict) { throw new WeequeryException($"{nameof(Operator.Not)} has no condition to negate, so it cannot be written as a query"); }
+                if (strict) { throw new WeequeryException(WeequeryError.OperatorInvalid, $"{nameof(Operator.Not)} has no condition to negate, so it cannot be written as a query"); }
 
                 // The placeholder takes the style's spelling too, so a ToString does not read half in one
                 // language and half in another
@@ -127,7 +127,7 @@ internal static class QueryWriter
             return $"{not}{gap}{Render(notCondition.Conditions.First(), strict, style, depth + 1)}";
         }
 
-        if (strict) { throw new WeequeryException($"Condition type '{condition.GetType().Name}' cannot be written as a query"); }
+        if (strict) { throw new WeequeryException(WeequeryError.NotTranslatable, $"Condition type '{condition.GetType().Name}' cannot be written as a query"); }
 
         return $"<{condition.GetType().Name}>";
     }
@@ -166,7 +166,7 @@ internal static class QueryWriter
     {
         if ((conjunction.Operator != Operator.And) && (conjunction.Operator != Operator.Or))
         {
-            throw new WeequeryException($"Operator {conjunction.Operator} is invalid for {nameof(IConjunctionCondition)}");
+            throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator {conjunction.Operator} is invalid for {nameof(IConjunctionCondition)}");
         }
 
         var separator = $" {ConditionFunctions.GetOperationString(conjunction.Operator, style)} ";
@@ -177,7 +177,7 @@ internal static class QueryWriter
             // never produce this, it only arrives from a hand built tree.
             if (strict)
             {
-                throw new WeequeryException($"An empty {conjunction.Operator} condition has no representation in the query language, so it cannot be round tripped");
+                throw new WeequeryException(WeequeryError.NotTranslatable, $"An empty {conjunction.Operator} condition has no representation in the query language, so it cannot be round tripped");
             }
 
             return $"(<empty {conjunction.Operator}>)";
@@ -211,7 +211,7 @@ internal static class QueryWriter
                 return $"({field} {op} ({string.Join(", ", operands)}))";
 
             default:
-                throw new WeequeryException($"Operation '{condition.Operator}' cannot be represented by {nameof(IBoundCondition)}");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operation '{condition.Operator}' cannot be represented by {nameof(IBoundCondition)}");
         }
     }
 

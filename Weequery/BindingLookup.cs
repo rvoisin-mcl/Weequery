@@ -11,12 +11,12 @@ namespace Weequery;
 internal static class BindingLookup
 {
     /// <summary>
-    /// How a field name from a caller is matched against a binding key
+    /// Comparison to use for key matching
     /// </summary>
     internal static readonly StringComparer KeyComparer = StringComparer.OrdinalIgnoreCase;
 
     /// <summary>
-    /// An empty lookup, with the key comparison every lookup has to share
+    /// An empty lookup
     /// </summary>
     /// <typeparam name="TClass"></typeparam>
     /// <returns></returns>
@@ -26,8 +26,7 @@ internal static class BindingLookup
     }
 
     /// <summary>
-    /// Take a field name apart into the key and the index it may carry: "Tallies[apples]" is the binding Tallies
-    /// read at "apples", and "Pay" is the binding Pay.
+    /// Crack a field name apart into the key and optional the index it may carry
     /// </summary>
     /// <remarks>
     /// For the two places an index arrives written into the field itself rather than beside it: an operand naming
@@ -37,17 +36,17 @@ internal static class BindingLookup
     /// <param name="field"></param>
     /// <returns>the key, and the index or null</returns>
     /// <exception cref="WeequeryException">the brackets do not close, or the index is empty</exception>
-    internal static (string Key, string? Index) SplitIndex(string field)
+    internal static IndexedField SplitIndex(string field)
     {
         var open = field.IndexOf('[');
-        if (open < 0) { return (field, null); }
+        if (open < 0) { return new IndexedField(field, null); }
 
-        if (!field.EndsWith(']')) { throw new WeequeryException($"'{field}' has a '[' that is never closed"); }
+        if (!field.EndsWith(']')) { throw new WeequeryException(WeequeryError.PathInvalid, $"'{field}' has a '[' that is never closed"); }
 
         var index = field[(open + 1)..^1];
-        if (index.Length == 0) { throw new WeequeryException($"'{field}' has an empty index"); }
+        if (index.Length == 0) { throw new WeequeryException(WeequeryError.PathInvalid, $"'{field}' has an empty index"); }
 
-        return (field[..open], index);
+        return new IndexedField(field[..open], index);
     }
 
     /// <summary>
@@ -66,7 +65,7 @@ internal static class BindingLookup
     {
         var (key, index) = SplitIndex(field);
 
-        if (!bindings.TryGetValue(key, out var binding)) { throw new WeequeryException($"Unbound field: '{key}'"); }
+        if (!bindings.TryGetValue(key, out var binding)) { throw new WeequeryException(WeequeryError.UnboundField, $"Unbound field: '{key}'"); }
 
         return (index is null) ? binding : binding.Indexed(index);
     }

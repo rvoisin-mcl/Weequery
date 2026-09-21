@@ -65,7 +65,7 @@ public class QuantifiedCondition : ICondition, IBound, IConditionContainer<ICond
 
         if (!IsQuantifier(op))
         {
-            throw new WeequeryException($"Operator '{op}' on field '{field}' is not a quantifier, so it cannot be represented by {nameof(QuantifiedCondition)}: the quantifiers are {Operator.Any}, {Operator.All} and {Operator.None}");
+            throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator '{op}' on field '{field}' is not a quantifier, so it cannot be represented by {nameof(QuantifiedCondition)}: the quantifiers are {Operator.Any}, {Operator.All} and {Operator.None}");
         }
 
         Operator = op;

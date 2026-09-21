@@ -182,7 +182,7 @@ public class QuantifierTests
         var error = Assert.Throws<WeequeryException>(() => Ids("Jobs Any (Take > 1)"));
 
         Assert.Contains("Jobs", error.Message);
-        Assert.Contains("BindCollection", error.Message);
+        Assert.Equal(WeequeryError.UnboundField, error.Error);
     }
 
     /// <summary>Binding the collection exposes nothing inside it, which is the same rule as everywhere else</summary>

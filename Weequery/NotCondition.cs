@@ -31,7 +31,7 @@ public class NotCondition : INotCondition
                 break;
 
             default:
-                throw new WeequeryException($"Operation '{op}' cannot be represented by {nameof(NotCondition)}");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operation '{op}' cannot be represented by {nameof(NotCondition)}");
         }
 
         WeequeryException.ThrowIfNull(condition);

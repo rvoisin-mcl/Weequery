@@ -74,7 +74,7 @@ public record ParsedQuery(ICondition? Condition, List<Sort> Sorts)
         // is named instead of being reported as a stray word.
         if (SortParser.PrefixLength(tokens, stopped, style) == 0)
         {
-            throw new WeequeryException(QueryText.Describe(query!, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, QueryText.Describe(query!, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
         }
 
         // Condition(s) found, ordering found

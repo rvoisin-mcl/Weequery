@@ -17,7 +17,7 @@ public static class SortFunctions
     /// <exception cref="WeequeryException">the sort is null, or names no field</exception>
     public static string ToQuery(this Sort sort, QueryStyle style = QueryStyle.Native)
     {
-        if (sort is null) { throw new WeequeryException($"{nameof(sort)} cannot be null"); }
+        if (sort is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(sort)} cannot be null"); }
 
         WeequeryException.ThrowIfNullOrEmpty(sort.Field, $"{nameof(sort)}.{nameof(Sort.Field)}");
 
@@ -43,7 +43,7 @@ public static class SortFunctions
 
         foreach (var sort in sorts)
         {
-            if (sort is null) { throw new WeequeryException($"{nameof(sorts)}[{index}] is null"); }
+            if (sort is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(sorts)}[{index}] is null"); }
 
             WeequeryException.ThrowIfNullOrEmpty(sort.Field, $"{nameof(sorts)}[{index}].{nameof(Sort.Field)}");
 
@@ -111,7 +111,7 @@ public static class SortFunctions
             SortDirection.Ascending => "ASC",
             SortDirection.Descending => "DESC",
 
-            _ => throw new WeequeryException($"SortDirection {direction} is invalid"),
+            _ => throw new WeequeryException(WeequeryError.OperatorInvalid, $"SortDirection {direction} is invalid"),
         };
     }
 }

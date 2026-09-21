@@ -54,7 +54,7 @@ internal static class ExpressionBuilder
     /// would otherwise refuse a whole model over one property of a struct nobody meant to filter on.
     /// </para>
     /// </remarks>
-    /// <param name="type">a property's declared type, still wrapped if it is a Nullable&lt;&gt;</param>
+    /// <param name="type">a property's declared type, still wrapped if it is a Nullable</param>
     /// <returns></returns>
     internal static bool CanBindPropertyType(Type type)
     {
@@ -76,7 +76,7 @@ internal static class ExpressionBuilder
     /// an Activator.CreateInstance each time, which is the expensive way to arrive at an object with no fields.
     /// </para>
     /// <para>
-    /// Keyed on the unwrapped property type, which is what decides the builder: Nullable&lt;&gt; is already
+    /// Keyed on the unwrapped property type, which is what decides the builder: Nullable is already
     /// stepped through by then, and an enum keeps its own type rather than collapsing to its underlying one, since
     /// that is what the builder closes over.
     /// </para>
@@ -119,7 +119,7 @@ internal static class ExpressionBuilder
 
         // Never null for a type the supported set vouched for, and returning null here would cache the nothing
         return (IExpressionBuilder?)Activator.CreateInstance(builderType)
-            ?? throw new WeequeryException($"(Should be impossible) Could not create a builder for {propertyType.Name}");
+            ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) Could not create a builder for {propertyType.Name}");
     }
 
     /// <summary>
@@ -173,7 +173,7 @@ internal static class ExpressionBuilder
         {
             if ((collections is null) || (!collections.TryGetValue(quantified.Field, out var collection)))
             {
-                throw new WeequeryException($"Unbound collection: '{quantified.Field}'. A quantifier needs a collection bound with BindCollection, which is also where what may be asked about an element is declared");
+                throw new WeequeryException(WeequeryError.UnboundField, $"Unbound collection: '{quantified.Field}'. A quantifier needs a collection bound with BindCollection, which is also where what may be asked about an element is declared");
             }
 
             // Total, so it needs no guard from here: see the remarks on CollectionBinding.Quantify
@@ -184,14 +184,14 @@ internal static class ExpressionBuilder
         {
             if (!bindings.TryGetValue(binding.Field, out var boundProperty))
             {
-                throw new WeequeryException($"Unbound field: '{binding.Field}'");
+                throw new WeequeryException(WeequeryError.UnboundField, $"Unbound field: '{binding.Field}'");
             }
 
             // Bound, but not for asking questions about. Said plainly rather than reported as unbound, which
             // would send a caller looking for a typo in a name that works perfectly well in a projection.
             if (!boundProperty.Allows(BindingUse.Condition))
             {
-                throw new WeequeryException($"'{binding.Field}' cannot be used in a condition: it is bound for {boundProperty.Use}");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{binding.Field}' cannot be used in a condition: it is bound for {boundProperty.Use}");
             }
 
             // An index turns the binding for the collection into one for the element, which is nullable whatever
@@ -208,7 +208,7 @@ internal static class ExpressionBuilder
                     // the operator does not belong on this property
                     if ((valueCondition.Operator is Operator.IsMatch or Operator.DoesNotMatch) && (boundProperty.UnwrappedPropertyType != typeof(string)))
                     {
-                        throw new WeequeryException($"Operator {valueCondition.Operator} is unsupported for the {boundProperty.UnwrappedPropertyType.Name} binding '{boundProperty.PropertyPath}', it matches a regular expression against text");
+                        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {valueCondition.Operator} is unsupported for the {boundProperty.UnwrappedPropertyType.Name} binding '{boundProperty.PropertyPath}', it matches a regular expression against text");
                     }
 
                     // Reading the operands also checks them, so what either route below is handed has already been
@@ -225,7 +225,7 @@ internal static class ExpressionBuilder
                     IExpressionBuilder? builder = GetBuilderForBinding(boundProperty);
                     if (builder is null)
                     {
-                        throw new WeequeryException($"No expression builder available for: '{boundProperty.UnwrappedPropertyType.Name}'");
+                        throw new WeequeryException(WeequeryError.BindingInvalid, $"No expression builder available for: '{boundProperty.UnwrappedPropertyType.Name}'");
                     }
 
                     // If conditions are already typed, use as-is, otherwise, resolve
@@ -241,11 +241,11 @@ internal static class ExpressionBuilder
                     // read: "the binary operator GreaterThan is not defined for the types 'Rank' and 'Rank'" is
                     // true and unhelpful. Say which operator, on which field, of which type, and keep the cause.
                     // Both routes go through here, so a comparison against a property cannot leak one either.
-                    throw new WeequeryException($"Operator {valueCondition.Operator} could not be built for field '{valueCondition.Field}' of type {boundProperty.UnwrappedPropertyType.Name}: {ex.Message}", ex);
+                    throw new WeequeryException(WeequeryError.Internal, $"Operator {valueCondition.Operator} could not be built for field '{valueCondition.Field}' of type {boundProperty.UnwrappedPropertyType.Name}: {ex.Message}", ex);
                 }
             }
 
-            throw new WeequeryException($"Unhandled {condition.GetType()} path for expression builder available for: '{boundProperty.UnwrappedPropertyType.Name}'");
+            throw new WeequeryException(WeequeryError.Internal, $"Unhandled {condition.GetType()} path for expression builder available for: '{boundProperty.UnwrappedPropertyType.Name}'");
         }
 
         if (condition is IConjunctionCondition compositionCondition)
@@ -278,20 +278,20 @@ internal static class ExpressionBuilder
                             return Expression.Lambda<Func<TClass, bool>>(downcast.Aggregate(Expression.AndAlso), expressionParams);
 
                         default:
-                            throw new WeequeryException($"Unsupported operator type: '{compositionCondition.Operator}'");
+                            throw new WeequeryException(WeequeryError.OperatorInvalid, $"Unsupported operator type: '{compositionCondition.Operator}'");
                     }
             }
         }
 
         if (condition is INotCondition notCondition)
         {
-            if (notCondition.Conditions.Count == 0) { throw new WeequeryException($"{nameof(INotCondition)} has no condition to negate"); }
+            if (notCondition.Conditions.Count == 0) { throw new WeequeryException(WeequeryError.OperatorInvalid, $"{nameof(INotCondition)} has no condition to negate"); }
 
             // Negate the *body* and carry the operand's parameter through, Expression.Not cannot be applied to the lambda itself
             var operand = BuildExpression(bindings, notCondition.Conditions.First(), ConditionNesting.Descend(depth), collections);
             return Expression.Lambda<Func<TClass, bool>>(Expression.Not(operand.Body), operand.Parameters);
         }
 
-        throw new WeequeryException($"Unsupported condition type: '{condition.GetType().Name}'");
+        throw new WeequeryException(WeequeryError.OperatorInvalid, $"Unsupported condition type: '{condition.GetType().Name}'");
     }
 }

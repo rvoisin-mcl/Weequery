@@ -187,28 +187,42 @@ public class SelectorPathTests
     }
 
     /// <summary>
-    /// The whole path has periods in it, so it cannot be the key. The last segment is, matching what the segments
-    /// constructor of a BindingRequest derives.
+    /// The whole path is the key, a period being a legal key character, which is what the other overloads derive
+    /// and what the string constructor of a BindingRequest derives for the same path. Pass a key to name it
+    /// anything else, the last segment included.
     /// </summary>
     [Fact]
-    public void TheKeyDefaultsToTheLastSegment()
+    public void TheKeyDefaultsToTheWholePath()
     {
         var result = Minions()
             .WithWeequery()
             .BindProperty(minion => minion.HireDate, ["Year"])
-            .ApplyCondition("Year == 2025")
+            .ApplyCondition("HireDate.Year == 2025")
             .Build()
             .Count();
 
         Assert.Equal(1, result);
     }
 
+    /// <summary>
+    /// Nothing at all, a segment that is nothing, and no array at all are the one mistake, and are reported the
+    /// same way: the same error, naming the argument the caller actually passed.
+    /// </summary>
     [Fact]
     public void SegmentsMustNameSomething()
     {
-        Assert.Throws<WeequeryException>(() => Minions().WithWeequery().BindProperty(minion => minion.BirthDate, [], "BirthYear"));
-        Assert.Throws<WeequeryException>(() => Minions().WithWeequery().BindProperty(minion => minion.BirthDate, [""], "BirthYear"));
-        Assert.Throws<WeequeryException>(() => Minions().WithWeequery().BindProperty(minion => minion.BirthDate, null!, "BirthYear"));
+        var fromEmpty = Assert.Throws<WeequeryException>(() => Minions().WithWeequery().BindProperty(minion => minion.BirthDate, [], "BirthYear"));
+        var fromEmptySegment = Assert.Throws<WeequeryException>(() => Minions().WithWeequery().BindProperty(minion => minion.BirthDate, [""], "BirthYear"));
+        var fromNull = Assert.Throws<WeequeryException>(() => Minions().WithWeequery().BindProperty(minion => minion.BirthDate, null!, "BirthYear"));
+
+        foreach (var thrown in new[] { fromEmptySegment, fromNull })
+        {
+            Assert.Equal(fromEmpty.Error, thrown.Error);
+            Assert.Equal(fromEmpty.Message, thrown.Message);
+        }
+
+        Assert.Equal(WeequeryError.ArgumentMissing, fromEmpty.Error);
+        Assert.Contains("segments", fromEmpty.Message);
     }
 
     [Fact]

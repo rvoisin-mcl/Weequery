@@ -186,18 +186,37 @@ public class BindingSetReuseTests
     }
 
     /// <summary>
-    /// Reuse does not make a duplicate key acceptable, whichever route claimed it first
+    /// The same property named by both routes is one binding rather than a conflict, whichever route claimed the
+    /// key first: refusing the second call would make the order the two were written in matter.
     /// </summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void ADuplicateAcrossTheTwoRoutesIsStillRefused(bool requestsFirst)
+    public void ADuplicateAcrossTheTwoRoutesIsTakenAsOne(bool requestsFirst)
+    {
+        var inquiry = MinionTestData.Minions().WithWeequery();
+
+        inquiry = (requestsFirst)
+            ? inquiry.BindProperties([new(nameof(Minion.Pay), null)]).BindProperty(minion => minion.Pay)
+            : inquiry.BindProperty(minion => minion.Pay).BindProperties([new(nameof(Minion.Pay), null)]);
+
+        Assert.Equal(2, inquiry.ApplyCondition("Pay > 10000").Build().Count());
+    }
+
+    /// <summary>
+    /// Only the same binding is taken as one. Two different properties under the one key still collide,
+    /// whichever route claimed it first
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ADuplicateAcrossTheTwoRoutesIsRefusedWhereTheyDiffer(bool requestsFirst)
     {
         var inquiry = MinionTestData.Minions().WithWeequery();
 
         Assert.Throws<WeequeryException>(() => (requestsFirst)
-            ? inquiry.BindProperties([new(nameof(Minion.Pay), null)]).BindProperty(minion => minion.Pay)
-            : inquiry.BindProperty(minion => minion.Pay).BindProperties([new(nameof(Minion.Pay), null)]));
+            ? inquiry.BindProperties([new(nameof(Minion.Pay), null)]).BindProperty(minion => minion.Name, nameof(Minion.Pay))
+            : inquiry.BindProperty(minion => minion.Name, nameof(Minion.Pay)).BindProperties([new(nameof(Minion.Pay), null)]));
     }
 
     /// <summary>

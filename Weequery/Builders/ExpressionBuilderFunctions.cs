@@ -12,7 +12,7 @@ internal static class ExpressionBuilderFunctions
     private static class ListContains<TValue>
     {
         public static readonly MethodInfo Method = typeof(List<TValue>).GetMethod(nameof(List<TValue>.Contains), [typeof(TValue)])
-            ?? throw new WeequeryException($"(Should be impossible) No List<{typeof(TValue).Name}>.Contains method"); // ex is to eat warning
+            ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) No List<{typeof(TValue).Name}>.Contains method"); // ex is to eat warning
     }
 
     /// <summary>
@@ -68,14 +68,14 @@ internal static class ExpressionBuilderFunctions
             case Operator.IsNull:
                 if (!binding.AccessorIsNullable)
                 {
-                    throw new WeequeryException($"Operator {condition.Operator} is unsupported for Binding '{binding.PropertyPath}'");
+                    throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for Binding '{binding.PropertyPath}'");
                 }
                 return Lambda<TClass>(Expression.Not(binding.NotNullCheck), binding);
 
             case Operator.IsNotNull:
                 if (!binding.AccessorIsNullable)
                 {
-                    throw new WeequeryException($"Operator {condition.Operator} is unsupported for Binding '{binding.PropertyPath}'");
+                    throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for Binding '{binding.PropertyPath}'");
                 }
                 return Lambda<TClass>(binding.NotNullCheck, binding);
 

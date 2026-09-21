@@ -49,7 +49,7 @@ public abstract class BoundCondition : IBoundCondition
         // that could never have been right for it
         if (ConditionFunctions.GetShapeForOperation(op) != shape)
         {
-            throw new WeequeryException($"Operator '{op}' on field '{field}' cannot be represented by {TypeName()}: it is not one of the operators that take {Describe(shape)}");
+            throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator '{op}' on field '{field}' cannot be represented by {TypeName()}: it is not one of the operators that take {Describe(shape)}");
         }
 
         Operator = op;
@@ -100,12 +100,12 @@ public abstract class BoundCondition : IBoundCondition
     {
         if (operand is null)
         {
-            throw new WeequeryException($"Value {index + 1} of {count} for Operator '{op}' on field '{field}' is null");
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"Value {index + 1} of {count} for Operator '{op}' on field '{field}' is null");
         }
 
         if (operand.Value is null)
         {
-            throw new WeequeryException($"Value {index + 1} of {count} for Operator '{op}' on field '{field}' is null; use {Operator.IsNull} to test for a missing value");
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"Value {index + 1} of {count} for Operator '{op}' on field '{field}' is null; use {Operator.IsNull} to test for a missing value");
         }
 
         if (!operand.NamesProperty) { return operand; }
@@ -114,7 +114,7 @@ public abstract class BoundCondition : IBoundCondition
         // Refused here rather than left to surface as a cast or a failed parse further down.
         if (operand.Value is not string key)
         {
-            throw new WeequeryException($"Value {index + 1} of {count} for Operator '{op}' on field '{field}' names a bound property, so cannot be represented by {typeof(T).Name}");
+            throw new WeequeryException(WeequeryError.ValueInvalid, $"Value {index + 1} of {count} for Operator '{op}' on field '{field}' names a bound property, so cannot be represented by {typeof(T).Name}");
         }
 
         // An operand may carry an index along with the key, "Tallies[apples]", which is the one thing here that
@@ -124,7 +124,7 @@ public abstract class BoundCondition : IBoundCondition
 
         if (!QueryTokenizer.IsBareWord(name))
         {
-            throw new WeequeryException($"'{key}' is not a legal binding name");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"'{key}' is not a legal binding name");
         }
 
         return operand;

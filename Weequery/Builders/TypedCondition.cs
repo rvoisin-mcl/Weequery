@@ -47,7 +47,7 @@ internal sealed class TypedCondition<T>
     /// <exception cref="WeequeryException"></exception>
     public TypedCondition<U> Transform<U>(Func<T, U> transformFunc)
     {
-        if (transformFunc is null) { throw new WeequeryException($"{nameof(transformFunc)} cannot be null"); }
+        if (transformFunc is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(transformFunc)} cannot be null"); }
 
         return new TypedCondition<U>
         {

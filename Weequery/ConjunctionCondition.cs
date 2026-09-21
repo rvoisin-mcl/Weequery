@@ -32,7 +32,7 @@ public class ConjunctionCondition : IConjunctionCondition
                 break;
 
             default:
-                throw new WeequeryException($"Operation '{op}' cannot be represented by {nameof(ConjunctionCondition)}");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operation '{op}' cannot be represented by {nameof(ConjunctionCondition)}");
         }
 
         WeequeryException.ThrowIfNull(components);
@@ -42,7 +42,7 @@ public class ConjunctionCondition : IConjunctionCondition
 
         for (int index = 0; index < Conditions.Count; index++)
         {
-            if (Conditions[index] is null) { throw new WeequeryException($"{nameof(components)}[{index}] is null"); }
+            if (Conditions[index] is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(components)}[{index}] is null"); }
         }
     }
 

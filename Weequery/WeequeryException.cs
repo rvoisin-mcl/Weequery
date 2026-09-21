@@ -16,19 +16,80 @@ namespace Weequery;
 public class WeequeryException : Exception
 {
     /// <summary>
+    /// Why this was thrown, as something to branch on rather than read. See <see cref="WeequeryError"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Exception.HResult"/> carries the same thing for anything that only sees the base type, and the
+    /// two cannot disagree: both are set from the value handed to the constructor.
+    /// </remarks>
+    public WeequeryError Error { get; }
+
+    /// <summary>
+    /// The facility and the customer bit, which is what tells an HResult of ours from everybody else's.
+    /// </summary>
+    /// <remarks>
+    /// Bit 31 for failure and bit 29 for customer defined, which is the half of the layout that is not ours to
+    /// choose. The facility is, and 4 is as good as any: nothing reads it, it only has to stay put.
+    /// </remarks>
+    private const uint Facility = 0xA0040000;
+
+    /// <summary>
+    /// The <see cref="Exception.HResult"/> a reason is reported as.
+    /// </summary>
+    /// <remarks>
+    /// Public because a caller matching on the number needs to be able to write it down without copying a
+    /// literal out of a debugger, and because a caller reading an exception across a boundary that has lost the
+    /// type has nothing else to compare against.
+    /// </remarks>
+    /// <param name="error"></param>
+    /// <returns></returns>
+    public static int HResultFor(WeequeryError error)
+    {
+        return unchecked((int)(Facility | (uint)error));
+    }
+
+    /// <summary>
     /// ctor
     /// </summary>
+    /// <remarks>
+    /// Reports <see cref="WeequeryError.Unspecified"/>. Kept for the callers who were constructing one of these
+    /// before there was a reason to give; prefer the overload that takes one.
+    /// </remarks>
     /// <param name="message">names the offending input</param>
-    public WeequeryException(string message) : base(message)
+    public WeequeryException(string message) : this(WeequeryError.Unspecified, message)
     { }
 
     /// <summary>
     /// ctor
     /// </summary>
+    /// <inheritdoc cref="WeequeryException(string)" path="/remarks"/>
     /// <param name="message">names the offending input</param>
     /// <param name="inner">what was caught, where the failure came from further down</param>
-    public WeequeryException(string message, Exception inner) : base(message, inner)
+    public WeequeryException(string message, Exception inner) : this(WeequeryError.Unspecified, message, inner)
     { }
+
+    /// <summary>
+    /// ctor
+    /// </summary>
+    /// <param name="error">why, see <see cref="WeequeryError"/></param>
+    /// <param name="message">names the offending input</param>
+    public WeequeryException(WeequeryError error, string message) : base(message)
+    {
+        Error = error;
+        HResult = HResultFor(error);
+    }
+
+    /// <summary>
+    /// ctor
+    /// </summary>
+    /// <param name="error">why, see <see cref="WeequeryError"/></param>
+    /// <param name="message">names the offending input</param>
+    /// <param name="inner">what was caught, where the failure came from further down</param>
+    public WeequeryException(WeequeryError error, string message, Exception inner) : base(message, inner)
+    {
+        Error = error;
+        HResult = HResultFor(error);
+    }
 
     /// <summary>
     /// Throw if the argument is null, naming it as the caller wrote it
@@ -40,7 +101,7 @@ public class WeequeryException : Exception
     {
         if (argument is null)
         {
-            throw new WeequeryException($"{paramName} cannot be null");
+            throw new WeequeryException(WeequeryError.ArgumentMissing, $"{paramName} cannot be null");
         }
     }
 
@@ -54,7 +115,22 @@ public class WeequeryException : Exception
     {
         if (string.IsNullOrEmpty(argument))
         {
-            throw new WeequeryException($"{paramName} cannot be null or empty");
+            throw new WeequeryException(WeequeryError.ArgumentMissing, $"{paramName} cannot be null or empty");
+        }
+    }
+
+    /// <summary>
+    /// Throw if the argument is null or holds nothing, naming it as the caller wrote it. The same words the
+    /// string overload uses, so a path written as segments and the same path written as a string report alike.
+    /// </summary>
+    /// <param name="argument"></param>
+    /// <param name="paramName">filled in by the compiler</param>
+    /// <exception cref="WeequeryException"></exception>
+    public static void ThrowIfNullOrEmpty([NotNull] string[]? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
+    {
+        if ((argument is null) || (argument.Length == 0))
+        {
+            throw new WeequeryException(WeequeryError.ArgumentMissing, $"{paramName} cannot be null or empty");
         }
     }
 
@@ -69,7 +145,7 @@ public class WeequeryException : Exception
     {
         if ((argument is not null) && (argument.Length == 0))
         {
-            throw new WeequeryException($"{paramName} cannot be empty if provided");
+            throw new WeequeryException(WeequeryError.ArgumentMissing, $"{paramName} cannot be empty if provided");
         }
     }
 
@@ -96,7 +172,7 @@ public class WeequeryException : Exception
 
         if (!IsSqlName(argument))
         {
-            throw new WeequeryException($"{paramName} must be a valid unquoted SQL name, a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} must be a valid unquoted SQL name, a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");
         }
     }
 
@@ -137,17 +213,17 @@ public class WeequeryException : Exception
         // has to pick one. So an element of a collection is given a name, which is one the caller sees anyway.
         if (argument.Contains('['))
         {
-            throw new WeequeryException($"'{argument}' cannot be a key, since brackets after a name are how a condition asks for one element of a collection. Give the binding a key of its own, as BindProperty(x => x.Labels[0], \"FirstLabel\")");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"'{argument}' cannot be a key, since brackets after a name are how a condition asks for one element of a collection. Give the binding a key of its own, as BindProperty(x => x.Labels[0], \"FirstLabel\")");
         }
 
         if (!IsQualifiedSqlName(argument))
         {
-            throw new WeequeryException($"{paramName} must be one or more valid unquoted SQL names separated by periods, each a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} must be one or more valid unquoted SQL names separated by periods, each a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");
         }
 
         if (QueryKeywords.IsReserved(argument))
         {
-            throw new WeequeryException($"{paramName} '{argument}' is a word the query language reads as an operator, so a query could not tell it from one; bind it under a different key");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} '{argument}' is a word the query language reads as an operator, so a query could not tell it from one; bind it under a different key");
         }
     }
 

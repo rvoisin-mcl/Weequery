@@ -46,7 +46,7 @@ internal sealed class ProjectionParser
 
         if (!parser.AtEnd)
         {
-            throw new WeequeryException(parser.Describe($"Unexpected '{parser.Current.Text}'", parser.Current.Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, parser.Describe($"Unexpected '{parser.Current.Text}'", parser.Current.Position));
         }
 
         return Projection.Of(read);
@@ -115,7 +115,7 @@ internal sealed class ProjectionParser
 
         if (!(Check(QueryTokenKind.Word) || Check(QueryTokenKind.Text)))
         {
-            throw new WeequeryException(Describe($"Expected an index for field '{field}'", open));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected an index for field '{field}'", open));
         }
 
         var index = Tokens[Index++].Text;
@@ -144,7 +144,7 @@ internal sealed class ProjectionParser
 
     private QueryToken Take(QueryTokenKind kind, string expected)
     {
-        if (!Check(kind)) { throw new WeequeryException(Describe($"Expected {expected}", PositionOfCurrentOrEnd)); }
+        if (!Check(kind)) { throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected {expected}", PositionOfCurrentOrEnd)); }
 
         return Tokens[Index++];
     }

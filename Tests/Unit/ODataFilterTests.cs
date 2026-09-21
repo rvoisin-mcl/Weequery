@@ -175,7 +175,7 @@ public class ODataFilterTests
     {
         var error = Assert.Throws<WeequeryException>(() => Filter("Alias IsMatch 'Gh.st'", ODataVersion.V4));
 
-        Assert.Contains("matchesPattern", error.Message);
+        Assert.Equal(WeequeryError.NotTranslatable, error.Error);
     }
 
     // ---------- containers ----------
@@ -251,7 +251,7 @@ public class ODataFilterTests
     {
         var error = Assert.Throws<WeequeryException>(() => Filter("Assignments = 'x'"));
 
-        Assert.Contains("Any, All or None", error.Message);
+        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
     }
 
     /// <summary>A lambda's variable does not reach outside it, and nothing outside reaches in</summary>
@@ -270,7 +270,7 @@ public class ODataFilterTests
         var error = Assert.Throws<WeequeryException>(() => Filter("Gizmo = 3"));
 
         Assert.Contains("Gizmo", error.Message);
-        Assert.Contains("Unbound", error.Message);
+        Assert.Equal(WeequeryError.UnboundField, error.Error);
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class ODataFilterTests
     {
         var error = Assert.Throws<WeequeryException>(() => Filter("Pay = '1, 2'"));
 
-        Assert.Contains("end the expression early", error.Message);
+        Assert.Equal(WeequeryError.ValueInvalid, error.Error);
     }
 
     [Fact]

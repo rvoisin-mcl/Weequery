@@ -66,7 +66,7 @@ internal static class QueryValue
         var boxType = BoxTypes.GetOrAdd(type, static forType => typeof(ValueBox<>).MakeGenericType(forType));
 
         var box = Activator.CreateInstance(boxType, value)
-            ?? throw new WeequeryException($"(Should be impossible) Could not hold a {type.Name} value");
+            ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) Could not hold a {type.Name} value");
 
         return Expression.Field(Expression.Constant(box, boxType), nameof(ValueBox<object>.Value));
     }

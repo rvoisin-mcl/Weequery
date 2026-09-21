@@ -249,7 +249,8 @@ public class Inquiry<T> where T : class
 
     /// <summary>
     /// Bind the property reached by following the selector and then the segments after it, for a path a selector
-    /// cannot write on its own. If a key is not provided, the last segment is used.
+    /// cannot write on its own. If a key is not provided, the whole path is used, a period being a legal key
+    /// character.
     /// </summary>
     /// <remarks>
     /// The case this exists for is a path through a <see cref="Nullable{T}"/>: C# will not compile
@@ -341,7 +342,7 @@ public class Inquiry<T> where T : class
         // One name for one thing, whichever of the two lookups it lands in
         if (Bindings.ContainsKey(key) || Collections.ContainsKey(key))
         {
-            throw new WeequeryException($"Binding already exists for '{key}'");
+            throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{key}'");
         }
 
         // Not added to Bindings: a collection answers a quantifier and nothing else, and putting it there would
@@ -353,7 +354,7 @@ public class Inquiry<T> where T : class
 
         if (inner.Count == 0)
         {
-            throw new WeequeryException($"Nothing was bound inside '{key}', so no condition could be written about one of its elements");
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"Nothing was bound inside '{key}', so no condition could be written about one of its elements");
         }
 
         Collections[key] = new CollectionBinding<T, TElement>(key, collection, inner.Bindings);
@@ -390,7 +391,7 @@ public class Inquiry<T> where T : class
         {
             if (Bindings.Remove(key))
             {
-                throw new WeequeryException($"Binding already exists for '{key}', which is bound as a collection");
+                throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{key}', which is bound as a collection");
             }
         }
 
@@ -475,7 +476,13 @@ public class Inquiry<T> where T : class
         // this call and the kept set has to stay as it is
         foreach (var binding in BindingSetCache<T>.For(bindingRequests, SharedBindingParameter))
         {
-            if (Bindings.ContainsKey(binding.Key)) { throw new WeequeryException($"Binding already exists for '{binding.Key}'"); }
+            if (Bindings.TryGetValue(binding.Key, out var existing))
+            {
+                // The rule AddTo follows, so a duplicate is answered the same way whichever route it arrives by
+                if (!Binding<T>.IsSameBinding(existing, binding.Value)) { throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{binding.Key}'"); }
+
+                continue;
+            }
 
             Bindings[binding.Key] = binding.Value;
         }
@@ -657,7 +664,7 @@ public class Inquiry<T> where T : class
         int index = 0;
         foreach (var condition in conditions)
         {
-            if (condition is null) { throw new WeequeryException($"{nameof(conditions)}[{index}] is null"); }
+            if (condition is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(conditions)}[{index}] is null"); }
 
             Conditions.Add(condition);
             index++;
@@ -722,7 +729,7 @@ public class Inquiry<T> where T : class
         int index = 0;
         foreach (var sort in sorts)
         {
-            if (sort is null) { throw new WeequeryException($"{nameof(sorts)}[{index}] is null"); }
+            if (sort is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(sorts)}[{index}] is null"); }
 
             WeequeryException.ThrowIfNullOrEmpty(sort.Field, $"{nameof(sorts)}[{index}].{nameof(Sort.Field)}");
 
@@ -749,13 +756,13 @@ public class Inquiry<T> where T : class
     /// </exception>
     public Inquiry<T> ApplyPagination(int pageSize, int page)
     {
-        if (pageSize <= 0) { throw new WeequeryException($"{nameof(pageSize)} must be > 0"); }
-        if (page < 0) { throw new WeequeryException($"{nameof(page)} must be >= 0"); }
+        if (pageSize <= 0) { throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} must be > 0"); }
+        if (page < 0) { throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(page)} must be >= 0"); }
 
         long skip = (long)pageSize * page;
         if (skip > int.MaxValue)
         {
-            throw new WeequeryException($"{nameof(pageSize)} {pageSize} * {nameof(page)} {page} exceeds {int.MaxValue}");
+            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} {pageSize} * {nameof(page)} {page} exceeds {int.MaxValue}");
         }
 
         PageSize = pageSize;
@@ -983,19 +990,19 @@ public class Inquiry<T> where T : class
             // a constant is the more particular thing to say and both would be true of one.
             if (binding.IsConstant)
             {
-                throw new WeequeryException($"Cannot sort on '{sort.Field}', it is a constant");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}', it is a constant");
             }
 
             // Bound, but not for ordering by
             if (!binding.Allows(BindingUse.Sort))
             {
-                throw new WeequeryException($"Cannot sort on '{sort.Field}': it is bound for {binding.Use}");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}': it is bound for {binding.Use}");
             }
 
             // Refused here rather than left to the comparer
             if (!binding.IsOrderable)
             {
-                throw new WeequeryException($"Cannot sort on '{sort.Field}', {binding.PropertyType.Name} has no ordering");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}', {binding.PropertyType.Name} has no ordering");
             }
 
             // Sort on the accessor's own type, not the unwrapped one, otherwise a Nullable<> property cannot

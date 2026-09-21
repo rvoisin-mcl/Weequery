@@ -116,6 +116,18 @@ public class ConstantBindingTests
     }
 
     /// <summary>
+    /// A constant carries a value its key says nothing about, so it is never the same binding as one already
+    /// under that key. Its path is its own key, which would otherwise read as a duplicate of the property bound
+    /// there and hand that property back in its place, dropping the value the caller supplied.
+    /// </summary>
+    [Fact]
+    public void AConstantNeverStandsInForABindingAlreadyUnderTheKey()
+    {
+        Assert.Throws<WeequeryException>(() => MinionTestData.Minions().WithWeequery().BindConstant(nameof(Minion.Pay), 1m).BindProperty(minion => minion.Pay));
+        Assert.Throws<WeequeryException>(() => MinionTestData.Minions().WithWeequery().BindConstant("Threshold", 1m).BindConstant("Threshold", 2m));
+    }
+
+    /// <summary>
     /// The same type rule a property to property comparison follows: the application controls the constant's type,
     /// so it is the one that has to match
     /// </summary>

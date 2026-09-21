@@ -53,9 +53,10 @@ public class BindingRequest
     /// </summary>
     /// <param name="propertyPath">PropertyPath, should [Property Name], or [Parent,Child,Grandchild,...]</param>
     /// <param name="key">
-    /// [OPT] Key to use for binding, if not specified, the last segment is used. The joined path would be a legal
-    /// key now that a period is one, but this overload has always keyed by the last segment and changing it would
-    /// rename a key already on the wire. Pass the path as a string to key by the whole of it
+    /// [OPT] Key to use for binding, if not specified, the joined path is used, a period being a legal key
+    /// character. The same key the string constructor derives for the same path, and the same one
+    /// <see cref="Inquiry{T}.BindProperty{TProperty}(System.Linq.Expressions.Expression{System.Func{T, TProperty}}, string[], string, BindingUse, ValueConverter)"/>
+    /// derives for the same segments, so a path keys alike however it is written
     /// </param>
     /// <param name="use">[OPT] what it may be used for, all three by default</param>
     /// <exception cref="WeequeryException"></exception>
@@ -63,12 +64,20 @@ public class BindingRequest
     {
         Use = use;
 
-        WeequeryException.ThrowIfNull(propertyPath);
-        if (propertyPath.Length == 0) { throw new WeequeryException($"{nameof(propertyPath)} must contain at least one element"); }
+        WeequeryException.ThrowIfNullOrEmpty(propertyPath);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
         PropertyPath = string.Join(".", propertyPath);
-        Key = key ?? propertyPath.Last();
+
+        // Segments that join to nothing are the empty path the string constructor refuses, and are refused in
+        // the same words: an array holding one empty segment says no more than an empty array does
+        WeequeryException.ThrowIfNullOrEmpty(PropertyPath, nameof(propertyPath));
+
+        Key = key ?? PropertyPath;
+
+        // The derived key as well as the given one, the same as the string constructor above: the two derive the
+        // same key for the same path, so they have to refuse the same ones.
+        WeequeryException.ThrowIfNotBindingKey(Key, nameof(key));
     }
 }

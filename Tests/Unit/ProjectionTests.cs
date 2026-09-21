@@ -226,7 +226,7 @@ public class ProjectionTests
             .ToList());
 
         Assert.Contains("Heists", error.Message);
-        Assert.Contains("collection", error.Message);
+        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
     }
 
     /// <summary>Filtering and projecting are separate: a field can be named in either, or both, or neither</summary>

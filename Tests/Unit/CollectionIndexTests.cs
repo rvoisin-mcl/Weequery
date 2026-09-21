@@ -242,7 +242,7 @@ public class CollectionIndexTests
     {
         var error = Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Label[0] = 'x'").Build().ToList());
 
-        Assert.Contains("cannot be indexed", error.Message);
+        Assert.Equal(WeequeryError.PathInvalid, error.Error);
     }
 
     [Fact]

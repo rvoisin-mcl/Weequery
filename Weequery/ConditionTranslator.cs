@@ -121,7 +121,7 @@ public abstract class ConditionTranslator<TResult, TScope>
         {
             if ((conjunction.Operator != Operator.And) && (conjunction.Operator != Operator.Or))
             {
-                throw new WeequeryException($"Operator {conjunction.Operator} is invalid for {nameof(IConjunctionCondition)}");
+                throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator {conjunction.Operator} is invalid for {nameof(IConjunctionCondition)}");
             }
 
             var nested = ConditionNesting.Descend(depth);
@@ -134,12 +134,12 @@ public abstract class ConditionTranslator<TResult, TScope>
         if (condition is INotCondition negation)
         {
             var operand = negation.Conditions.FirstOrDefault()
-                ?? throw new WeequeryException($"{nameof(Operator.Not)} has no condition to negate, so there is nothing to write as {Dialect}");
+                ?? throw new WeequeryException(WeequeryError.OperatorInvalid, $"{nameof(Operator.Not)} has no condition to negate, so there is nothing to write as {Dialect}");
 
             return Negate(Translate(operand, scope, ConditionNesting.Descend(depth)));
         }
 
-        throw new WeequeryException($"Condition type '{condition.GetType().Name}' has no representation in {Dialect}");
+        throw new WeequeryException(WeequeryError.NotTranslatable, $"Condition type '{condition.GetType().Name}' has no representation in {Dialect}");
     }
 
     /// <summary>
@@ -159,6 +159,6 @@ public abstract class ConditionTranslator<TResult, TScope>
     {
         return (values.Count == 1)
             ? values[0]
-            : throw new WeequeryException($"Operator {condition.Operator} on field '{condition.Field}' needs one value but got {values.Count}");
+            : throw new WeequeryException(WeequeryError.OperandCount, $"Operator {condition.Operator} on field '{condition.Field}' needs one value but got {values.Count}");
     }
 }

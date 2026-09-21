@@ -124,7 +124,7 @@ internal sealed class QueryParser
         // Anything left over means the query was not a single well-formed expression (eg. "(A) (B)")
         if (stopped < tokens.Count)
         {
-            throw new WeequeryException(QueryText.Describe(query, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, QueryText.Describe(query, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
         }
 
         return condition;
@@ -160,7 +160,7 @@ internal sealed class QueryParser
 
         if (ConditionNesting.IsTooDeep(condition))
         {
-            throw new WeequeryException($"{ConditionNesting.TooDeep().Message}: '{QueryText.Excerpt(query, 0)}'");
+            throw ConditionNesting.TooDeep(QueryText.Excerpt(query, 0));
         }
 
         return condition;
@@ -185,7 +185,7 @@ internal sealed class QueryParser
 
     private QueryToken Take(QueryTokenKind kind, string expected)
     {
-        if (!Check(kind)) { throw new WeequeryException(Describe($"Expected {expected}", PositionOfCurrentOrEnd)); }
+        if (!Check(kind)) { throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected {expected}", PositionOfCurrentOrEnd)); }
 
         return Tokens[Index++];
     }
@@ -271,7 +271,7 @@ internal sealed class QueryParser
     {
         if (Depth >= MaxSyntaxDepth)
         {
-            throw new WeequeryException(Describe($"Grouping nested deeper than the limit of {MaxSyntaxDepth}", position));
+            throw new WeequeryException(WeequeryError.NestingTooDeep, Describe($"Grouping nested deeper than the limit of {MaxSyntaxDepth}", position));
         }
 
         Depth++;
@@ -337,14 +337,14 @@ internal sealed class QueryParser
         // as either, since neither reading is what it says.
         if (index is not null)
         {
-            throw new WeequeryException(Describe($"'{field}[{index}]' is one element rather than a collection, so there is nothing for '{name}' to quantify over. Drop the index to ask about every element, or compare the element itself", start));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"'{field}[{index}]' is one element rather than a collection, so there is nothing for '{name}' to quantify over. Drop the index to ask about every element, or compare the element itself", start));
         }
 
         var open = PositionOfCurrentOrEnd;
 
         if (!Check(QueryTokenKind.GroupOpen))
         {
-            throw new WeequeryException(Describe($"Expected '(' after '{name}' for collection '{field}', which takes a condition about one element rather than a value, as \"{field} {name} (Name = 'x')\"", open));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected '(' after '{name}' for collection '{field}', which takes a condition about one element rather than a value, as \"{field} {name} (Name = 'x')\"", open));
         }
 
         Index++;
@@ -400,7 +400,7 @@ internal sealed class QueryParser
         // Quoted where the key needs it, bare where it does not, exactly as a value is written
         if (!(Check(QueryTokenKind.Word) || Check(QueryTokenKind.Text)))
         {
-            throw new WeequeryException(Describe($"Expected an index for field '{field}'", open));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected an index for field '{field}'", open));
         }
 
         var index = Tokens[Index++].Text;
@@ -432,7 +432,7 @@ internal sealed class QueryParser
 
             if (!(Check(QueryTokenKind.Word) && string.Equals(Current.Text, "NULL", StringComparison.OrdinalIgnoreCase)))
             {
-                throw new WeequeryException(Describe($"Expected NULL after IS{(negated ? " NOT" : string.Empty)} for field '{field}'", isPosition));
+                throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected NULL after IS{(negated ? " NOT" : string.Empty)} for field '{field}'", isPosition));
             }
 
             Index++;
@@ -471,7 +471,7 @@ internal sealed class QueryParser
                 return true;
             }
 
-            throw new WeequeryException(Describe($"Expected IN or BETWEEN after NOT for field '{field}'", notPosition));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected IN or BETWEEN after NOT for field '{field}'", notPosition));
         }
 
         return false;
@@ -489,24 +489,24 @@ internal sealed class QueryParser
     {
         var instead = ConditionFunctions.GetOperationString(op, QueryStyle.Native);
 
-        return new WeequeryException(Describe($"'{found}' is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'", position));
+        return new WeequeryException(WeequeryError.QuerySyntax, Describe($"'{found}' is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'", position));
     }
 
     private Operator ParseOperator(string field)
     {
-        if (AtEnd) { throw new WeequeryException(Describe($"Expected an operator for field '{field}'", Query.Length)); }
+        if (AtEnd) { throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected an operator for field '{field}'", Query.Length)); }
 
         if (TryParseSqlPhrase(field, out var phrase)) { return phrase; }
 
         var token = Current;
         if ((token.Kind != QueryTokenKind.Symbol) && (token.Kind != QueryTokenKind.Word))
         {
-            throw new WeequeryException(Describe($"Expected an operator for field '{field}' but found '{token.Text}'", token.Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected an operator for field '{field}' but found '{token.Text}'", token.Position));
         }
 
         if (!OperatorLookup.TryGetValue(token.Text, out var op))
         {
-            throw new WeequeryException(Describe($"Unknown operator '{token.Text}'", token.Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Unknown operator '{token.Text}'", token.Position));
         }
 
         Index++;
@@ -572,7 +572,7 @@ internal sealed class QueryParser
             {
                 var name = ConditionFunctions.GetOperationString(op, QueryStyle.Native);
 
-                throw new WeequeryException(Describe($"A range written as 'low AND high' is not valid in the {nameof(QueryStyle.Native)} style, write '{name} (low, high)' for field '{field}'", position));
+                throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"A range written as 'low AND high' is not valid in the {nameof(QueryStyle.Native)} style, write '{name} (low, high)' for field '{field}'", position));
             }
 
             Read();
@@ -586,12 +586,12 @@ internal sealed class QueryParser
 
         if (values.Count < required.Minimum)
         {
-            throw new WeequeryException(Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' needs at least {required.Minimum} value(s) but got {values.Count}", position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' needs at least {required.Minimum} value(s) but got {values.Count}", position));
         }
 
         if (values.Count > required.Maximum)
         {
-            throw new WeequeryException(Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' accepts at most {required.Maximum} value(s) but got {values.Count}", position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' accepts at most {required.Maximum} value(s) but got {values.Count}", position));
         }
 
         return values;
@@ -617,11 +617,11 @@ internal sealed class QueryParser
 
         // The brackets hold one bare name and nothing else. A list in them is the shape someone reaching for one
         // is most likely to write, so it gets its own message: "Expected ']'" would not say where to go instead.
-        if (Check(QueryTokenKind.Text)) { throw new WeequeryException(ListInBrackets(field, open)); }
+        if (Check(QueryTokenKind.Text)) { throw new WeequeryException(WeequeryError.QuerySyntax, ListInBrackets(field, open)); }
 
         var name = Take(QueryTokenKind.Word, $"the name of a bound property for field '{field}'").Text;
 
-        if (Check(QueryTokenKind.Separator)) { throw new WeequeryException(ListInBrackets(field, open)); }
+        if (Check(QueryTokenKind.Separator)) { throw new WeequeryException(WeequeryError.QuerySyntax, ListInBrackets(field, open)); }
 
         Take(QueryTokenKind.BracketClose, "']'");
 
@@ -643,12 +643,12 @@ internal sealed class QueryParser
 
     private string ParseLiteral(string field)
     {
-        if (AtEnd) { throw new WeequeryException(Describe($"Expected a value for field '{field}'", Query.Length)); }
+        if (AtEnd) { throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected a value for field '{field}'", Query.Length)); }
 
         var token = Current;
         if ((token.Kind != QueryTokenKind.Word) && (token.Kind != QueryTokenKind.Text))
         {
-            throw new WeequeryException(Describe($"Expected a value for field '{field}' but found '{token.Text}'", token.Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected a value for field '{field}' but found '{token.Text}'", token.Position));
         }
 
         Index++;

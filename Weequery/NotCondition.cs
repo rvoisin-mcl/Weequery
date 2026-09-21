@@ -8,7 +8,7 @@ namespace Weequery;
 public class NotCondition : INotCondition
 {
     /// <summary>
-    /// Always <see cref="Weequery.Operator.Not"/>
+    /// Always <see cref="Operator.Not"/>
     /// </summary>
     public Operator Operator { get; init; }
 

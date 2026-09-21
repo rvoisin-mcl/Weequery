@@ -29,7 +29,7 @@ internal static class ProjectionBuilder<T> where T : class
     /// <param name="projected">what was asked for; empty reads everything that grants Projection</param>
     /// <param name="parameter">the shared parameter every accessor hangs off</param>
     /// <param name="keep">
-    /// [OPT] whether to keep a field that nothing bound, called only where the caller asked for unbound fields
+    /// [OPT] if to keep a field that nothing bound, called only where the caller asked for unbound fields
     /// to be dropped rather than refused, see <see cref="Inquiry{T}.IgnoreUnboundFields"/>. Null refuses them.
     /// </param>
     /// <returns></returns>

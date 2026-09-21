@@ -133,7 +133,7 @@ public static class ValueFormat
     private const string ParseMethod = "Parse";
 
     /// <summary>
-    /// Whether the type implements <see cref="IParsable{TSelf}"/> for itself.
+    /// If the type implements <see cref="IParsable{TSelf}"/> for itself.
     /// <para>
     /// Asked of the interface rather than of a method called "Parse", which is not the same promise. Any type might
     /// happen to have a static Parse: it may be culture sensitive, where everything here is deliberately invariant,
@@ -163,7 +163,7 @@ public static class ValueFormat
     /// not used, whatever it is called: it would hand back a value of a type nobody asked for.
     /// <para>
     /// Only the second route can surprise you, and only for a type Weequery cannot bind anyway: a Parse(string)
-    /// decides for itself whether it reads the current culture, where everything else here is invariant.
+    /// decides for itself if it reads the current culture, where everything else here is invariant.
     /// </para>
     /// </remarks>
     /// <param name="type">type to parse into</param>

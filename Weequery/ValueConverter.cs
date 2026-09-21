@@ -34,14 +34,14 @@ namespace Weequery;
 /// </para>
 /// <para>
 /// <b>Null tests are untouched.</b> <see cref="Operator.IsNull"/> and <see cref="Operator.IsNotNull"/> ask
-/// whether there is a value at all, which no normalisation changes, and the guard every other operator carries
+/// if there is a value at all, which no normalisation changes, and the guard every other operator carries
 /// is read off the raw property too. So a converter cannot make a null look present, or the reverse, however it
 /// is written.
 /// </para>
 /// <para>
 /// One to think twice about: a converter on a string binding also folds the pattern of an
 /// <see cref="Operator.IsMatch"/>, and upper casing a regular expression changes what its character classes
-/// mean. Set <see cref="ConversionTarget.Source"/> where the binding is one callers write patterns against.
+/// mean. Set <see cref="ConversionTarget.Binding"/> where the binding is one callers write patterns against.
 /// </para>
 /// </remarks>
 public sealed class ValueConverter
@@ -96,7 +96,7 @@ public sealed class ValueConverter
         return new ValueConverter(typeof(TValue), conversion, applies);
     }
 
-    /// <summary>Whether it runs against the side described</summary>
+    /// <summary>If it runs against the side described</summary>
     /// <param name="target">one of the flags, not a combination</param>
     /// <returns></returns>
     internal bool Runs(ConversionTarget target)

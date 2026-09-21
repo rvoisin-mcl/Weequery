@@ -3,8 +3,8 @@ using Weequery.Interfaces;
 namespace Weequery;
 
 /// <summary>
-/// What the four comparison types do the same way: hold the field and the operator, refuse an operator whose
-/// shape is not theirs, and render, pack and stringify from whatever operands the derived type holds.
+/// Base type for comparison types, containing the common requirements: hold a field 
+/// and operator, refuse an incompatible operator, render, pack, and stringify.
 /// </summary>
 /// <remarks>
 /// The types are <see cref="NoValueCondition"/>, <see cref="OneValueCondition{T}"/>,
@@ -20,13 +20,12 @@ public abstract class BoundCondition : IBoundCondition
     public Operator Operator { get; init; }
 
     /// <summary>
-    /// The binding key this tests, matched without regard to case
+    /// The binding key this tests
     /// </summary>
     public string Field { get; init; }
 
     /// <summary>
-    /// Which element of the bound collection this tests, or null for the binding as it stands. See
-    /// <see cref="IBound.Index"/>, and note that an element that is not there behaves as a null.
+    /// [OPT] Which element of the biunding this tests
     /// </summary>
     public string? Index { get; init; }
 
@@ -45,8 +44,6 @@ public abstract class BoundCondition : IBoundCondition
         WeequeryException.ThrowIfNullOrEmpty(field);
         WeequeryException.ThrowIfNotNullButEmpty(index);
 
-        // Named before the operands are looked at, so the answer is about the operator rather than about a count
-        // that could never have been right for it
         if (ConditionFunctions.GetShapeForOperation(op) != shape)
         {
             throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator '{op}' on field '{field}' cannot be represented by {TypeName()}: it is not one of the operators that take {Describe(shape)}");
@@ -58,7 +55,7 @@ public abstract class BoundCondition : IBoundCondition
     }
 
     /// <summary>
-    /// The type's name without the arity the runtime appends, so the error above reads the way the type is written
+    /// The type name without the arity the runtime appends
     /// </summary>
     private string TypeName()
     {
@@ -69,7 +66,7 @@ public abstract class BoundCondition : IBoundCondition
     }
 
     /// <summary>
-    /// What a shape holds, for the error above
+    /// What a shape holds
     /// </summary>
     private static string Describe(ConditionShape shape)
     {
@@ -92,10 +89,10 @@ public abstract class BoundCondition : IBoundCondition
     /// <param name="op"></param>
     /// <param name="field">named in the error, since a caller building several conditions needs to know which</param>
     /// <param name="operand"></param>
-    /// <param name="index">position among the operands, so an error points at the right one</param>
-    /// <param name="count">how many there are, for the same reason</param>
+    /// <param name="index">position among the operands, used for reporting</param>
+    /// <param name="count">how many operands there are, used for reporting</param>
     /// <returns>the operand, so this can be used where one is being assigned</returns>
-    /// <exception cref="WeequeryException"></exception>
+    /// <exception cref="WeequeryException">operator is invalid</exception>
     protected static ConditionValue<T> Validate<T>(Operator op, string field, ConditionValue<T> operand, int index, int count)
     {
         if (operand is null)
@@ -110,19 +107,15 @@ public abstract class BoundCondition : IBoundCondition
 
         if (!operand.NamesProperty) { return operand; }
 
-        // A key is a name whatever the property holds, so it cannot be carried as a value of some other type.
-        // Refused here rather than left to surface as a cast or a failed parse further down.
+        // A key is a name whatever the property holds, so it cannot be carried as a value of another type.
         if (operand.Value is not string key)
         {
             throw new WeequeryException(WeequeryError.ValueInvalid, $"Value {index + 1} of {count} for Operator '{op}' on field '{field}' names a bound property, so cannot be represented by {typeof(T).Name}");
         }
 
-        // An operand may carry an index along with the key, "Tallies[apples]", which is the one thing here that
-        // is written with characters the tokenizer treats as delimiters. The writer emits the two bracket pairs
-        // the parser reads back, so what has to be a bare word is the key; the index is quoted if it needs to be.
-        var (name, _) = BindingLookup.SplitIndex(key);
-
-        if (!QueryTokenizer.IsBareWord(name))
+        // An operand may carry an index along with the key, "Tallies[apples]"
+        var split = BindingLookup.SplitIndex(key);
+        if (!QueryTokenizer.IsBareWord(split.Key))
         {
             throw new WeequeryException(WeequeryError.KeyInvalid, $"'{key}' is not a legal binding name");
         }

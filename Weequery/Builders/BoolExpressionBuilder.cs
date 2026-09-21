@@ -8,7 +8,7 @@ namespace Weequery.Builders;
 /// <remarks>
 /// Only the meaningful operators are accepted. The ordering operators and the between
 /// family are refused rather than passed through: a database will happily order a boolean column, but asking
-/// whether one truth value is greater than another says nothing a caller could have meant, and letting it through
+/// if one truth value is greater than another says nothing a caller could have meant, and letting it through
 /// would fail later with a framework error about Boolean having no comparison operator.
 /// </remarks>
 internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>

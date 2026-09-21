@@ -148,7 +148,7 @@ internal static class QueryWriter
     }
 
     /// <summary>
-    /// Whether a condition writes itself as one parenthesised group.
+    /// If a condition writes itself as one parenthesised group.
     /// </summary>
     /// <remarks>
     /// A comparison, a conjunction and a quantifier all do. A negation leads with its operator instead, so
@@ -216,7 +216,7 @@ internal static class QueryWriter
     }
 
     /// <summary>
-    /// Whether the condition's operands are already text, which is what decides the quoting above. A condition
+    /// If the condition's operands are already text, which is what decides the quoting above. A condition
     /// holding values of some other type has them formatted on the way out, and a number or a date reads better
     /// bare; one holding text has to be quoted, or text that spells a number would not come back as text.
     /// </summary>
@@ -266,7 +266,7 @@ internal static class QueryWriter
     /// back, or a value written as any other value is. Quoting a key would make it a value again.
     /// </summary>
     /// <param name="operand"></param>
-    /// <param name="quote">whether a value is quoted, see <see cref="HoldsText"/></param>
+    /// <param name="quote">if a value is quoted, see <see cref="HoldsText"/></param>
     /// <returns></returns>
     private static string Operand(ConditionValue<string> operand, bool quote)
     {

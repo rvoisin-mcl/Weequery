@@ -92,7 +92,7 @@ public record ParsedQuery(ICondition? Condition, List<Sort> Sorts)
     /// </remarks>
     /// <param name="style">
     /// which spelling the condition uses for the operators that have more than one. It does not reach the sorts,
-    /// which have none, and of the separator it decides only how it is spelled, never whether there is one:
+    /// which have none, and of the separator it decides only how it is spelled, never if there is one:
     /// <see cref="QueryStyle.Native"/> writes OrderBy, every other style ORDER BY
     /// </param>
     /// <returns>the empty string where there is neither a condition nor a sort</returns>

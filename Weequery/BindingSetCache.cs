@@ -6,36 +6,34 @@ namespace Weequery;
 
 /// <summary>
 /// The bindings a set of <see cref="BindingRequest"/> builds, kept for the life of the process so a declared set
-/// is resolved once rather than once per query.
+/// is only resolved once rather than once per query.
 /// </summary>
 /// <remarks>
 /// <para>
-/// One cache per entity type, since the class is generic and a static in a generic class is per constructed
-/// type. What it holds is immutable: a <see cref="Binding{TClass}"/> is an expression tree and a parameter, both
-/// of which are values, so a kept set is safe to hand to any number of queries on any number of threads.
+/// One cache per entity type, What it holds is immutable: a <see cref="Binding{TClass}"/> is an expression tree and a 
+/// parameter, both of which are values, so a kept set is safe to hand to any number of queries on any number of threads.
 /// </para>
 /// <para>
-/// <b>Treat what comes back as read only.</b> It is shared, and an Inquiry that added to it would be adding to
-/// every other query built from the same requests, see <see cref="Inquiry{T}.BindProperties"/>, which copies.
+/// <b>Treat a returned set as read only.</b> Modification will affect any other query using the same cached set,
+/// see <see cref="Inquiry{T}.BindProperties"/>, which copies.
 /// </para>
 /// </remarks>
 /// <typeparam name="T">the entity the bindings are against</typeparam>
 internal static class BindingSetCache<T> where T : class
 {
     /// <summary>
-    /// The binding sets built for this entity type, keyed by the requests that produced them.
+    /// The binding sets built for T, keyed by the requests that produced them.
     /// </summary>
-    private static readonly ConcurrentDictionary<string, Dictionary<string, Binding<T>>> BindingSets = new();
+    private static readonly ConcurrentDictionary<string, Dictionary<string, Binding<T>>> BindingSets = new(); // { RequestKey, Bindings }
 
     /// <summary>
-    /// How many distinct binding sets to hold. Sets come from code, so an application has a handful and this is
-    /// never reached; the cap is only here so that a caller composing sets dynamically cannot grow the cache
-    /// without bound. Past it, bindings are built per call.
+    /// How many distinct binding sets to hold, arbitrary. 
+    /// Exists to prevent cache from growing without limit. Past it, bindings are built per call.
     /// </summary>
     private const int MaxCachedBindingSets = 64;
 
     /// <summary>
-    /// The bindings for a set of requests, built once and kept, see <see cref="BindingSetCache{T}"/>.
+    /// The bindings for a set of requests, built once and kept
     /// </summary>
     /// <param name="bindingRequests"></param>
     /// <param name="parameter">the shared parameter every binding for this type hangs off</param>
@@ -63,13 +61,7 @@ internal static class BindingSetCache<T> where T : class
     }
 
     /// <summary>
-    /// Describes a set of requests exactly, so two sets share an entry only when they would build the same
-    /// bindings. The separators cannot appear in a path or a key, both of which are SQL names, dotted for a path.
-    /// <para>
-    /// The use is part of what a request builds, so it is part of what tells two sets apart: the same paths
-    /// bound for filtering and bound for projection only are two different sets of bindings, and one cache
-    /// entry cannot be both, see <see cref="BindingUse"/>.
-    /// </para>
+    /// Build a key that will uniquely identify a request set
     /// </summary>
     /// <param name="requests"></param>
     /// <returns></returns>

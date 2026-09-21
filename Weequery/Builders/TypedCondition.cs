@@ -15,7 +15,7 @@ namespace Weequery.Builders;
 /// </para>
 /// <para>
 /// Flattening the shapes to one list means each builder is written once rather than once per shape, which is
-/// what the operators want anyway: the same expression is built for a value whether it came from the one that
+/// what the operators want anyway: the same expression is built for a value if it came from the one that
 /// <see cref="Operator.Equals"/> holds or from one of the pair <see cref="Operator.IsBetween"/> does.
 /// </para>
 /// </remarks>

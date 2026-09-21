@@ -6,8 +6,8 @@ namespace Weequery;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Both are queries, and neither has run. A grid wants two answers — the rows to draw, and how many rows there
-/// are altogether so it knows how many pages to offer — and those are two statements against the database
+/// Both are queries, and neither has run. A grid wants two answers the rows to draw, and how many rows there
+/// are altogether so it knows how many pages to offer and those are two statements against the database
 /// whichever way they are arrived at. Weequery builds both and leaves the running of them to you, which is what
 /// lets the count be awaited rather than blocked on, and what keeps this library free of a dependency on
 /// whatever is going to execute it.

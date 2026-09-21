@@ -16,8 +16,8 @@ public class BindingRequest
     public string Key { get; init; }
 
     /// <summary>
-    /// What the binding may be used for, see <see cref="BindingUse"/>. All three unless the request says
-    /// otherwise, so a list written before this existed means what it always meant.
+    /// What the binding may be used for, see <see cref="BindingUse"/>. Everything unless the request says
+    /// otherwise
     /// </summary>
     public BindingUse Use { get; init; } = BindingUse.All;
 
@@ -43,41 +43,32 @@ public class BindingRequest
         PropertyPath = propertyPath;
         Key = key ?? propertyPath;
 
-        // The derived key as well as the given one. Binding would refuse it later either way, and a request is
-        // usually a static declaration, so the error is worth more where the declaration is.
+        // The derived key as well as the provided one
         WeequeryException.ThrowIfNotBindingKey(Key, nameof(key));
     }
 
     /// <summary>
     /// ctor
     /// </summary>
-    /// <param name="propertyPath">PropertyPath, should [Property Name], or [Parent,Child,Grandchild,...]</param>
-    /// <param name="key">
-    /// [OPT] Key to use for binding, if not specified, the joined path is used, a period being a legal key
-    /// character. The same key the string constructor derives for the same path, and the same one
-    /// <see cref="Inquiry{T}.BindProperty{TProperty}(System.Linq.Expressions.Expression{System.Func{T, TProperty}}, string[], string, BindingUse, ValueConverter)"/>
-    /// derives for the same segments, so a path keys alike however it is written
-    /// </param>
+    /// <param name="pathSegments">PropertyPath, should [PropertyName], or [Parent,Child,Grandchild,...]</param>
+    /// <param name="key">[OPT] Key to use for binding, if not specified, the joined path is used.</param>
     /// <param name="use">[OPT] what it may be used for, all three by default</param>
     /// <exception cref="WeequeryException"></exception>
-    public BindingRequest(string[] propertyPath, string? key, BindingUse use = BindingUse.All)
+    public BindingRequest(string[] pathSegments, string? key, BindingUse use = BindingUse.All)
     {
         Use = use;
 
-        WeequeryException.ThrowIfNullOrEmpty(propertyPath);
+        WeequeryException.ThrowIfNullOrEmpty(pathSegments);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        PropertyPath = string.Join(".", propertyPath);
+        PropertyPath = string.Join(".", pathSegments);
 
-        // Segments that join to nothing are the empty path the string constructor refuses, and are refused in
-        // the same words: an array holding one empty segment says no more than an empty array does
-        WeequeryException.ThrowIfNullOrEmpty(PropertyPath, nameof(propertyPath));
+        WeequeryException.ThrowIfNullOrEmpty(PropertyPath, nameof(pathSegments)); // catch pathologic BindingRequest([""], null) case
 
         Key = key ?? PropertyPath;
 
-        // The derived key as well as the given one, the same as the string constructor above: the two derive the
-        // same key for the same path, so they have to refuse the same ones.
+        // The derived key as well as the provided one
         WeequeryException.ThrowIfNotBindingKey(Key, nameof(key));
     }
 }

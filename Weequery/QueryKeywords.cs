@@ -39,7 +39,7 @@ internal static class QueryKeywords
     private static readonly HashSet<string> Reserved = BuildReserved();
 
     /// <summary>
-    /// Whether the tokenizer gives this word a meaning of its own
+    /// If the tokenizer gives this word a meaning of its own
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
@@ -49,7 +49,7 @@ internal static class QueryKeywords
     }
 
     /// <summary>
-    /// Whether the query language claims this word, so whether it is unusable as a binding key
+    /// If the query language claims this word, so if it is unusable as a binding key
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>

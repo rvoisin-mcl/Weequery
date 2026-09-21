@@ -30,7 +30,7 @@ internal interface ICollectionBinding<TClass>
     Type ElementType { get; }
 
     /// <summary>
-    /// Whether the inner allow-list bound this key, so whether a condition inside the quantifier can name it.
+    /// If the inner allow-list bound this key, so if a condition inside the quantifier can name it.
     /// </summary>
     /// <remarks>
     /// Asked rather than resolved, by the one thing that has to know a field is missing without wanting it to
@@ -142,7 +142,7 @@ internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<T
     {
         var name = (quantifier == Operator.All) ? nameof(Enumerable.All) : nameof(Enumerable.Any);
 
-        // The two argument overload, which is the one taking a predicate rather than asking whether there is
+        // The two argument overload, which is the one taking a predicate rather than asking if there is
         // anything at all
         return typeof(Enumerable)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)

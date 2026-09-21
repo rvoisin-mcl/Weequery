@@ -70,50 +70,50 @@ internal static class ExpressionBuilderFunctions
                 {
                     throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for Binding '{binding.PropertyPath}'");
                 }
-                return Lambda<TClass>(Expression.Not(binding.NotNullCheck), binding);
+                return Lambda(Expression.Not(binding.NotNullCheck), binding);
 
             case Operator.IsNotNull:
                 if (!binding.AccessorIsNullable)
                 {
                     throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for Binding '{binding.PropertyPath}'");
                 }
-                return Lambda<TClass>(binding.NotNullCheck, binding);
+                return Lambda(binding.NotNullCheck, binding);
 
             case Operator.Equals:
-                return Guarded<TClass>(binding, Expression.Equal(value, QueryValue.Of(condition.Values[0])));
+                return Guarded(binding, Expression.Equal(value, QueryValue.Of(condition.Values[0])));
 
             case Operator.NotEqual:
-                return Guarded<TClass>(binding, Expression.NotEqual(value, QueryValue.Of(condition.Values[0])));
+                return Guarded(binding, Expression.NotEqual(value, QueryValue.Of(condition.Values[0])));
 
             case Operator.LessThan:
-                return Guarded<TClass>(binding, Ordered(binding, condition.Values[0], Expression.LessThan));
+                return Guarded(binding, Ordered(binding, condition.Values[0], Expression.LessThan));
 
             case Operator.LessThanOrEqual:
-                return Guarded<TClass>(binding, Ordered(binding, condition.Values[0], Expression.LessThanOrEqual));
+                return Guarded(binding, Ordered(binding, condition.Values[0], Expression.LessThanOrEqual));
 
             case Operator.GreaterThan:
-                return Guarded<TClass>(binding, Ordered(binding, condition.Values[0], Expression.GreaterThan));
+                return Guarded(binding, Ordered(binding, condition.Values[0], Expression.GreaterThan));
 
             case Operator.GreaterThanOrEqual:
-                return Guarded<TClass>(binding, Ordered(binding, condition.Values[0], Expression.GreaterThanOrEqual));
+                return Guarded(binding, Ordered(binding, condition.Values[0], Expression.GreaterThanOrEqual));
 
             case Operator.IsBetween:
-                return Guarded<TClass>(binding, Between(binding, condition));
+                return Guarded(binding, Between(binding, condition));
 
             case Operator.IsNotBetween:
-                return Guarded<TClass>(binding, Expression.Not(Between(binding, condition)));
+                return Guarded(binding, Expression.Not(Between(binding, condition)));
 
             case Operator.IsIn:
                 // No values means nothing to be in, so no row qualifies whatever the column holds
                 return (condition.Values.Count == 0)
-                    ? Lambda<TClass>(Expression.Constant(false), binding)
-                    : Guarded<TClass>(binding, BuildContainsCheck(binding, condition.Values));
+                    ? Lambda(Expression.Constant(false), binding)
+                    : Guarded(binding, BuildContainsCheck(binding, condition.Values));
 
             case Operator.IsNotIn:
                 // Nothing to be excluded by, so every row with a value qualifies
                 return (condition.Values.Count == 0)
-                    ? Guarded<TClass>(binding, Expression.Constant(true))
-                    : Guarded<TClass>(binding, Expression.Not(BuildContainsCheck(binding, condition.Values)));
+                    ? Guarded(binding, Expression.Constant(true))
+                    : Guarded(binding, Expression.Not(BuildContainsCheck(binding, condition.Values)));
 
             default:
                 return null;
@@ -169,7 +169,7 @@ internal static class ExpressionBuilderFunctions
     /// </summary>
     private static Expression<Func<TClass, bool>> Guarded<TClass>(Binding<TClass> binding, Expression test)
     {
-        return Lambda<TClass>(binding.RequiresNullCheck ? Expression.AndAlso(binding.NotNullCheck, test) : test, binding);
+        return Lambda(binding.RequiresNullCheck ? Expression.AndAlso(binding.NotNullCheck, test) : test, binding);
     }
 
     private static Expression<Func<TClass, bool>> Lambda<TClass>(Expression body, Binding<TClass> binding)

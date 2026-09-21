@@ -4,29 +4,12 @@ using System.Text.Json.Serialization;
 namespace Weequery;
 
 /// <summary>
-/// Reads and writes a <see cref="ConditionValue{T}"/> in its compact form: an operand that is a value travels as
-/// the value alone, and only one naming a bound property carries a source with it.
+/// Reads and writes a <see cref="ConditionValue{T}"/> in its compact form
 /// </summary>
 /// <remarks>
-/// <para>
-/// Nearly every operand ever sent is a value, so paying two JSON properties to say
-/// <c>{"Source":0,"Value":"8000"}</c> where <c>"8000"</c> says the same thing costs something on every condition
-/// to describe the case nobody wrote. <see cref="ValueSource.Raw"/> is both the default and the common case, so
-/// it is what the absence of a source means:
-/// </para>
 /// <code>
 /// "Values": [ "8000", { "Source": 1, "Value": "Ceiling" } ]
 /// </code>
-/// <para>
-/// Nothing is guessed from the text. A value and a key are told apart by the shape they arrive in, a string
-/// against an object, which no value can be mistaken for whatever it spells. That is the property the feature
-/// rests on, see <see cref="PackedCondition.Values"/>, and it holds here as it did when every operand carried a
-/// source.
-/// </para>
-/// <para>
-/// It also means a payload whose values are plain text reads as values, which is the shape they travelled in
-/// before an operand could name a property at all.
-/// </para>
 /// </remarks>
 internal sealed class ConditionValueConverter : JsonConverterFactory
 {

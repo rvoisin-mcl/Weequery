@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Weequery;
 
 /// <summary>
-/// One of a condition's operands, and what it is: a value to compare against, or the key of another bound
+/// One of a condition's valuess, and what it is: a value to compare against, or another bound
 /// property to compare against.
 /// </summary>
 /// <remarks>
@@ -24,13 +24,13 @@ namespace Weequery;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">what the operand is, which is string for anything that arrived as text</typeparam>
-/// <param name="Source">whether this is a value or the key of a property</param>
+/// <param name="Source">if this is a value or the key of a property</param>
 /// <param name="Value">the value, or the binding key, depending on the source</param>
 [JsonConverter(typeof(ConditionValueConverter))]
 public record ConditionValue<T>(ValueSource Source, T Value)
 {
     /// <summary>
-    /// Whether this names another bound property rather than being something to compare against directly
+    /// If this names another bound property rather than being something to compare against directly
     /// </summary>
     [JsonIgnore]
     public bool NamesProperty => (Source == ValueSource.Binding);

@@ -74,7 +74,7 @@ public class QuantifiedCondition : ICondition, IBound, IConditionContainer<ICond
     }
 
     /// <summary>
-    /// Whether an operator quantifies over a collection rather than testing a property or combining conditions
+    /// If an operator quantifies over a collection rather than testing a property or combining conditions
     /// </summary>
     /// <param name="op"></param>
     /// <returns></returns>

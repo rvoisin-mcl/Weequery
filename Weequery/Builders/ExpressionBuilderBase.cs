@@ -36,8 +36,8 @@ internal abstract class ExpressionBuilderBase<T> : IExpressionBuilder<T>
     /// <remarks>
     /// <para>
     /// The one place a client value is normalised, see <see cref="ValueConverter"/>. Both routes into a builder
-    /// arrive here — a condition that was already typed comes straight in, and one that arrived as text is
-    /// parsed and then handed back to it — so converting once here converts every value exactly once, whatever
+    /// arrive here a condition that was already typed comes straight in, and one that arrived as text is
+    /// parsed and then handed back to it so converting once here converts every value exactly once, whatever
     /// shape the operator holds them in.
     /// </para>
     /// <para>

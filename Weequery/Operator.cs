@@ -9,7 +9,7 @@
 /// property has a value" ANDed with the test on that value, so a null is not caught by the negative operators
 /// either: it is not "not equal to 5", it is unknown, exactly as a database treats it. So for any column,
 /// the rows matching an operator, the rows matching its negation, and the rows that are null partition the table
-/// between them, and one condition gives the same answer whether it runs against a database or in memory.
+/// between them, and one condition gives the same answer if it runs against a database or in memory.
 /// <see cref="Not"/> is the exception, because it negates the whole test rather than the value test: the guard is
 /// inside what it negates, so the null rows come back. That makes "!(Alias == 'Ghost')" and "Alias != 'Ghost'"
 /// two different questions where the column is nullable, the first including the rows with no alias and the
@@ -20,13 +20,12 @@
 /// "BirthDate.Year" on a DateTime? is legal, and the result behaves as a nullable in its own right even though
 /// Year is an int: "BirthDate.Year IsNull" is true exactly when BirthDate is null, and a comparison on it simply
 /// does not match a row whose BirthDate is null. A path through a null *reference* is the same story: "Lair.Name"
-/// where the minion has no lair matches nothing, and "Lair.Name IsNull" asks whether the lair is there. A database
+/// where the minion has no lair matches nothing, and "Lair.Name IsNull" asks if the lair is there. A database
 /// answers that through the join, and guarding it here is what makes the two give the same answer.
 /// </para>
 /// <para>
-/// Note on string matching. The six substring operators (StartsWith, DoesNotStartWith, EndsWith, DoesNotEndWith,
-/// Contains, DoesNotContain) are built from the framework's own string methods, so the rules that decide what
-/// counts as a match come from wherever the query is finally evaluated, not from Weequery:
+/// Note on string matching. Because evaluation of these will be dependent on the backing source, evalulation may not
+/// be consistent between say, SQL-backed EF and an in-memory List
 /// </para>
 /// <list type="bullet">
 /// <item><description>
@@ -37,7 +36,7 @@
 /// </description></item>
 /// <item><description>
 /// Against a database through EF Core: each operator is translated to SQL (LIKE, instr, strpos and so on) and the
-/// collation of the column decides the result, including whether the match is case sensitive.
+/// collation of the column decides the result, including if the match is case sensitive.
 /// </description></item>
 /// </list>
 /// The practical consequence is that one condition can match different rows depending on where it runs. For

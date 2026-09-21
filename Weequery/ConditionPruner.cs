@@ -3,25 +3,13 @@ using Weequery.Interfaces;
 namespace Weequery;
 
 /// <summary>
-/// Takes the parts of a condition that name a field nothing bound back out of it, for the caller who would rather
-/// answer a stale filter than refuse it. See <see cref="Inquiry{T}.IgnoreUnboundFields"/>, which is the only
-/// thing that asks for this.
+/// Remove the parts of a condition that name use an unbound field out of it. For callers that would prefer to return
+/// a superset of the filtered data, instead of refusing. See <see cref="Inquiry{T}.IgnoreUnboundFields"/>
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Dropping always widens.</b> A test that is not there does not constrain, so removing one from an AND lets
-/// more rows through, and a node whose every child was dropped is itself dropped rather than left standing as an
-/// empty conjunction — an empty OR matches nothing, and "I could not read half your filter" is not a reason to
-/// return no rows.
-/// </para>
-/// <para>
-/// Carried to the extreme, a condition made entirely of unbound fields prunes to nothing at all, and a query with
-/// no condition returns everything. That is the hazard of the whole idea and the reason it is off by default.
-/// </para>
-/// <para>
-/// Only genuinely unbound fields go. A field that is bound and does not grant <see cref="BindingUse.Condition"/>
-/// is a deliberate statement about what a caller may ask, and quietly ignoring one would undo the point of
-/// making it, so those are still refused.
+/// Only unbound fields go. A field that is bound but does not grant <see cref="BindingUse.Condition"/>
+/// is a deliberate choice about what a caller may ask, so those are still refused.
 /// </para>
 /// </remarks>
 internal static class ConditionPruner
@@ -49,7 +37,7 @@ internal static class ConditionPruner
     /// One level of the walk.
     /// </summary>
     /// <param name="condition"></param>
-    /// <param name="isBound">whether a key is one the allow-list in scope holds, index and all</param>
+    /// <param name="isBound">if a key is one the allow-list in scope holds, index and all</param>
     /// <param name="collections">
     /// the bound collections, or null inside a quantifier, where a nested one could not resolve anyway
     /// </param>
@@ -64,8 +52,6 @@ internal static class ConditionPruner
     {
         if (condition is null) { return null; }
 
-        // A packed condition carries the same tree in a serializable shape, so prune what it unpacks to. What
-        // comes back is an unpacked tree, which is what the expression builder would have made of it anyway.
         if (condition is PackedCondition packed)
         {
             return Prune(packed.Unpack(), isBound, collections, dropped, depth);
@@ -102,9 +88,7 @@ internal static class ConditionPruner
                         where pruned is not null
                         select pruned!).ToList();
 
-            // Every operand went, so the conjunction says nothing and goes with them. Left standing it would be
-            // an empty AND matching everything or an empty OR matching nothing, and neither is what "some of
-            // this filter could not be read" should turn into.
+            // Every operand is gone, so the conjunction is empty and goes with them.
             return (kept.Count == 0) ? null : new ConjunctionCondition(conjunction.Operator, kept);
         }
 
@@ -121,12 +105,8 @@ internal static class ConditionPruner
     }
 
     /// <summary>
-    /// Whether a comparison survives: its own field is bound, and so is every property it compares against.
+    /// If a comparison survives: its own field is bound, and so is every property it compares against.
     /// </summary>
-    /// <remarks>
-    /// An operand naming a property is a read of that property, so one nothing bound makes the whole comparison
-    /// unanswerable rather than merely short of a value. There is nothing left to compare with.
-    /// </remarks>
     private static bool Keeps(ICondition condition, IBound bound, Func<string, bool> isBound, Action<string> dropped)
     {
         if (!isBound(bound.Field))
@@ -137,11 +117,11 @@ internal static class ConditionPruner
 
         if (condition is not IBoundCondition valued) { return true; }
 
-        // Reported by the name of the operand rather than of the comparison, since the operand is the part
-        // nothing bound. Every missing one is named, so a comparison against two of them says so twice.
         var missing = valued.StringifyOperands().Where(operand => operand.NamesProperty && (!isBound(operand.Value))).ToList();
-
-        foreach (var operand in missing) { dropped(operand.Value); }
+        foreach (var operand in missing)
+        {
+            dropped(operand.Value);
+        }
 
         return missing.Count == 0;
     }

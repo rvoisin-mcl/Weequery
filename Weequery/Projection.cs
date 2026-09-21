@@ -38,7 +38,7 @@ public record Projection(IReadOnlyList<string> Fields)
     /// </summary>
     public static readonly Projection None = new([]);
 
-    /// <summary>Whether this names any fields at all</summary>
+    /// <summary>If this names any fields at all</summary>
     public bool IsEmpty { get { return Fields.Count == 0; } }
 
     /// <summary>

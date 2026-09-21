@@ -6,9 +6,9 @@ namespace Weequery;
 /// <remarks>
 /// <para>
 /// A message names the offending input and is written to be read by a person, which means it is free to change
-/// when a clearer wording turns up. Anything that has to <b>act</b> on the reason — a handler deciding between a
-/// 400 and a 500, a test asserting what was refused — needs something that does not, and this is it. It also
-/// reaches <see cref="System.Exception.HResult"/>, see <see cref="WeequeryException.HResultFor"/>, for the
+/// when a clearer wording turns up. Anything that has to <b>act</b> on the reason a handler deciding between a
+/// 400 and a 500, a test asserting what was refused needs something that does not, and this is it. It also
+/// reaches <see cref="Exception.HResult"/>, see <see cref="WeequeryException.HResultFor"/>, for the
 /// callers that only see an exception across a boundary that has already thrown the type away.
 /// </para>
 /// <para>

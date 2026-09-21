@@ -1,12 +1,9 @@
 namespace Weequery;
 
 /// <summary>
-/// The table a query looks its fields up in, keyed by binding key.
+/// A cachable lookup table for bindings, key are case-insensitive
 /// </summary>
 /// <remarks>
-/// <para>
-/// Keys are case-insensitive
-/// </para>
 /// </remarks>
 internal static class BindingLookup
 {
@@ -26,13 +23,8 @@ internal static class BindingLookup
     }
 
     /// <summary>
-    /// Crack a field name apart into the key and optional the index it may carry
+    /// Crack a field name apart into the key and optional index it may carry
     /// </summary>
-    /// <remarks>
-    /// For the two places an index arrives written into the field itself rather than beside it: an operand naming
-    /// another bound property, and a sort. A condition keeps the two apart in <see cref="Interfaces.IBound.Index"/>,
-    /// having somewhere to put it.
-    /// </remarks>
     /// <param name="field"></param>
     /// <returns>the key, and the index or null</returns>
     /// <exception cref="WeequeryException">the brackets do not close, or the index is empty</exception>
@@ -52,38 +44,26 @@ internal static class BindingLookup
     /// <summary>
     /// The binding a field name asks for, indexed where the name says so.
     /// </summary>
-    /// <remarks>
-    /// One place, so an operand and a sort refuse an unbound field with the same words a condition does, and
-    /// index one the same way.
-    /// </remarks>
     /// <typeparam name="TClass"></typeparam>
     /// <param name="bindings"></param>
-    /// <param name="field">a binding key, optionally with an index after it</param>
+    /// <param name="field">a binding key, optionally with an index</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">no binding claimed the key, or it cannot be indexed that way</exception>
     internal static Binding<TClass> Resolve<TClass>(Dictionary<string, Binding<TClass>> bindings, string field)
     {
-        var (key, index) = SplitIndex(field);
+        var split = SplitIndex(field);
 
-        if (!bindings.TryGetValue(key, out var binding)) { throw new WeequeryException(WeequeryError.UnboundField, $"Unbound field: '{key}'"); }
+        if (!bindings.TryGetValue(split.Key, out var binding)) { throw new WeequeryException(WeequeryError.UnboundField, $"Unbound field: '{split.Key}'"); }
 
-        return (index is null) ? binding : binding.Indexed(index);
+        return (split.Index is null) ? binding : binding.Indexed(split.Index);
     }
 
     /// <summary>
-    /// The spelling a field was bound under, given whatever spelling a caller used for it.
+    /// The name a field was bound under
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Keys are matched without regard to case, so "name", "NAME" and "Name" all resolve to one binding, and
-    /// anything reading a key back out has to say which of them it is. The allow-list decided, so the answer is
-    /// the one the binding was made under: a projection asked for as "name" comes back keyed "Name", and two
-    /// callers typing it differently get the same shape, see <see cref="Projection"/>.
-    /// </para>
-    /// <para>
-    /// A scan, because a Dictionary will tell you a key is present but not what it is stored as. Done once per
-    /// projected field while the query is being built, over a lookup holding as many entries as the model has
-    /// bindings, so it is not on any path worth indexing for.
+    /// Since keys are case-insensitive, we could lose the originally binding name
     /// </para>
     /// </remarks>
     /// <param name="bindings"></param>
@@ -91,10 +71,10 @@ internal static class BindingLookup
     /// <returns>the field as bound, index and all, or the field as given where nothing claimed it</returns>
     internal static string CanonicalKey<TClass>(Dictionary<string, Binding<TClass>> bindings, string field)
     {
-        var (key, index) = SplitIndex(field);
+        var split = SplitIndex(field);
 
-        var bound = bindings.Keys.FirstOrDefault(candidate => KeyComparer.Equals(candidate, key)) ?? key;
+        var bound = bindings.Keys.FirstOrDefault(candidate => KeyComparer.Equals(candidate, split.Key)) ?? split.Key;
 
-        return (index is null) ? bound : $"{bound}[{index}]";
+        return (split.Index is null) ? bound : $"{bound}[{split.Index}]";
     }
 }

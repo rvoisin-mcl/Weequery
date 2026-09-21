@@ -1,7 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Linq.Expressions;
-using System.Reflection;
-using System.Text;
+﻿using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using Weequery.Builders;
 using Weequery.Interfaces;
@@ -87,7 +84,7 @@ public class Inquiry<T> where T : class
     /// <see cref="ApplyProjection(string?)"/>.
     /// </summary>
     /// <remarks>
-    /// Readable so that something building on this Inquiry can tell whether the caller asked for a set of
+    /// Readable so that something building on this Inquiry can tell if the caller asked for a set of
     /// columns, which is what a different way of shaping a row has to know before it quietly ignores one. The
     /// AutoMapper package refuses that combination on exactly this.
     /// </remarks>
@@ -97,7 +94,7 @@ public class Inquiry<T> where T : class
     private int Page { get; set; } = -1;
 
     /// <summary>
-    /// Whether a field nothing bound is dropped rather than refused, see <see cref="IgnoreUnboundFields"/>. Off,
+    /// If a field nothing bound is dropped rather than refused, see <see cref="IgnoreUnboundFields"/>. Off,
     /// which is the answer that never surprises anyone.
     /// </summary>
     private bool DropsUnboundFields { get; set; }
@@ -280,7 +277,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Bind a collection, and declare what may be asked about one of its elements, so a caller can ask whether
+    /// Bind a collection, and declare what may be asked about one of its elements, so a caller can ask if
     /// <see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/> of them match.
     /// </summary>
     /// <remarks>
@@ -312,7 +309,7 @@ public class Inquiry<T> where T : class
     /// it tested for null or indexed, under a different key.
     /// </para>
     /// <para>
-    /// <b>Whether this reaches a database is the provider's business.</b> A quantifier becomes Any or All over
+    /// <b>If this reaches a database is the provider's business.</b> A quantifier becomes Any or All over
     /// the collection, which EF Core translates to EXISTS against a navigation collection. See the remarks on
     /// <see cref="Operator.Any"/> for what it means over one that is empty or missing.
     /// </para>
@@ -555,7 +552,7 @@ public class Inquiry<T> where T : class
 
         // A caller who named no settings gets the standard ones. Handled here rather than in the copy
         // constructor, which is for copying something.
-        settings = (settings is null) ? BindingResolutionSettings.Standard : new(settings);
+        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings);
 
         return BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
     }
@@ -641,7 +638,7 @@ public class Inquiry<T> where T : class
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the query is malformed, see <see cref="ConditionFunctions.ParseQuery"/></exception>
-    public Inquiry<T> ApplyCondition(string query, QueryStyle? style = null)
+    public Inquiry<T> ApplyCondition(string query, QueryStyle style = QueryStyle.Native)
     {
         var condition = ConditionFunctions.ParseQuery(query, style);
         if (condition is null) { return this; }
@@ -822,7 +819,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Whether a key is one the bindings hold, which is the test for keeping a field rather than dropping it.
+    /// If a key is one the bindings hold, which is the test for keeping a field rather than dropping it.
     /// Indexes are split off first, since what has to be bound is the collection.
     /// </summary>
     private bool IsBound(string field)
@@ -833,7 +830,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Whether a field survives, noting it as dropped where it does not. For the two halves that filter a flat
+    /// If a field survives, noting it as dropped where it does not. For the two halves that filter a flat
     /// list rather than rewriting a tree, see <see cref="DroppedFields"/>.
     /// </summary>
     /// <param name="field">the key as the query named it</param>
@@ -1172,7 +1169,7 @@ public class Inquiry<T> where T : class
     /// </summary>
     /// <remarks>
     /// The builder is handed the drop test only where the caller asked for one, so it does not have to know what
-    /// <see cref="IgnoreUnboundFields"/> is, only whether a field survives.
+    /// <see cref="IgnoreUnboundFields"/> is, only if a field survives.
     /// </remarks>
     private Expression<Func<T, Dictionary<string, object?>>> Projector()
     {

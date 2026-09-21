@@ -147,6 +147,18 @@ internal static class FieldComparison
             throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot compare '{left.PropertyPath}' with '{property.PropertyPath}': one is a {left.UnwrappedPropertyType.Name} and the other a {property.UnwrappedPropertyType.Name}");
         }
 
+        // Each accessor arrives already folded by its own binding's converter, so two that do not agree would
+        // compare one normalisation against another and quietly answer about neither. Folding one through the
+        // other is not the way out: the left is only the left because of the order the condition was written in,
+        // and running it over an already converted value changes what two matching bindings mean unless the
+        // conversion happens to be idempotent, which nothing here can know. Same conversion only, the same way
+        // the check above takes the same type only. Compared by identity, since two lambdas that read alike are
+        // still two lambdas: share one ValueConverter between the bindings meant to be compared.
+        if (!ReferenceEquals(left.AccessorConverter, property.AccessorConverter))
+        {
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot compare '{left.PropertyPath}' with '{property.PropertyPath}': they are normalised differently, and a comparison has no way to say which normalisation the answer is in. Bind both with the same ValueConverter, or neither");
+        }
+
         return new Operand<TClass> { Property = property, Expression = property.UnwrappedAccessor };
     }
 
@@ -162,7 +174,7 @@ internal static class FieldComparison
 
             // The client half of a conversion, which the builders get from ExpressionBuilderBase and this path
             // does not go through. A comparison against a property has no client value at all and skips this.
-            return ((left.Converter is null) || (!left.Converter.Runs(ConversionTarget.Client)))
+            return ((left.Converter is null) || (!left.Converter.Runs(ConversionTarget.Value)))
                 ? parsed
                 : left.Converter.ConvertBoxed(parsed);
         }
@@ -208,7 +220,7 @@ internal static class FieldComparison
     }
 
     /// <summary>
-    /// Whether the field is any of the operands.
+    /// If the field is any of the operands.
     /// </summary>
     /// <remarks>
     /// <para>

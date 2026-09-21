@@ -40,7 +40,7 @@ internal static class ExpressionBuilder
     }
 
     /// <summary>
-    /// Whether a binding could be made for a property of this type, asked of the type alone.
+    /// If a binding could be made for a property of this type, asked of the type alone.
     /// </summary>
     /// <remarks>
     /// <para>

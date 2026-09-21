@@ -8,12 +8,12 @@ namespace Weequery;
 public class ConjunctionCondition : IConjunctionCondition
 {
     /// <summary>
-    /// How the children are joined, so <see cref="Weequery.Operator.And"/> or <see cref="Weequery.Operator.Or"/>
+    /// How the children are joined, so <see cref="Operator.And"/> or <see cref="Operator.Or"/>
     /// </summary>
     public Operator Operator { get; init; }
 
     /// <summary>
-    /// The conditions being joined. If none provided, And matches everything and Or matches nothing.
+    /// The conditions being joined. If none are provided, And matches everything and Or matches nothing.
     /// </summary>
     public List<ICondition> Conditions { get; init; }
 

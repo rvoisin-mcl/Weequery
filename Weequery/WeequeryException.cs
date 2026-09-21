@@ -228,8 +228,8 @@ public class WeequeryException : Exception
     }
 
     /// <summary>
-    /// Whether the text is shaped like a binding key: one or more <see cref="IsSqlName"/> segments separated by
-    /// periods. Says nothing about whether the language has already claimed it, which
+    /// If the text is shaped like a binding key: one or more <see cref="IsSqlName"/> segments separated by
+    /// periods. Says nothing about if the language has already claimed it, which
     /// <see cref="IsBindingKey"/> does as well.
     /// </summary>
     /// <param name="text"></param>
@@ -249,7 +249,7 @@ public class WeequeryException : Exception
     }
 
     /// <summary>
-    /// Whether the text can be used as a binding key, which is everything
+    /// If the text can be used as a binding key, which is everything
     /// <see cref="ThrowIfNotBindingKey"/> requires.
     /// </summary>
     /// <param name="text"></param>
@@ -260,7 +260,7 @@ public class WeequeryException : Exception
     }
 
     /// <summary>
-    /// Whether the text is a valid unquoted SQL name, as described on <see cref="ThrowIfNotSqlName"/>. One name,
+    /// If the text is a valid unquoted SQL name, as described on <see cref="ThrowIfNotSqlName"/>. One name,
     /// so no period; <see cref="IsBindingKey"/> is the rule a key is held to.
     /// </summary>
     /// <param name="text"></param>

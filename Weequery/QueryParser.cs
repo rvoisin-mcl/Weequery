@@ -20,7 +20,7 @@ namespace Weequery;
 /// Brackets name a bound property and parentheses hold a list, wherever either appears: 'Pay &gt; 10000' compares
 /// against a number, 'Pay &gt; [Salary]' against the property bound as Salary, and 'Pay IsIn (1, 2, [Salary])'
 /// against any of the three. Every comparison comes back over string, in whichever of the four shapes its
-/// operator calls for, with each operand carrying whether the brackets made it the name of a property, see
+/// operator calls for, with each operand carrying if the brackets made it the name of a property, see
 /// <see cref="ConditionShape"/> and <see cref="ConditionValue{T}"/>.
 /// '&amp;&amp;' binds tighter than '||', matching SQL and C#, and parentheses group freely.
 /// <para>
@@ -517,7 +517,7 @@ internal sealed class QueryParser
     /// Read the operands for a comparison and check the count against what the operator accepts.
     /// </summary>
     /// <remarks>
-    /// Each operand comes back as the text it was written as, carrying whether the brackets made it the name of a
+    /// Each operand comes back as the text it was written as, carrying if the brackets made it the name of a
     /// property, which is the form a condition holds its operands in, see <see cref="ConditionValue{T}"/>.
     /// </remarks>
     /// <param name="field"></param>

@@ -23,7 +23,7 @@ internal class Binding<TClass> : IBinding
     private List<Expression> LinkChecks { get; init; } = new();
 
     /// <summary>
-    /// Whether the property can be put in order, so whether it can be sorted on.
+    /// If the property can be put in order, so if it can be sorted on.
     /// <para>
     /// Based on the underlying type, since a Nullable does not implement IComparable but its comparer orders it as expected
     /// </para>
@@ -41,7 +41,7 @@ internal class Binding<TClass> : IBinding
     public Expression NotNullCheck { get; init; }
 
     /// <summary>
-    /// Whether the path passes through anything that could be missing, so whether reading the accessor is safe on
+    /// If the path passes through anything that could be missing, so if reading the accessor is safe on
     /// its own.
     /// </summary>
     public bool RequiresLinkCheck { get { return LinkChecks.Count > 0; } }
@@ -116,6 +116,17 @@ internal class Binding<TClass> : IBinding
     public ValueConverter? Converter { get; init; }
 
     /// <summary>
+    /// The converter that reached <see cref="UnwrappedAccessor"/>, which is the one a comparison against another
+    /// bound property has to agree with.
+    /// </summary>
+    /// <remarks>
+    /// Null where there is no converter, and null where the one there is runs only against a caller's value and
+    /// so left the accessor as it found it: such a binding compares as an unconverted one does, because against
+    /// another property there is no caller's value for it to run on.
+    /// </remarks>
+    internal ValueConverter? AccessorConverter => ((Converter is not null) && Converter.Runs(ConversionTarget.Binding)) ? Converter : null;
+
+    /// <summary>
     /// Normalize a supplied value if appropriate, return it unchanged if not
     /// </summary>
     /// <typeparam name="TValue">the unwrapped property type</typeparam>
@@ -123,7 +134,7 @@ internal class Binding<TClass> : IBinding
     /// <returns></returns>
     public TValue ConvertClientValue<TValue>(TValue value)
     {
-        return ((Converter is null) || (!Converter.Runs(ConversionTarget.Client))) ? value : Converter.Convert(value);
+        return ((Converter is null) || (!Converter.Runs(ConversionTarget.Value))) ? value : Converter.Convert(value);
     }
 
     /// <summary>
@@ -173,7 +184,7 @@ internal class Binding<TClass> : IBinding
 
             Converter = converter;
 
-            if (converter.Runs(ConversionTarget.Source)) { UnwrappedAccessor = converter.Inline(UnwrappedAccessor); }
+            if (converter.Runs(ConversionTarget.Binding)) { UnwrappedAccessor = converter.Inline(UnwrappedAccessor); }
         }
         NotNullCheck = BuildNotNullCheck(Accessor, PropertyType, PropertyIsWrappedByNullable, LinkChecks);
         LinkNotNullCheck = (LinkChecks.Count == 0) ? Expression.Constant(true) : LinkChecks.Aggregate(Expression.AndAlso);
@@ -389,13 +400,13 @@ internal class Binding<TClass> : IBinding
     /// </summary>
     /// <param name="KeyType">the type of the index parameter: int for a list or an array, the key type for a dictionary</param>
     /// <param name="ElementType">what comes back out, which is what the comparison is then against</param>
-    /// <param name="IsDictionary">whether presence is asked with ContainsKey rather than against a count</param>
+    /// <param name="IsDictionary">if presence is asked with ContainsKey rather than against a count</param>
     private record Indexing(Type KeyType, Type ElementType, bool IsDictionary);
 
     private Indexing? Index { get; init; }
 
     /// <summary>
-    /// Whether this binding can be indexed, and how.
+    /// If this binding can be indexed, and how.
     /// </summary>
     public bool IsIndexable { get { return Index is not null; } }
 
@@ -508,10 +519,10 @@ internal class Binding<TClass> : IBinding
                 continue;
             }
 
-            if (ch == '.') 
-            { 
-                Finish(); 
-                continue; 
+            if (ch == '.')
+            {
+                Finish();
+                continue;
             }
 
             if (index is not null) { throw new WeequeryException(WeequeryError.PathInvalid, $"Property path '{propertyPath}' has text after an index"); } // Binding[x]BlahBlah
@@ -720,7 +731,7 @@ internal class Binding<TClass> : IBinding
         // to the segment it was read from
         string? pendingIndex = null;
 
-        while(true)
+        while (true)
         {
             if (node is MemberExpression member)
             {
@@ -739,7 +750,7 @@ internal class Binding<TClass> : IBinding
                 if (pendingIndex is not null) { throw new WeequeryException(WeequeryError.PathInvalid, $"Could not extract path from '{selector}': it includes adjacent indexes"); } // No multi-dim [x][y]
 
                 pendingIndex = idxOf.Index;
-                
+
                 node = Unwrap(idxOf.Source);
 
                 continue;
@@ -818,7 +829,7 @@ internal class Binding<TClass> : IBinding
         WeequeryException.ThrowIfNotBindingKey(key);
 
         // Named for the parameter rather than the loop variable, so a path that names nothing reads the same
-        // whether it was empty, null, or a segment that is
+        // if it was empty, null, or a segment that is
         foreach (var segment in segments) { WeequeryException.ThrowIfNullOrEmpty(segment, nameof(segments)); }
 
         var binding = FromPath(parameter, JoinSegments(GetPropertyPath(selector), segments), use, converter);
@@ -827,7 +838,7 @@ internal class Binding<TClass> : IBinding
     }
 
     /// <summary>
-    /// Whether a binding arriving under a key that is already taken is the one already there, so binding it a
+    /// If a binding arriving under a key that is already taken is the one already there, so binding it a
     /// second time is a no-op rather than a conflict.
     /// </summary>
     /// <remarks>

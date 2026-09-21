@@ -3,31 +3,13 @@ using Weequery.Interfaces;
 namespace Weequery;
 
 /// <summary>
-/// How deeply conditions may nest, shared by everything that walks one.
-/// <para>
-/// Public because it is a contract rather than a detail: anything that walks a condition is held to the same
-/// limit, including a walk written outside this assembly, and the packages that translate a condition into
-/// something other than an expression tree need to be able to hold themselves to it.
-/// </para>
-/// <para>
-/// A condition is a tree, and every walk over one is recursive: packing and unpacking it, writing it as a query,
-/// building the expression. They take their input from a caller, and a caller is where the deep ones come from 
-/// a tree nesting a few thousand levels overflows the stack, which cannot be caught and takes the process with
-/// it. One limit, well past anything a hand written filter reaches, turns that into an ordinary
-/// <see cref="WeequeryException"/>.
-/// </para>
-/// <para>
-/// The limit is on the condition, wherever it came from, so a query string is held to it as well: the parser
-/// checks the tree it built before handing it back, rather than counting the parentheses, which are not the same
-/// thing. Whatever parses can therefore be packed, written and built.
-/// </para>
+/// How deeply conditions may nest
 /// </summary>
 public static class ConditionNesting
 {
     /// <summary>
     /// Levels of nesting allowed. Every container is one level, so a conjunction or a negation, and a comparison
-    /// is a leaf. The limit is on nesting rather than on size: a conjunction may hold as many operands as it
-    /// likes, and a condition as many values.
+    /// is a leaf. The limit is on nesting rather than on size
     /// </summary>
     public const int MaxDepth = 16;
 
@@ -45,9 +27,7 @@ public static class ConditionNesting
     }
 
     /// <summary>
-    /// Whether a walk at this depth has already gone past the limit. For the walk that cannot throw:
-    /// <see cref="QueryWriter.Describe"/> backs ToString, where an exception makes debugging worse, so it
-    /// substitutes a placeholder instead.
+    /// If a walk at this depth has already gone past the limit. 
     /// </summary>
     /// <param name="depth">levels entered to get here</param>
     /// <returns></returns>
@@ -57,7 +37,7 @@ public static class ConditionNesting
     }
 
     /// <summary>
-    /// Whether a condition nests deeper than the limit.
+    /// If a condition nests deeper than the limit.
     /// <para>
     /// Answers without walking any deeper than the limit itself, so this is safe to call on a tree of any depth,
     /// including one deep enough that walking all of it would overflow the stack.
@@ -74,17 +54,14 @@ public static class ConditionNesting
     /// <param name="depth">levels entered to get to this condition</param>
     private static bool IsTooDeep(ICondition condition, int depth)
     {
-        // Past the limit, so stop here rather than measuring how much further it goes
-        if (IsTooDeep(depth)) { return true; }
+        if (IsTooDeep(depth)) { return true; } // yes
+        if (condition is not IConditionContainer<ICondition> container) { return false; } // nothing to dig into
 
-        // Both containers, the conjunction and the negation, hold their children the same way
-        if (condition is not IConditionContainer<ICondition> container) { return false; }
-
-        return container.Conditions.Any(child => IsTooDeep(child, depth + 1));
+        return container.Conditions.Any(child => IsTooDeep(child, depth + 1)); // keep going
     }
 
     /// <summary>
-    /// The one exception for the one limit, so every walk reports it the same way
+    /// Generate a standard depth exception so every walk reports it the same way
     /// </summary>
     /// <param name="exerpt">[OPT] to indicate the clause inside the query causing the exception</param>
     /// <returns></returns>

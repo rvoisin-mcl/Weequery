@@ -11,7 +11,7 @@ namespace Weequery.Builders;
 /// <para>
 /// The box exists so that EF Core promotes a caller's value to a query parameter instead of writing it into the
 /// SQL as a literal, which is what gives one query plan for every value rather than one per value, see
-/// <see cref="QueryValue"/>. That is worth what it costs — but it only buys anything where there is a provider to
+/// <see cref="QueryValue"/>. That is worth what it costs but it only buys anything where there is a provider to
 /// read it. Compiled and run here, the indirection is dead weight: the field is read once per row for a value
 /// that cannot change, and the compiler pays for a closure field access where a literal would do.
 /// </para>

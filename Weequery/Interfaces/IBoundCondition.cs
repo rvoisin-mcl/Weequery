@@ -21,7 +21,7 @@ namespace Weequery.Interfaces;
 public interface IBoundCondition : ICondition, IBound
 {
     /// <summary>
-    /// The operands in order, as text, each carrying whether it is a value or the key of another bound property
+    /// The operands in order, as text, each carrying if it is a value or the key of another bound property
     /// to compare against. Empty for an operator that takes none.
     /// </summary>
     /// <returns></returns>

@@ -6,11 +6,10 @@ namespace Weequery;
 /// <inheritdoc cref="IMultipleValueCondition"/>
 /// </summary>
 /// <remarks>
-/// Any of the operands can name another bound property instead of being a value, and they can be mixed:
-/// "Pay IsIn (8000, [Cap])" tests against a value and a property at once. A key is a name, so only a condition
-/// over string can carry one, see <see cref="ConditionValue{T}"/>.
+/// Any of the operands can name another bound property instead of being a raw value, and they can be mixed:
+/// "Pay IsIn (8000, [Cap])" tests against a value and a property at once.
 /// </remarks>
-/// <typeparam name="T">what the operands are, which is string for a condition that arrived as text</typeparam>
+/// <typeparam name="T">what the operands are</typeparam>
 public class MultipleValueCondition<T> : BoundCondition, IMultipleValueCondition<T>
 {
     /// <summary>

@@ -6,9 +6,7 @@ namespace Weequery;
 /// <inheritdoc cref="INoValueCondition"/>
 /// </summary>
 /// <remarks>
-/// Holds nothing but the field and which of the two tests it is, and is not generic, because what the property
-/// holds does not change the question. See the remarks on <see cref="Operator"/> for what a null means to every
-/// other operator.
+/// Holds nothing but the field and which of the operator it is
 /// </remarks>
 public class NoValueCondition : BoundCondition, INoValueCondition
 {

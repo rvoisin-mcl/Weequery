@@ -236,7 +236,7 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
         WeequeryException.ThrowIfNull(Field);
         WeequeryException.ThrowIfNull(Values);
 
-        // Each operand already says whether it is a value or the key of a property, so there is nothing to work
+        // Each operand already says if it is a value or the key of a property, so there is nothing to work
         // out here: the condition this builds compares against whatever the sender said it was comparing against.
         // A missing operand is refused by the condition itself, naming which of them it was.
         return ConditionFunctions.BuildComparison(Operator, Field, Values, Index);

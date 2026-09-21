@@ -77,7 +77,7 @@ internal static class StringMethods
     }
 
     /// <summary>
-    /// Whether the operator is the negative of its pair, so whether the call it is built from has to be negated
+    /// If the operator is the negative of its pair, so if the call it is built from has to be negated
     /// </summary>
     /// <param name="op"></param>
     /// <returns></returns>

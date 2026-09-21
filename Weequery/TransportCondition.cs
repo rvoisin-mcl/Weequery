@@ -93,7 +93,7 @@ public class TransportCondition
     /// <see cref="ConditionFunctions.ParseQuery"/>
     /// </param>
     /// <returns></returns>
-    public ICondition? Unpack(QueryStyle? style = null)
+    public ICondition? Unpack(QueryStyle style = QueryStyle.Native)
     {
         return (Condition is not null) ? Condition.Unpack() : (Query is not null) ? ConditionFunctions.ParseQuery(Query, style) : null;
     }
@@ -104,9 +104,9 @@ public class TransportCondition
     /// <remarks>
     /// Takes no style: a projection is a list of field names and holds no operators, so there is no spelling to
     /// be strict about. Safe to hand to <see cref="Inquiry{T}.ApplyProjection(Projection?)"/> whatever arrived,
-    /// since nothing named gives <see cref="Weequery.Projection.None"/> and that is a no-op.
+    /// since nothing named gives <see cref="Projection.None"/> and that is a no-op.
     /// </remarks>
-    /// <returns><see cref="Weequery.Projection.None"/> where nothing was asked; never null</returns>
+    /// <returns><see cref="Projection.None"/> where nothing was asked; never null</returns>
     /// <exception cref="WeequeryException">the list is malformed</exception>
     public Projection UnpackProjection()
     {

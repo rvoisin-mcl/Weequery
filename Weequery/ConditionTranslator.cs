@@ -3,18 +3,9 @@ using Weequery.Interfaces;
 namespace Weequery;
 
 /// <summary>
-/// The walk over a condition tree, for anything turning one into something other than an expression tree.
+/// A skeleton for turning a condition tree into something other than an expression tree.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Every translation of a condition has the same skeleton and differs only in what it writes: unwrap a packed
-/// condition, dispatch on the five shapes, bound the recursion, and refuse what is not one of them. Written
-/// twice it is written twice wrongly, and the parts that are easy to get subtly wrong — the depth bound, a
-/// negation with nothing to negate, whether a conjunction over no operands matches everything or nothing — are
-/// exactly the parts nobody thinks to check the second time.
-/// </para>
-/// <para>
-/// So the shape lives here and a translator writes only its own syntax:
 /// <code>
 /// internal sealed class MyTranslator(MyFields fields) : ConditionTranslator&lt;string, MyScope&gt;
 /// {
@@ -26,11 +17,9 @@ namespace Weequery;
 ///     protected override string Quantify(QuantifiedCondition condition, MyScope scope, int depth) =&gt; ...;
 /// }
 /// </code>
-/// </para>
 /// <para>
-/// <b>What is deliberately not here is the null handling.</b> Weequery's operators carry a guard and most other
-/// languages do not, but which of theirs already agree and which need one put back is a fact about that
-/// language rather than about conditions. Each translator settles it for itself, and says so where it does.
+/// <b>What is deliberately not here is the null handling.</b> Weequery's operators may carry a guard and most other
+/// languages do not. Each translator must evaluate accordingly.
 /// </para>
 /// </remarks>
 /// <typeparam name="TResult">what a condition becomes: a string, a JSON object, whatever the target reads</typeparam>
@@ -41,7 +30,7 @@ namespace Weequery;
 public abstract class ConditionTranslator<TResult, TScope>
 {
     /// <summary>
-    /// The name of what is being written, for the message when a condition holds something it has no answer for
+    /// what is being written, for reporting purposes
     /// </summary>
     protected abstract string Dialect { get; }
 
@@ -57,9 +46,8 @@ public abstract class ConditionTranslator<TResult, TScope>
     /// The operands of an AND or an OR, already translated, joined the way the target joins them.
     /// </summary>
     /// <remarks>
-    /// <b>An empty list is a real case and means something.</b> AND over no operands matches everything and OR
-    /// over none matches nothing, which are the identities of the two and what an empty conjunction is. Say both
-    /// rather than assuming a caller cannot build one; the parser will not, and a hand built tree will.
+    /// <b>An empty list is a real case and means something.</b> ANDing an empty list is true and ORing an empty 
+    /// list is false, which are the identities of the two and what an empty conjunction is.
     /// </remarks>
     /// <param name="conjunction"><see cref="Operator.And"/> or <see cref="Operator.Or"/></param>
     /// <param name="parts">the translated operands, in the order they were held</param>
@@ -100,19 +88,15 @@ public abstract class ConditionTranslator<TResult, TScope>
     /// <param name="depth">[OPT] levels already stepped into; leave it alone at the top</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
-    /// the condition holds something the target has no answer for, a negation has nothing to negate, or the tree
+    /// the condition holds something the target cannot represent, a negation has nothing to negate, or the tree
     /// nests deeper than <see cref="ConditionNesting.MaxDepth"/>
     /// </exception>
     protected TResult Translate(ICondition condition, TScope scope, int depth = 0)
     {
         WeequeryException.ThrowIfNull(condition);
 
-        // A packed condition carries the same tree in a serializable shape, so translate what it unpacks to.
-        // Not a level deeper: it is the same condition, spelled for the wire.
         if (condition is PackedCondition packed) { return Translate(packed.Unpack(), scope, depth); }
 
-        // Before IBoundCondition, which it is not, and before the containers, which it half is: a quantifier
-        // names a field the way a comparison does and holds a condition the way a container does
         if (condition is QuantifiedCondition quantified) { return Quantify(quantified, scope, depth); }
 
         if (condition is IBoundCondition comparison) { return Compare(comparison, scope); }

@@ -6,11 +6,9 @@ namespace Weequery;
 /// <inheritdoc cref="IOneValueCondition"/>
 /// </summary>
 /// <remarks>
-/// The operand can name another bound property instead of being a value, so "Pay &gt; [Salary]" is this condition
-/// as much as "Pay &gt; 10000" is. A key is a name, so only a condition over string can carry one, see
-/// <see cref="ConditionValue{T}"/>.
+/// The operand can name another bound property instead of being a value
 /// </remarks>
-/// <typeparam name="T">what the operand is, which is string for a condition that arrived as text</typeparam>
+/// <typeparam name="T">what the operand is</typeparam>
 public class OneValueCondition<T> : BoundCondition, IOneValueCondition<T>
 {
     /// <summary>

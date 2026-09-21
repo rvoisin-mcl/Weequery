@@ -3,27 +3,16 @@ using System.Collections;
 namespace Weequery;
 
 /// <summary>
-/// Something a <see cref="FieldSet{TField}"/> can hold: anything that knows the name a caller writes for it.
-/// </summary>
-public interface IFieldKey
-{
-    /// <summary>The name a caller writes, matched without regard to case</summary>
-    string Key { get; }
-}
-
-/// <summary>
-/// An allow-list declared rather than derived: which keys a caller may name, and what each one means.
+/// A declared allow-list, which keys a caller may use and what they mean
 /// </summary>
 /// <remarks>
 /// <para>
-/// The counterpart to an <see cref="Inquiry{T}"/>'s bindings, for the targets that have no entity to walk. There
-/// is no CLR type here and no mapping to read, so what a key means is stated instead of resolved — but it grants
-/// exactly as little, and a condition naming a key it does not hold is refused the same way.
+/// The twin to <see cref="Inquiry{T}"/>'s bindings, for targets that have no entity to walk. What 
+/// a key means is stated instead of resolved, but behaves in the same fashion.
 /// </para>
 /// <para>
-/// Keys are matched without regard to case, as they are everywhere else in Weequery, and two entries cannot
-/// claim one key. What a field carries beyond its key is the target's business, which is what
-/// <typeparamref name="TField"/> is for.
+/// Keys arecase-insensitive, as they are everywhere else in Weequery. What a key carries is the 
+/// responsibility of <typeparamref name="TField"/>
 /// </para>
 /// <code>
 /// public sealed class MyFieldSet : FieldSet&lt;MyField&gt;
@@ -48,7 +37,7 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
     /// A set holding these
     /// </summary>
     /// <param name="fields"></param>
-    /// <exception cref="WeequeryException">a field is null, or two claim one key</exception>
+    /// <exception cref="WeequeryException">a field is null, or two claims for one key</exception>
     protected FieldSet(IEnumerable<TField> fields)
     {
         WeequeryException.ThrowIfNull(fields);
@@ -57,7 +46,7 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
     }
 
     /// <summary>
-    /// Declare a field. Present so a collection initializer works, which is the readable way to write a set.
+    /// Declare a field. Present so a collection initializer works
     /// </summary>
     /// <param name="field"></param>
     /// <returns>this, so it can be chained</returns>
@@ -74,7 +63,7 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
         return this;
     }
 
-    /// <summary>The field a key means, or null where nothing declared it</summary>
+    /// <summary>Find the field matching the key, if it exists</summary>
     /// <param name="key"></param>
     /// <returns></returns>
     public TField? Find(string? key)
@@ -83,10 +72,10 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
     }
 
     /// <summary>
-    /// The field a key means, refusing what nobody declared.
+    /// The field for a given key
     /// </summary>
     /// <param name="key"></param>
-    /// <param name="what">what is being attempted, so the message says where the key came from</param>
+    /// <param name="what">what is being attempted, for reporting</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">nothing declared the key</exception>
     public TField Resolve(string? key, string what)

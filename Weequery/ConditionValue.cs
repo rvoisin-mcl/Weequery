@@ -2,8 +2,7 @@ namespace Weequery;
 
 /// <summary>
 /// Builds the operands a condition compares against, see <see cref="ConditionValue{T}"/>. Separate from the
-/// record so that the type can be inferred for a value and fixed to string for a key, which is what a key always
-/// is.
+/// record so that the type can be inferred for a value and fixed to string for a key
 /// </summary>
 public static class ConditionValue
 {

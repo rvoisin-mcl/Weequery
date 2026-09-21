@@ -26,7 +26,7 @@ internal static class QueryTokenizer
     }
 
     /// <summary>
-    /// Whether text can appear unquoted and come back as the single Word token it went in as.
+    /// If text can appear unquoted and come back as the single Word token it went in as.
     /// <para>
     /// This is the rule <see cref="QueryWriter"/> uses to decide what needs quoting, so that the writer and the
     /// tokenizer cannot drift apart. Anything containing a terminator has to be quoted, and so do the three
@@ -262,7 +262,7 @@ internal static class QueryTokenizer
 
     /// <summary>
     /// Read an unquoted word, promoting the conjunction keywords to their symbolic equivalents.
-    /// Everything else stays a Word; whether it is a field, an operator name or a literal is decided by position.
+    /// Everything else stays a Word; if it is a field, an operator name or a literal is decided by position.
     /// </summary>
     /// <returns>index of the first character after the word</returns>
     private static int ReadWord(string query, int start, List<QueryToken> tokens)

@@ -18,7 +18,7 @@ public static class ConditionFunctions
     public static string GetOperationString(Operator op, QueryStyle style = QueryStyle.Native)
     {
         // Native and SQL agree on the comparison symbols and part company on the conjunctions, which Native
-        // writes as words in upper case. The deprecated styles are still written: that is what deprecated means.
+        // writes as words in upper case.
 #pragma warning disable CS0618
         var symbolic = (style == QueryStyle.CSharp);
         var native = (style == QueryStyle.Native);
@@ -86,8 +86,6 @@ public static class ConditionFunctions
             case Operator.DoesNotMatch:
                 return "DoesNotMatch";
 
-            // One spelling each, in every style. The quantifiers arrived with Native and were never given a
-            // symbolic or an SQL form to be deprecated out of.
             case Operator.Any:
                 return "Any";
 
@@ -118,29 +116,16 @@ public static class ConditionFunctions
     /// <remarks>
     /// <para>
     /// The round trip preserves meaning, not types: values are written as text and come back as string valued
-    /// conditions, exactly as <see cref="PackedCondition.Unpack()"/> produces them, and the expression builder
-    /// parses them against the bound property's type when the query is built. So
-    /// <c>ParseQuery(condition.ToQuery())</c> filters the same rows as <c>condition</c>, but is not necessarily
-    /// the same object graph.
-    /// </para>
-    /// <para>
-    /// One consequence worth knowing if you compare the text: a typed condition writes its values unquoted, since
-    /// a number or a date reads better that way, while a condition that came from the parser holds strings and
-    /// writes them quoted. So <c>ParseQuery(x.ToQuery()).ToQuery()</c> can differ from <c>x.ToQuery()</c> by the
-    /// quoting, and is stable from there on. Compare parsed conditions, or the rows they select, rather than the
-    /// original string.
+    /// conditions.
     /// </para>
     /// </remarks>
     /// <param name="condition"></param>
     /// <param name="style">
-    /// which spelling to use for the operators that have more than one. Defaults to
-    /// <see cref="QueryStyle.Native"/>, which writes AND/OR/NOT/=/&lt;&gt; and one word per named operator. Every
-    /// style reads back, see <see cref="QueryStyle"/>
+    /// which spelling to use for the operators that have more than one. Defaults to <see cref="QueryStyle.Native"/>
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
-    /// the condition cannot be expressed in the query language, which can happen for a conjunction with no operands,
-    /// since the language has no way to say "match everything"
+    /// the condition cannot be expressed in the query language
     /// </exception>
     public static string ToQuery(this ICondition condition, QueryStyle style = QueryStyle.Native)
     {
@@ -150,29 +135,16 @@ public static class ConditionFunctions
     /// <summary>
     /// Parse a query string into a condition tree.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Reading is permissive by default, and has to stay that way: every spelling the language has ever accepted
-    /// is sitting in somebody's saved filter, and a deprecated style is one that still works. So with no style
-    /// named, <c>&amp;&amp;</c> and <c>AND</c> are both read, and so are <c>IS NULL</c>, <c>IN</c> and
-    /// <c>BETWEEN</c>.
-    /// </para>
-    /// <para>
-    /// Passing <see cref="QueryStyle.Native"/> asks for the strict grammar instead, where each operator has one
-    /// spelling and every alternate is refused by name. Worth doing where the queries are yours, or where you
-    /// would rather a caller heard about <c>&amp;&amp;</c> now than have it stop working later.
-    /// </para>
-    /// </remarks>
     /// <param name="query">eg. "(Age &gt; 20) AND NOT (Name StartsWith 'Bob')"</param>
     /// <param name="style">
-    /// <see cref="QueryStyle.Native"/> to accept only the one spelling of each operator. Null, or either
-    /// deprecated style, accepts every spelling, which is what reading has always done
+    /// <see cref="QueryStyle.Native"/> to accept only the canon spelling of each operator. Either
+    /// deprecated style accepts every spelling.
     /// </param>
     /// <returns>null if the query is empty or whitespace</returns>
     /// <exception cref="WeequeryException">
     /// the query is malformed, or spells an operator a way the requested style does not accept
     /// </exception>
-    public static ICondition? ParseQuery(string query, QueryStyle? style = null)
+    public static ICondition? ParseQuery(string query, QueryStyle style = QueryStyle.Native)
     {
         return QueryParser.Parse(query, style);
     }
@@ -194,16 +166,15 @@ public static class ConditionFunctions
     public record NumberOfValuesRequired(int Minimum, int Maximum);
 
     /// <summary>
-    /// Check a value count against what the operator takes.
+    /// Check a value count against what the operator can use.
     /// <para>
     /// Called when a condition is built and again when it is turned into an expression. The second time is not
     /// redundant: a condition holds its values in a <see cref="List{T}"/> that a caller can still add to, so what
-    /// it holds when the query is built is what actually becomes parameters, and that is the count the provider
-    /// will be handed.
+    /// it holds when the query is built is what actually becomes parameters
     /// </para>
     /// </summary>
     /// <param name="op"></param>
-    /// <param name="field">named in the error, since a caller building several conditions needs to know which</param>
+    /// <param name="field">named in the error</param>
     /// <param name="count"></param>
     /// <exception cref="WeequeryException">too few values for the operator, or too many</exception>
     internal static void ValidateValueCount(Operator op, string field, int count)
@@ -215,8 +186,7 @@ public static class ConditionFunctions
             throw new WeequeryException(WeequeryError.OperandCount, $"Not enough values provided for Operator '{op}' on field '{field}', it needs at least {required.Minimum} but got {count}");
         }
 
-        // Naming the limit matters for the IsIn family, where the maximum is a cap rather than a shape,
-        // see MaxValuesInList
+        // IsIn has a cap, see MaxValuesInList
         if (count > required.Maximum)
         {
             throw new WeequeryException(WeequeryError.OperandCount, $"Extra values provided for Operator '{op}' on field '{field}', it accepts at most {required.Maximum} but got {count}");
@@ -224,9 +194,7 @@ public static class ConditionFunctions
     }
 
     /// <summary>
-    /// The values an operator takes, as a range: none for the null tests, one for a comparison, two for a range,
-    /// and up to <see cref="MaxValuesInList"/> for the IsIn family. Checked wherever a condition is built, so a
-    /// query string, a packed condition and a hand built one are all held to the same counts.
+    /// The values an operator takes, as a range. Checked wherever a condition is built.
     /// </summary>
     /// <param name="op"></param>
     /// <returns></returns>
@@ -277,15 +245,11 @@ public static class ConditionFunctions
     }
 
     /// <summary>
-    /// Which of the four comparison shapes an operator belongs to, which is the type that represents it: see
-    /// <see cref="ConditionShape"/>. The counterpart of
-    /// <see cref="GetNumberOfValuesRequiredForOperation"/>, and the single place that decides, so the parser,
-    /// the unpacker and the condition types themselves all agree on which operator goes where.
+    /// Which of the four comparison shapes an operator belongs to
     /// </summary>
     /// <param name="op"></param>
     /// <returns>
-    /// null for <see cref="Operator.And"/>, <see cref="Operator.Or"/> and <see cref="Operator.Not"/>, which
-    /// combine conditions rather than testing a bound property and so have no shape
+    /// null Operators which do not test conditions directly
     /// </returns>
     /// <exception cref="WeequeryException">the operator is not one of the known ones</exception>
     internal static ConditionShape? GetShapeForOperation(Operator op)
@@ -323,7 +287,6 @@ public static class ConditionFunctions
             case Operator.Or:
             case Operator.And:
             case Operator.Not:
-            // A quantifier holds a condition rather than operands, so it has no comparison shape either
             case Operator.Any:
             case Operator.All:
             case Operator.None:
@@ -336,9 +299,7 @@ public static class ConditionFunctions
 
     /// <summary>
     /// Build the comparison an operator's shape calls for, over operands that are already text. The general way
-    /// to build one when the operator is not known until run time, and what the parser and
-    /// <see cref="PackedCondition.Unpack()"/> both use, since both arrive with an operator and a list and have to
-    /// land on the type that holds that many.
+    /// to build one when the operator is not known until runtime.
     /// </summary>
     /// <param name="op"></param>
     /// <param name="field"></param>
@@ -396,7 +357,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsEqualTest<T>(this IConjunctionCondition conjunction, string field, T value, ValueSource source = ValueSource.Raw)
     {
@@ -412,7 +373,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsNotEqualTest<T>(this IConjunctionCondition conjunction, string field, T value, ValueSource source = ValueSource.Raw)
     {
@@ -428,7 +389,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsLessThanTest<T>(this IConjunctionCondition conjunction, string field, T value, ValueSource source = ValueSource.Raw)
     {
@@ -444,7 +405,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsLessThanOrEqualToTest<T>(this IConjunctionCondition conjunction, string field, T value, ValueSource source = ValueSource.Raw)
     {
@@ -460,7 +421,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsGreaterThanTest<T>(this IConjunctionCondition conjunction, string field, T value, ValueSource source = ValueSource.Raw)
     {
@@ -476,7 +437,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsGreaterThanOrEqualToTest<T>(this IConjunctionCondition conjunction, string field, T value, ValueSource source = ValueSource.Raw)
     {
@@ -509,9 +470,9 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value1">the low end, inclusive</param>
-    /// <param name="source1">whether value1 is something to compare against or the key of another bound property</param>
+    /// <param name="source1">if value1 is something to compare against or the key of another bound property</param>
     /// <param name="value2">the high end, inclusive</param>
-    /// <param name="source2">whether value2 is something to compare against or the key of another bound property</param>
+    /// <param name="source2">if value2 is something to compare against or the key of another bound property</param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsBetweenTest<T>(this IConjunctionCondition conjunction, string field, T value1, ValueSource source1, T value2, ValueSource source2)
     {
@@ -544,9 +505,9 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value1">the low end, inclusive</param>
-    /// <param name="source1">whether value1 is something to compare against or the key of another bound property</param>
+    /// <param name="source1">if value1 is something to compare against or the key of another bound property</param>
     /// <param name="value2">the high end, inclusive</param>
-    /// <param name="source2">whether value2 is something to compare against or the key of another bound property</param>
+    /// <param name="source2">if value2 is something to compare against or the key of another bound property</param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsNotBetweenTest<T>(this IConjunctionCondition conjunction, string field, T value1, ValueSource source1, T value2, ValueSource source2)
     {
@@ -578,7 +539,7 @@ public static class ConditionFunctions
     /// <typeparam name="T"></typeparam>
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
-    /// <param name="values">the operands to test against, each carrying whether it is a value or the key of another bound property, see <see cref="ConditionValue{T}"/></param>
+    /// <param name="values">the operands to test against, each carrying if it is a value or the key of another bound property, see <see cref="ConditionValue{T}"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsInTest<T>(this IConjunctionCondition conjunction, string field, IEnumerable<ConditionValue<T>> values)
     {
@@ -610,7 +571,7 @@ public static class ConditionFunctions
     /// <typeparam name="T"></typeparam>
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
-    /// <param name="values">the operands to test against, each carrying whether it is a value or the key of another bound property, see <see cref="ConditionValue{T}"/></param>
+    /// <param name="values">the operands to test against, each carrying if it is a value or the key of another bound property, see <see cref="ConditionValue{T}"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsNotInTest<T>(this IConjunctionCondition conjunction, string field, IEnumerable<ConditionValue<T>> values)
     {
@@ -625,7 +586,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddStartsWithTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -640,7 +601,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddDoesNotStartWithTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -655,7 +616,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddEndsWithTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -670,7 +631,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddDoesNotEndWithTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -685,7 +646,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddContainsTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -700,7 +661,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddDoesNotContainTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -728,7 +689,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddIsMatchTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -743,7 +704,7 @@ public static class ConditionFunctions
     /// <param name="conjunction"></param>
     /// <param name="field"></param>
     /// <param name="value"></param>
-    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <param name="source">if the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/></param>
     /// <returns></returns>
     public static IConjunctionCondition AddDoesNotMatchTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
     {
@@ -753,19 +714,8 @@ public static class ConditionFunctions
     }
 
     /// <summary>
-    /// Split a field into the key it names and the index it is taken at, where it carries one.
+    /// Split a field into the key it names and the index it is taken at, if one is present.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// A sort, an operand and a projected field all hold an index in the field's own text, having nowhere else
-    /// to put it: "Tallies[apples]" is the key Tallies at the index apples. A comparison holds the two apart, in
-    /// <see cref="Interfaces.IBound.Field"/> and <see cref="Interfaces.IBound.Index"/>, so it needs none of this.
-    /// </para>
-    /// <para>
-    /// Public because anything reading a condition has to take the two apart the same way this library does, and
-    /// the alternative is every such thing writing its own and one of them getting a nested bracket wrong.
-    /// </para>
-    /// </remarks>
     /// <param name="field">a field name, which may carry an index</param>
     /// <returns>the key, and the index or null where there is none</returns>
     /// <exception cref="WeequeryException">the field is null or empty</exception>
@@ -777,7 +727,7 @@ public static class ConditionFunctions
     }
 
     /// <summary>
-    /// Every field a condition names, including the ones its operands name, without duplicates.
+    /// Every unique field a condition names, including the ones its operands name
     /// </summary>
     /// <remarks>
     /// <para>
@@ -793,8 +743,7 @@ public static class ConditionFunctions
     /// </para>
     /// <para>
     /// Keys carry their index where a condition tested one, so "Tallies[apples]" comes back as it was written.
-    /// Names are compared without regard to case, as they are matched everywhere else, and the first spelling
-    /// seen is the one kept.
+    /// Names are compared without case-insensitivily, the first variaion seen is the one used
     /// </para>
     /// </remarks>
     /// <param name="condition">null gives an empty list</param>
@@ -809,19 +758,15 @@ public static class ConditionFunctions
     }
 
     /// <summary>
-    /// One level of <see cref="FieldsUsed"/>.
+    /// Gather one level of <see cref="FieldsUsed"/>.
     /// </summary>
     /// <remarks>
-    /// Stops at <see cref="ConditionNesting.MaxDepth"/> rather than throwing there. This reports what a condition
-    /// names, and a tree too deep to be built is still a tree someone may want to look at; the refusal belongs to
-    /// whatever tries to use it.
+    /// Stops at <see cref="ConditionNesting.MaxDepth"/>
     /// </remarks>
     private static void Collect(ICondition? condition, Dictionary<string, string> seen, int depth)
     {
         if ((condition is null) || ConditionNesting.IsTooDeep(depth)) { return; }
 
-        // Read where it lies rather than unpacked: the same members are already on it, and unpacking a tree only
-        // to read the names off it would refuse a deep one where this can simply stop
         if (condition is PackedCondition packed)
         {
             Keep(seen, Indexed(packed.Field, packed.Index));
@@ -843,7 +788,7 @@ public static class ConditionFunctions
         }
 
         // Names a collection and holds a condition scoped to one of its elements. The collection is a field of
-        // the entity; what is inside it is not, so the walk stops here.
+        // the entity; what is inside it is not, stop here
         if (condition is QuantifiedCondition quantified)
         {
             Keep(seen, quantified.Field);
@@ -856,8 +801,7 @@ public static class ConditionFunctions
 
             if (condition is IBoundCondition valued)
             {
-                // An operand may name another bound property rather than carrying a value, and that is a field
-                // this query uses just as much as the one on the left of the operator
+                // An operand can use bindings on both sides of the operator
                 foreach (var operand in valued.StringifyOperands().Where(operand => operand.NamesProperty))
                 {
                     Keep(seen, operand.Value);

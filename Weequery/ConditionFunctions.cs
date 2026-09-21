@@ -163,7 +163,7 @@ public static class ConditionFunctions
     /// </summary>
     /// <param name="Minimum">fewer than this is refused</param>
     /// <param name="Maximum">more than this is refused</param>
-    public record NumberOfValuesRequired(int Minimum, int Maximum);
+    internal record NumberOfValuesRequired(int Minimum, int Maximum);
 
     /// <summary>
     /// Check a value count against what the operator can use.
@@ -199,7 +199,7 @@ public static class ConditionFunctions
     /// <param name="op"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
-    public static NumberOfValuesRequired GetNumberOfValuesRequiredForOperation(Operator op)
+    internal static NumberOfValuesRequired GetNumberOfValuesRequiredForOperation(Operator op)
     {
         switch (op)
         {

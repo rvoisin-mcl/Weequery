@@ -68,8 +68,8 @@ public class ProviderTests
             "HireDate > 2020-01-01",
             "BirthDate IsNull",
             "Classification == Irreplacable",
-            "!(Pay > 10000) && (IsActive == true)",
-            "((Pay > 15000) || (Pay < 5000)) && (IsActive == true)",
+            "NOT (Pay > 10000) AND (IsActive == true)",
+            "((Pay > 15000) OR (Pay < 5000)) AND (IsActive == true)",
         })
         {
             var sql = SqlFor(provider, query);
@@ -264,8 +264,8 @@ public class ProviderTests
             }
 
             Assert.Equal(["Alice", "Charlie"], Names("Pay > 10000"));
-            Assert.Equal(["Bob", "David"], Names("!(Pay > 10000) && (IsActive == true)"));
-            Assert.Equal(["Bob"], Names("((Pay > 15000) || (Pay < 5000)) && (IsActive == true)"));
+            Assert.Equal(["Bob", "David"], Names("NOT (Pay > 10000) AND (IsActive == true)"));
+            Assert.Equal(["Bob"], Names("((Pay > 15000) OR (Pay < 5000)) AND (IsActive == true)"));
             Assert.Equal(["Alice", "David"], Names("Pay IsBetween (8000, 12000)"));
             Assert.Equal(["Bob"], Names("Alias IsNull"));
             Assert.Equal(["Alice", "Charlie", "David"], Names("Alias IsNotNull"));

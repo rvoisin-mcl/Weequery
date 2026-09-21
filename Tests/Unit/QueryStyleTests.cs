@@ -30,7 +30,7 @@ public class QueryStyleTests
 {
     private static ICondition Parse(string query)
     {
-        return ConditionFunctions.ParseQuery(query)!;
+        return ConditionFunctions.ParseQuery(query, QueryStyle.CSharp)!;
     }
 
     private static string[] Matching(ICondition condition)
@@ -166,8 +166,8 @@ public class QueryStyleTests
     {
         var condition = Parse(query);
 
-        Assert.NotNull(ConditionFunctions.ParseQuery(condition.ToQuery(QueryStyle.CSharp)));
-        Assert.NotNull(ConditionFunctions.ParseQuery(condition.ToQuery(QueryStyle.Sql)));
+        Assert.NotNull(ConditionFunctions.ParseQuery(condition.ToQuery(QueryStyle.CSharp), QueryStyle.CSharp));
+        Assert.NotNull(ConditionFunctions.ParseQuery(condition.ToQuery(QueryStyle.Sql), QueryStyle.Sql));
     }
 
     /// <summary>

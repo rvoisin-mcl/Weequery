@@ -11,7 +11,7 @@ namespace Weequery;
 /// and uses round-trip formats, so a condition packed on one host produces the same values when unpacked on another.
 /// </para>
 /// </summary>
-public static class ValueFormat
+internal static class ValueFormat
 {
     /// <summary>
     /// Render a value as a string that <see cref="Parse"/> can turn back into the same value, whatever the

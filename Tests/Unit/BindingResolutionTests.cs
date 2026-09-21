@@ -498,7 +498,7 @@ public class BindingResolutionTests
     [Fact]
     public void StandardIsReachableAndComposesWithAWithExpression()
     {
-        var settings = BindingResolutionSettings.Standard with
+        var settings = BindingResolutionSettings.Default with
         {
             IgnorePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pay" },
         };
@@ -514,7 +514,7 @@ public class BindingResolutionTests
     [Fact]
     public void AnIgnoredPathIsNotBoundAndNotDescendedInto()
     {
-        var settings = BindingResolutionSettings.Standard with
+        var settings = BindingResolutionSettings.Default with
         {
             IgnorePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Left" },
         };
@@ -533,7 +533,7 @@ public class BindingResolutionTests
     [Fact]
     public void ATrailingPeriodBindsThePropertyButStopsThere()
     {
-        var settings = BindingResolutionSettings.Standard with
+        var settings = BindingResolutionSettings.Default with
         {
             IgnorePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Left." },
         };
@@ -548,7 +548,7 @@ public class BindingResolutionTests
     public void IgnorePathsAreMatchedWithoutRegardToCase()
     {
         // Given with the default comparer, so the copy constructor is what has to fix it
-        var settings = BindingResolutionSettings.Standard with { IgnorePaths = ["lEfT"] };
+        var settings = BindingResolutionSettings.Default with { IgnorePaths = ["lEfT"] };
 
         Assert.DoesNotContain("Left", Paths<Envelope>(1, settings));
     }
@@ -556,7 +556,7 @@ public class BindingResolutionTests
     [Fact]
     public void AnIgnoredTypeIsLeftOutWhereverItAppears()
     {
-        var settings = BindingResolutionSettings.Standard with { IgnoreTypes = [typeof(Corner)] };
+        var settings = BindingResolutionSettings.Default with { IgnoreTypes = [typeof(Corner)] };
 
         var paths = Paths<Envelope>(1, settings);
 
@@ -566,8 +566,8 @@ public class BindingResolutionTests
     [Fact]
     public void AnIgnoredTypeCanCatchWhatDerivesFromItWhenAsked()
     {
-        var exact = BindingResolutionSettings.Standard with { IgnoreTypes = [typeof(object)] };
-        var assignable = BindingResolutionSettings.Standard with
+        var exact = BindingResolutionSettings.Default with { IgnoreTypes = [typeof(object)] };
+        var assignable = BindingResolutionSettings.Default with
         {
             IgnoreTypes = [typeof(object)],
             IgnoreTypeWhenAssignable = true,

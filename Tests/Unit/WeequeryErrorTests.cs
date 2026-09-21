@@ -146,7 +146,7 @@ public class WeequeryErrorTests
             { WeequeryError.KeyInvalid, "a key the language has claimed", () => new BindingRequest(nameof(Minion.Name), "And") },
             { WeequeryError.KeyTaken, "two bindings under one key", () => Bound().BindProperty(minion => minion.Pay, nameof(Minion.Name)) },
             { WeequeryError.ArgumentMissing, "a null where one is required", () => Bound().ApplySorts((IEnumerable<Sort>)[null!]) },
-            { WeequeryError.ArgumentInvalid, "a negative page", () => Bound().ApplyPagination(10, -1) },
+            { WeequeryError.ArgumentInvalid, "a page size and page that cannot be combined", () => Bound().ApplyPagination(1000, int.MaxValue) },
             { WeequeryError.PathInvalid, "a path that resolves to nothing", () => Bound().BindProperty("Nowhere.At.All") },
             { WeequeryError.NestingTooDeep, "a condition past the depth limit", () => ConditionFunctions.ParseQuery(TooDeep()) },
         };

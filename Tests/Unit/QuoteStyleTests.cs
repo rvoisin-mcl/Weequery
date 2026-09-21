@@ -77,7 +77,7 @@ public class QuoteStyleTests
     [Fact]
     public void MixedQuotesInOneQueryAreFine()
     {
-        Assert.Equal(["Alice"], Matching("(Name == \"Alice Fox\") && (Alias == 'Ghost')"));
+        Assert.Equal(["Alice"], Matching("(Name = \"Alice Fox\") AND (Alias = 'Ghost')"));
     }
 
     [Fact]

@@ -159,7 +159,7 @@ public class BindingSetReuseTests
 
         // One condition over both, so the two bindings have to compose
         var result = inquiry
-            .ApplyCondition("(Pay > 1000) && (IsActive == true)")
+            .ApplyCondition("(Pay > 1000) AND (IsActive == true)")
             .Build()
             .ToList();
 

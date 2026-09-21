@@ -90,7 +90,14 @@ public class Inquiry<T> where T : class
     /// </remarks>
     public Projection AppliedProjection { get { return Projected; } }
 
-    private int PageSize { get; set; } = -1;
+    /// <summary>
+    /// What <see cref="PageSize"/> holds where no size has been named, so that
+    /// <see cref="InquirySettings.DefaultPageSize"/> is the one that decides. Not zero, which would read as a
+    /// page holding nothing.
+    /// </summary>
+    private const int NoPageSize = -1;
+
+    private int PageSize { get; set; } = NoPageSize;
     private int Page { get; set; } = -1;
 
     /// <summary>
@@ -180,6 +187,16 @@ public class Inquiry<T> where T : class
     /// </remarks>
     public static TimeSpan MatchTimeout { get; set; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// What this query decides for itself, see <see cref="InquirySettings"/>. Never null:
+    /// <see cref="InquirySettings.Default"/> where the caller gave none.
+    /// </summary>
+    /// <remarks>
+    /// Per query rather than per process, unlike <see cref="MatchTimeout"/>, because the rules a comparison
+    /// follows are part of what the caller is asking rather than a bound on what it may cost.
+    /// </remarks>
+    public InquirySettings Settings { get; init; } = InquirySettings.Default;
+
     internal Inquiry(IQueryable<T> query)
     {
         Query = query;
@@ -225,6 +242,7 @@ public class Inquiry<T> where T : class
             PageSize = PageSize,
             Page = Page,
             DropsUnboundFields = DropsUnboundFields,
+            Settings = Settings,
         };
     }
 
@@ -744,26 +762,56 @@ public class Inquiry<T> where T : class
     /// <para>
     /// Paging without a unique sort applied will yield undefined output
     /// </para>
+    /// <para>
+    /// <b>A size that could not hold a page is read as no size at all</b>, so null, zero and a negative all mean
+    /// the same thing here: take <see cref="InquirySettings.DefaultPageSize"/>, and where there is no default,
+    /// take no window. This is the half of the call that is usually caller input, arriving off a query string
+    /// where a field left out and a field left at zero are the same accident, and a library that answered one
+    /// with a page and the other with a refusal would be drawing a line the caller never knew was there.
+    /// </para>
+    /// <para>
+    /// <b>And a page behind the first one is the first one.</b> Nothing sits back there to be asked for, so a
+    /// negative index is clamped rather than refused, for the same reason and from the same direction: it is a
+    /// number off a form, and the answer a person wants for it is the front of the list.
+    /// </para>
+    /// <para>
+    /// Which leaves one thing this still refuses, and it is not a value, it is a pair. A size and a page that
+    /// multiply past <see cref="int.MaxValue"/> name a row that cannot be counted to, and there is no nearby
+    /// answer to fold that into: the first page is not what was asked for, and the last page is not knowable
+    /// without running the query. So it is refused, and it is the only way out of here that is not a query.
+    /// </para>
     /// </remarks>
-    /// <param name="pageSize">rows per page, must be &gt; 0</param>
-    /// <param name="page">zero based page index, must be &gt;= 0</param>
+    /// <param name="pageSize">
+    /// rows per page. <b>Anything that could not hold a page — null, zero, a negative — is no size at all</b>,
+    /// and <see cref="InquirySettings.DefaultPageSize"/> decides instead; where no default was set either, that
+    /// is no window and the page index is moot. See the remarks
+    /// </param>
+    /// <param name="page">
+    /// zero based page index. <b>A negative one is the first page</b>, there being nothing behind it to ask for
+    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
-    /// either argument is out of range, or combining would cause an integer overflow
+    /// <paramref name="page"/> and a size the caller named combine past <see cref="int.MaxValue"/> rows to skip
     /// </exception>
-    public Inquiry<T> ApplyPagination(int pageSize, int page)
+    public Inquiry<T> ApplyPagination(int? pageSize, int page)
     {
-        if (pageSize <= 0) { throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} must be > 0"); }
-        if (page < 0) { throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(page)} must be >= 0"); }
+        // Neither is refused, because what arrives here is usually a caller's query string, where a field left
+        // out and a field left at nonsense are the same accident and answering one with a page and the other
+        // with a 400 is a distinction nobody asked for. A size that could not hold a page is no size, and the
+        // default decides; a page behind the first one is the first one
+        int size = ((pageSize is int named) && (named > 0)) ? named : NoPageSize;
+        int index = (page > 0) ? page : 0;
 
-        long skip = (long)pageSize * page;
-        if (skip > int.MaxValue)
+        // The one pair with no nearby answer to fold into. Only checkable here where the size is one the caller
+        // named: where it is coming from the settings the pair is not known until the query is built, so
+        // Windowed makes the same check again on what it resolves
+        if ((size > 0) && ((long)size * index > int.MaxValue))
         {
-            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} {pageSize} * {nameof(page)} {page} exceeds {int.MaxValue}");
+            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} {size} * {nameof(page)} {index} exceeds {int.MaxValue}");
         }
 
-        PageSize = pageSize;
-        Page = page;
+        PageSize = size;
+        Page = index;
 
         return this;
     }
@@ -904,6 +952,63 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Apply a whole request at once: its condition, its sorts, the fields it wants read back and the page of
+    /// them it asked for. See <see cref="QueryRequest"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The four calls a request handler was going to make anyway, in the order they have to happen, over a type
+    /// that binds straight off a query string.
+    /// <code>
+    /// var (page, matches) = _context.Minions
+    ///     .WithWeequery()
+    ///     .BindProperties(MinionBindings)
+    ///     .ApplyRequest(request, DefaultSort)
+    ///     .BuildPagedProjected();
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>A member the request did not name is a member it is saying nothing about</b>, and what that means is
+    /// whatever it already meant. No condition adds none, and a query that had one keeps it, conditions being
+    /// the one thing here that accumulates. No sorts takes <paramref name="defaultSort"/>. No page size takes
+    /// <see cref="InquirySettings.DefaultPageSize"/>. <b>No fields clears any projection already applied</b>,
+    /// which is the odd one out and is so because a projection is one list rather than something that
+    /// accumulates, see <see cref="ApplyProjection(Projection?)"/>: the request is the caller saying which
+    /// columns they want, and naming none of them means all of the ones they may have.
+    /// </para>
+    /// <para>
+    /// <b>It refuses as its parts refuse.</b> Malformed text throws where the corresponding Apply would have
+    /// thrown, and the first fault wins, so a request with a bad filter and a bad sort reports the filter.
+    /// <see cref="Validate(QueryRequest, IEnumerable{Sort}?, QueryStyle)"/> is the one that reports all of them
+    /// and throws none, and is worth asking first wherever the request came from outside.
+    /// </para>
+    /// </remarks>
+    /// <param name="request">the caller's query; null is a NOP</param>
+    /// <param name="defaultSort">
+    /// what to sort by where the request named no sorts, which is worth supplying wherever the query is paged,
+    /// since a page of an unordered query holds arbitrary rows. See <see cref="ApplyPagination"/>
+    /// </param>
+    /// <param name="style">
+    /// how strictly to read the text halves. <see cref="QueryStyle.Native"/>, the default, accepts one spelling
+    /// per operator, see <see cref="QueryStyle"/>
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">
+    /// any half of the request is malformed, or its paging is out of range
+    /// </exception>
+    public Inquiry<T> ApplyRequest(QueryRequest? request, IEnumerable<Sort>? defaultSort = null, QueryStyle style = QueryStyle.Native)
+    {
+        if (request is null) { return this; }
+
+        ApplyCondition(request.UnpackCondition(style));
+        ApplySorts(request.UnpackSorts(defaultSort, style));
+        ApplyProjection(request.UnpackProjection());
+        ApplyPagination(request.PageSize, request.Page ?? 0);
+
+        return this;
+    }
+
+    /// <summary>
     /// The predicate for one condition, bounded where it is this process that will run it.
     /// </summary>
     /// <remarks>
@@ -919,7 +1024,7 @@ public class Inquiry<T> where T : class
 
         // LINQ to Objects, which is what AsQueryable over a list gives. Anything else is a provider that will be
         // handed the expression rather than running it here.
-        return (Query.Provider is EnumerableQuery) ? RegexTimeout.Apply(predicate) : predicate;
+        return (Query.Provider is EnumerableQuery) ? StringComparisonRules.Apply(RegexTimeout.Apply(predicate), Settings) : predicate;
     }
 
     /// <summary>
@@ -1036,13 +1141,186 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// How many rows a page holds, which is the size the caller named or, where it named none,
+    /// <see cref="InquirySettings.DefaultPageSize"/>.
+    /// </summary>
+    /// <returns>zero where nothing named a size and no default was set, which is the query that has no window</returns>
+    private int EffectivePageSize()
+    {
+        return (PageSize > 0) ? PageSize : (Settings.DefaultPageSize ?? 0);
+    }
+
+    /// <summary>
     /// The query narrowed to the requested page, or as it stands where no paging was asked for.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Where <see cref="InquirySettings.DefaultPageSize"/> was set, a query that named no size is still windowed,
+    /// and a query that named no page is windowed at the first one. That is what having a default means: the
+    /// caller omitting the field gets the default rather than getting everything.
+    /// </para>
+    /// </remarks>
     /// <param name="query"></param>
     /// <returns></returns>
+    /// <exception cref="WeequeryException">
+    /// the resolved size and the page combine past <see cref="int.MaxValue"/> rows to skip.
+    /// <see cref="ApplyPagination"/> makes the same check on the pair it was handed; this is the one for the pair
+    /// only settled here, where the size came from the settings
+    /// </exception>
     private IQueryable<T> Windowed(IQueryable<T> query)
     {
-        return (PageSize > 0) ? query.Skip(PageSize * Page).Take(PageSize) : query;
+        int pageSize = EffectivePageSize();
+        if (pageSize <= 0) { return query; }
+
+        int page = (Page > 0) ? Page : 0;
+
+        long skip = (long)pageSize * page;
+        if (skip > int.MaxValue)
+        {
+            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"page size {pageSize} * page {page} exceeds {int.MaxValue}");
+        }
+
+        return query.Skip((int)skip).Take(pageSize);
+    }
+
+    /// <summary>
+    /// Find out what is wrong with this query without building it, and without throwing. See
+    /// <see cref="ValidationResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything <see cref="Build"/> would refuse, reported rather than raised, and all of it rather than the
+    /// first of it. For the handler answering a caller who filled in a form and got it wrong:
+    /// <code>
+    /// var problems = inquiry.Validate();
+    /// if (!problems.IsValid) { return BadRequest(problems.Problems.Select(problem =&gt; problem.ToString())); }
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>It looks at all three halves</b>, since a query has three ways to be wrong and a caller fixing them one
+    /// round trip at a time is the thing worth avoiding. The condition is resolved against the bindings, then the
+    /// sorts, then the projection where one was applied. Each is looked at whatever the ones before it said.
+    /// </para>
+    /// <para>
+    /// <b>Only what is applied is looked at.</b> A projection nobody asked for validates, being the allow-list's
+    /// own answer to "all of it"; paging was already held to its range by <see cref="ApplyPagination"/>, where a
+    /// bad page is refused as it is written rather than kept to be complained about later. What arrives as text
+    /// is the same: <see cref="ApplyCondition(string, QueryStyle)"/> parses when it is called, so a malformed
+    /// string has thrown long before this. <see cref="Validate(QueryRequest, IEnumerable{Sort}?, QueryStyle)"/>
+    /// is the overload that reads the text too, and is the one for a request straight off the wire.
+    /// </para>
+    /// <para>
+    /// <b>Nothing is executed and nothing is kept.</b> The queries this builds to see whether they can be built
+    /// are thrown away, so this costs what a build costs and changes nothing about what a later build does. The
+    /// one thing it does leave behind is <see cref="DroppedFields"/>, which it fills exactly as a build fills it,
+    /// since what a query quietly drops is worth knowing at the same time as what it refuses outright, see
+    /// <see cref="IgnoreUnboundFields"/>.
+    /// </para>
+    /// <para>
+    /// <b>Valid means it will build</b>, which is a narrower claim than it will work. A provider may still refuse
+    /// what it is handed — <see cref="Operator.IsMatch"/> against SQL Server is the standing example — and that
+    /// is between the provider and the query, some way past here.
+    /// </para>
+    /// </remarks>
+    /// <returns>the problems, in the order the halves are looked at; never null</returns>
+    public ValidationResult Validate()
+    {
+        // As a build does, and for the same reason: what the last one dropped does not belong to this one
+        Dropped.Clear();
+
+        List<ValidationProblem> problems = [];
+
+        try
+        {
+            var condition = Combined();
+            if (condition is not null) { Predicate(condition); }
+        }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Condition, error.Error, error.Message)); }
+
+        // Against the unfiltered query, so a condition that refused does not take the sorts down with it
+        try { Sorted(Query); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Sort, error.Error, error.Message)); }
+
+        // Only where one was asked for. With none applied this reads every projectable binding, which cannot
+        // refuse anything the bindings themselves did not already refuse when they were made
+        if (!Projected.IsEmpty)
+        {
+            try { Projector(); }
+            catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Projection, error.Error, error.Message)); }
+        }
+
+        return (problems.Count == 0) ? ValidationResult.Valid : new ValidationResult(problems);
+    }
+
+    /// <summary>
+    /// Find out what is wrong with a request before applying it, including the parts of it that have to be read
+    /// before they can be refused. See <see cref="QueryRequest"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one to reach for where the query came from outside. <see cref="ApplyRequest"/> parses as it applies
+    /// and throws on the first thing it cannot read, which is the right behaviour for code that has already
+    /// decided to run the query and the wrong one for code deciding whether to:
+    /// <code>
+    /// var problems = inquiry.Validate(request, DefaultSort);
+    /// if (!problems.IsValid) { return BadRequest(problems.Problems.Select(problem =&gt; problem.ToString())); }
+    ///
+    /// var (page, matches) = inquiry.ApplyRequest(request, DefaultSort).BuildPagedProjected();
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>This Inquiry is not touched.</b> The request is applied to a <see cref="Clone"/> and the copy is what
+    /// gets asked, so asking is free of consequence and the query you go on to build is the one you had. Which
+    /// also means <see cref="DroppedFields"/> is the copy's rather than this one's, and is gone with it — call
+    /// <see cref="Validate()"/> after applying where that list is what you are after.
+    /// </para>
+    /// <para>
+    /// <b>Two passes, so a half can report twice.</b> Reading the text and resolving what it says against the
+    /// bindings are separate failures: a sort clause that will not parse is one problem, and a sort clause that
+    /// parses and names a field nobody bound is another. Every parse fault is reported first, then everything
+    /// <see cref="Validate()"/> finds in what did parse.
+    /// </para>
+    /// <para>
+    /// <b>It validates the request on top of what is already applied</b>, since that is what applying it would
+    /// do: a condition this Inquiry already carries is ANDed with the request's, and is validated alongside it.
+    /// </para>
+    /// </remarks>
+    /// <param name="request">the caller's query; null asks about this Inquiry as it stands, see <see cref="Validate()"/></param>
+    /// <param name="defaultSort">what to sort by where the request named no sorts, as <see cref="ApplyRequest"/> takes it</param>
+    /// <param name="style">how strictly to read the text halves, as <see cref="ApplyRequest"/> takes it</param>
+    /// <returns>the problems, parse faults first; never null</returns>
+    public ValidationResult Validate(QueryRequest? request, IEnumerable<Sort>? defaultSort = null, QueryStyle style = QueryStyle.Native)
+    {
+        if (request is null) { return Validate(); }
+
+        List<ValidationProblem> problems = [];
+        var candidate = Clone();
+
+        ICondition? condition = null;
+        try { condition = request.UnpackCondition(style); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Condition, error.Error, error.Message)); }
+
+        List<Sort>? sorts = null;
+        try { sorts = request.UnpackSorts(defaultSort, style); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Sort, error.Error, error.Message)); }
+
+        Projection? projection = null;
+        try { projection = request.UnpackProjection(); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Projection, error.Error, error.Message)); }
+
+        // Not one of the three halves, so it is reported against the request itself
+        try { candidate.ApplyPagination(request.PageSize, request.Page ?? 0); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.None, error.Error, error.Message)); }
+
+        // Whatever did read, so the rest of the request is still held to the bindings and the caller hears about
+        // all of it at once. A half that did not read is simply not there to ask about
+        candidate.ApplyCondition(condition);
+        candidate.ApplySorts(sorts);
+        candidate.ApplyProjection(projection);
+
+        problems.AddRange(candidate.Validate().Problems);
+
+        return (problems.Count == 0) ? ValidationResult.Valid : new ValidationResult(problems);
     }
 
     /// <summary>
@@ -1251,25 +1529,28 @@ public class Inquiry<T> where T : class
     /// Compile a condition to a plain delegate, for filtering objects already in memory.
     /// </summary>
     /// <remarks>
-    /// This is always in-memory evaluation, so the substring operators follow the framework's string comparison
-    /// rules rather than any database collation: StartsWith and EndsWith are culture sensitive, against
-    /// CultureInfo.CurrentCulture, while Contains is ordinal. A condition run through here can therefore match a
-    /// different set of items than the same condition run against a database. See the remarks on
-    /// <see cref="Operator"/>.
+    /// This is always in-memory evaluation, so the string comparisons follow the rules the caller asked for
+    /// rather than any database collation, see <see cref="InquirySettings.StringComparison"/>. Those default to
+    /// <see cref="StringComparison.Ordinal"/>, which is what a database compares by, so a condition run through
+    /// here answers as the same condition run against a database does; ask for a culture and it need not. See the
+    /// remarks on <see cref="Operator"/>.
     /// <para>
-    /// Because there is no provider here, two things are settled that <see cref="BuildExpression"/> has to leave
-    /// open: an IsMatch is bounded by <see cref="MatchTimeout"/>, and the values are written in as constants
+    /// Because there is no provider here, three things are settled that <see cref="BuildExpression"/> has to
+    /// leave open: the comparison rules above, an IsMatch is bounded by <see cref="MatchTimeout"/>, and the
+    /// values are written in as constants
     /// rather than read out of the boxes that exist to become query parameters, see <see cref="ValueInliner"/>.
     /// The predicate selects exactly what the uncompiled expression selects; it is cheaper to compile and to run.
     /// </para>
     /// </remarks>
     /// <param name="bindingRequests"></param>
     /// <param name="condition"></param>
+    /// <param name="settings">[OPT] the rules to compile in, see <see cref="InquirySettings"/>; the defaults where none are given</param>
     /// <returns></returns>
-    public static Func<T, bool> BuildDelegate(IEnumerable<BindingRequest> bindingRequests, ICondition condition)
+    public static Func<T, bool> BuildDelegate(IEnumerable<BindingRequest> bindingRequests, ICondition condition, InquirySettings? settings = null)
     {
-        // Nothing is going to translate this one, so an IsMatch in it is bounded by MatchTimeout and the values
-        // need not stay reachable as parameters. Inlining last, so anything the bounding put in is covered too.
-        return ValueInliner.Apply(RegexTimeout.Apply(BuildExpression(bindingRequests, condition))).Compile();
+        // Nothing is going to translate this one, so an IsMatch in it is bounded by MatchTimeout, the string
+        // comparisons are told how to compare, and the values need not stay reachable as parameters. Inlining
+        // last, so anything the other two put in is covered too.
+        return ValueInliner.Apply(StringComparisonRules.Apply(RegexTimeout.Apply(BuildExpression(bindingRequests, condition)), settings ?? InquirySettings.Default)).Compile();
     }
 }

@@ -3,7 +3,8 @@ using System.Collections;
 namespace Weequery;
 
 /// <summary>
-/// A declared allow-list, which keys a caller may use and what they mean
+/// A declared allow-list, which keys a caller may use and what they mean. Provided for use by 
+/// translating functions.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -11,7 +12,7 @@ namespace Weequery;
 /// a key means is stated instead of resolved, but behaves in the same fashion.
 /// </para>
 /// <para>
-/// Keys arecase-insensitive, as they are everywhere else in Weequery. What a key carries is the 
+/// Keys are case-insensitive, as they are everywhere else in Weequery. What a key carries is the 
 /// responsibility of <typeparamref name="TField"/>
 /// </para>
 /// <code>

@@ -24,26 +24,29 @@
 /// answers that through the join, and guarding it here is what makes the two give the same answer.
 /// </para>
 /// <para>
-/// Note on string matching. Because evaluation of these will be dependent on the backing source, evalulation may not
-/// be consistent between say, SQL-backed EF and an in-memory List
+/// Note on string comparison. Because evaluation of these will be dependent on the backing source, evaluation may
+/// not be consistent between say, SQL-backed EF and an in-memory List
 /// </para>
 /// <list type="bullet">
 /// <item><description>
 /// In memory (LINQ to Objects, which includes anything built by Weequery&lt;T&gt;.BuildDelegate, or applied to an
-/// IQueryable over an in-memory collection): StartsWith and EndsWith use the framework's culture sensitive
-/// linguistic comparison, against CultureInfo.CurrentCulture, while Contains is ordinal. The three therefore do
-/// not agree with each other.
+/// IQueryable over an in-memory collection): the query says, see
+/// <see cref="InquirySettings.StringComparison"/>. It covers equality, the ordering comparisons, the substring
+/// family, the ranges and the IsIn family, so they all agree with each other. It is
+/// <see cref="StringComparison.Ordinal"/> unless the query asked for something else.
 /// </description></item>
 /// <item><description>
-/// Against a database through EF Core: each operator is translated to SQL (LIKE, instr, strpos and so on) and the
-/// collation of the column decides the result, including if the match is case sensitive.
+/// Against a database through EF Core: each operator is translated to SQL (LIKE, instr, strpos, = and so on) and
+/// the collation of the column decides the result, including if the match is case sensitive.
 /// </description></item>
 /// </list>
-/// The practical consequence is that one condition can match different rows depending on where it runs. For
-/// example, against a value whose first character is a soft hyphen (U+00AD) followed by "Acme", StartsWith 'Acme' matches in memory,
-/// because linguistic comparison treats a soft hyphen as ignorable, but does not match on SQLite, because LIKE
-/// compares the stored characters. Case sensitivity varies by provider as well: LIKE is case insensitive for
-/// ASCII on SQLite but case sensitive on PostgreSQL.
+/// The default compares the characters that were stored, which is what a database does, so the two paths agree
+/// about a given condition unless a query asks them not to. Asking for a culture is what parts them, and is
+/// worth doing where a filter is meant to read the way a person reads: against a value whose first character is
+/// a soft hyphen (U+00AD) followed by "Acme", both StartsWith 'Acme' and = 'Acme' match in memory under
+/// <see cref="StringComparison.CurrentCulture"/>, because linguistic comparison treats a soft hyphen as
+/// ignorable, and neither matches on SQLite. Case sensitivity varies by provider as well and is not something
+/// this settles: LIKE is case insensitive for ASCII on SQLite but case sensitive on PostgreSQL.
 /// </remarks>
 public enum Operator
 {
@@ -122,8 +125,9 @@ public enum Operator
     DoesNotEndWith,
 
     /// <summary>
-    /// Bound property contains the value. See the remarks on <see cref="Operator"/>: in memory this is an ordinal
-    /// comparison, unlike StartsWith and EndsWith, and against a database it follows the column's collation
+    /// Bound property contains the value. See the remarks on <see cref="Operator"/>: in memory this compares by
+    /// the rules the query picked, the same as StartsWith and EndsWith, and against a database it follows the
+    /// column's collation
     /// </summary>
     Contains,
 

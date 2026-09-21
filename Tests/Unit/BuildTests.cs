@@ -125,26 +125,32 @@ public class BuildTests
         Assert.Equal(4, Page(100, 0).Length);
     }
 
+    /// <summary>
+    /// A size that could not hold a page is no size at all rather than a refusal, so with no
+    /// <see cref="InquirySettings.DefaultPageSize"/> to fall back to there is simply no window. See
+    /// <see cref="Inquiry{T}.ApplyPagination"/>, and DefaultPageSizeTests for the half where a default is set.
+    /// </summary>
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(int.MinValue)]
-    public void NonPositivePageSizeIsRejected(int pageSize)
+    public void NonPositivePageSizeIsNoWindowRatherThanARefusal(int pageSize)
     {
-        Assert.Throws<WeequeryException>(() => Page(pageSize, 0));
+        Assert.Equal(["Bob", "David", "Alice", "Charlie"], Page(pageSize, 0));
     }
 
     /// <summary>
-    /// The page argument was never actually checked: the second guard tested pageSize a second time, so a
-    /// negative page slipped through and became a negative Skip.
+    /// A page behind the first one is the first one, there being nothing back there to ask for. What this pins
+    /// is that it never reaches <c>Skip</c> as a negative, which was the original bug here: the second guard
+    /// tested pageSize a second time, so a negative page slipped through and became a negative skip.
     /// </summary>
     [Theory]
     [InlineData(-1)]
     [InlineData(-5)]
     [InlineData(int.MinValue)]
-    public void NegativePageIsRejected(int page)
+    public void NegativePageIsTheFirstPage(int page)
     {
-        Assert.Throws<WeequeryException>(() => Page(10, page));
+        Assert.Equal(["Bob", "David"], Page(2, page));
     }
 
     /// <summary>

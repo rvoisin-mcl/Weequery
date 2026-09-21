@@ -20,7 +20,7 @@ public class SqlOperatorSpellingTests
 {
     private static ICondition Parse(string query)
     {
-        return ConditionFunctions.ParseQuery(query)!;
+        return ConditionFunctions.ParseQuery(query, QueryStyle.Sql)!;
     }
 
     private static string[] Matching(string query)
@@ -28,7 +28,7 @@ public class SqlOperatorSpellingTests
         return MinionTestData.Minions()
             .WithWeequery()
             .BindProperties(Minion.Bindings)
-            .ApplyCondition(query)
+            .ApplyCondition(query, QueryStyle.Sql)
             .Build()
             .ToList()
             .Select(minion => minion.Name.Split(' ')[0])

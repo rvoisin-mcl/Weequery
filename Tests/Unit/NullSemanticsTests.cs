@@ -141,9 +141,9 @@ public class NullSemanticsTests
     /// agree on that too.
     /// </summary>
     [Theory]
-    [InlineData("Alias != 'Ghost'", "!(Alias == 'Ghost')")]
-    [InlineData("Alias DoesNotContain 'a'", "!(Alias Contains 'a')")]
-    [InlineData("Alias IsNotIn ('Ghost')", "!(Alias IsIn ('Ghost'))")]
+    [InlineData("Alias != 'Ghost'", "NOT (Alias == 'Ghost')")]
+    [InlineData("Alias DoesNotContain 'a'", "NOT (Alias Contains 'a')")]
+    [InlineData("Alias IsNotIn ('Ghost')", "NOT (Alias IsIn ('Ghost'))")]
     public void NegatingAConditionIsNotTheSameAsTheNegativeOperator(string negativeOperator, string negatedCondition)
     {
         // Bob has no Alias, so the operator leaves him out and the negation takes him back

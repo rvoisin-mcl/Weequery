@@ -8,16 +8,18 @@ namespace Weequery.Builders;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The single argument string overloads below are chosen on purpose, and the inconsistency between them is known:
-/// string.StartsWith(string) and string.EndsWith(string) compare linguistically against the current culture,
-/// while string.Contains(string) is ordinal. That only shows up when the expression is evaluated in memory; EF
-/// Core turns all six into SQL, where the column's collation decides instead.
+/// The single argument string overloads below are chosen on purpose: they are the ones EF Core translates, so a
+/// condition built from them still works against a database, which is the primary use of this library. The
+/// inconsistency between them is known: string.StartsWith(string) and string.EndsWith(string) compare
+/// linguistically against the current culture, while string.Contains(string) is ordinal.
 /// </para>
 /// <para>
-/// Do not "fix" this by switching to the StringComparison overloads. EF Core cannot translate those, so the
-/// operators would stop working against a database, which is the primary use of this library. The behaviour is
-/// documented for callers on <see cref="Operator"/>, and pinned by the characterization tests in
-/// StringMatchingSemanticsTests.
+/// Do not settle that here by switching to the StringComparison overloads. EF Core cannot translate those, so the
+/// operators would stop working against a database. It is settled instead where the destination is known:
+/// <see cref="StringComparisonRules"/> swaps all three for the overloads taking
+/// <see cref="InquirySettings.StringComparison"/> on the paths that run in this process, which leaves the three
+/// agreeing and leaves a translated query alone. The behaviour is documented for callers on
+/// <see cref="Operator"/>, and pinned by the characterization tests in StringMatchingSemanticsTests.
 /// </para>
 /// </remarks>
 internal class StringExpressionBuilder : ExpressionBuilderBase<string>

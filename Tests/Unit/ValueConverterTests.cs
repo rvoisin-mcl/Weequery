@@ -49,7 +49,7 @@ public class ValueConverterTests
         var inquiry = MinionTestData.Minions()
             .WithWeequery()
             .BindProperty(minion => minion.PreferredCurrency, "Currency",
-                convert: ValueConverter.For<string>(text => text!.ToUpper(), ConversionTarget.Client));
+                convert: ValueConverter.For<string>(text => text!.ToUpper(), ConversionTarget.Value));
 
         Assert.Equal(4, inquiry.ApplyCondition("Currency = 'us$'").Build().Count());
     }
@@ -61,8 +61,8 @@ public class ValueConverterTests
     [Fact]
     public void ClientAloneCannotReachAnUnnormalisedColumn()
     {
-        Assert.Empty(Names(ConversionTarget.Client, "Alias = 'ghost'"));
-        Assert.Empty(Names(ConversionTarget.Client, "Alias = 'GHOST'"));
+        Assert.Empty(Names(ConversionTarget.Value, "Alias = 'ghost'"));
+        Assert.Empty(Names(ConversionTarget.Value, "Alias = 'GHOST'"));
         Assert.Equal(["Alice Fox"], Names(ConversionTarget.Both, "Alias = 'ghost'"));
     }
 
@@ -70,8 +70,8 @@ public class ValueConverterTests
     [Fact]
     public void SourceFoldsOnlyWhatTheRowHolds()
     {
-        Assert.Equal(["Alice Fox"], Names(ConversionTarget.Source, "Alias = 'GHOST'"));
-        Assert.Empty(Names(ConversionTarget.Source, "Alias = 'ghost'"));
+        Assert.Equal(["Alice Fox"], Names(ConversionTarget.Binding, "Alias = 'GHOST'"));
+        Assert.Empty(Names(ConversionTarget.Binding, "Alias = 'ghost'"));
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class ValueConverterTests
     [Fact]
     public void BothIsTheDefaultAndIsTheTwoFlags()
     {
-        Assert.Equal(ConversionTarget.Both, ConversionTarget.Client | ConversionTarget.Source);
+        Assert.Equal(ConversionTarget.Both, ConversionTarget.Value | ConversionTarget.Binding);
         Assert.Equal(ConversionTarget.Both, ValueConverter.For<string>(text => text).Applies);
     }
 
@@ -191,7 +191,7 @@ public class ValueConverterTests
         var inquiry = MinionTestData.Minions()
             .WithWeequery()
             .BindProperty(minion => minion.Morale, "Morale",
-                convert: ValueConverter.For<sbyte>(morale => checked((sbyte)-morale), ConversionTarget.Client));
+                convert: ValueConverter.For<sbyte>(morale => checked((sbyte)-morale), ConversionTarget.Value));
 
         var error = Assert.Throws<WeequeryException>(() => inquiry.ApplyCondition("Morale = -128").Build().ToList());
 
@@ -216,22 +216,76 @@ public class ValueConverterTests
     {
         Assert.Throws<WeequeryException>(() => ValueConverter.For<string>(null!));
     }
-
-    /// <summary>Both sides of a comparison between two properties are source data, so each gets its own</summary>
+    /// <summary>
+    /// Both sides of a comparison between two properties are source data, so each gets its own. They have to be
+    /// the one converter, shared: see <see cref="ComparingTwoPropertiesNormalisedDifferentlyIsRefused"/>.
+    /// </summary>
     [Fact]
     public void ComparingTwoPropertiesUsesEachOnesOwnConverter()
     {
+        var upper = ValueConverter.For<string>(text => text!.ToUpper());
+
         var names = MinionTestData.Minions()
             .WithWeequery()
             .BindProperty(minion => minion.Name)
-            .BindProperty(minion => minion.PreferredCurrency, "Currency", convert: ValueConverter.For<string>(text => text!.ToUpper()))
-            .BindConstant("Wanted", "us$", convert: ValueConverter.For<string>(text => text.ToUpper()))
+            .BindProperty(minion => minion.PreferredCurrency, "Currency", convert: upper)
+            .BindConstant("Wanted", "us$", convert: upper)
             .ApplyCondition("Currency = [Wanted]")
             .Build()
             .ToList()
             .Select(minion => minion.Name);
 
         Assert.Equal(4, names.Count());
+    }
+
+    /// <summary>
+    /// Two sides normalised differently compare one normalisation against the other, which is an answer about
+    /// neither, so it is refused rather than answered. Folding one conversion through the other instead would
+    /// make the comparison depend on which side was written first, and would change what two matching bindings
+    /// mean wherever the conversion is not idempotent.
+    /// </summary>
+    [Fact]
+    public void ComparingTwoPropertiesNormalisedDifferentlyIsRefused()
+    {
+        static Inquiry<Minion> Bound(ValueConverter? left, ValueConverter? right) => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Name, convert: left)
+            .BindProperty(minion => minion.Alias, convert: right);
+
+        var upper = ValueConverter.For<string>(text => text!.ToUpper());
+        var lower = ValueConverter.For<string>(text => text!.ToLower());
+
+        // two different conversions
+        Assert.Throws<WeequeryException>(() => Bound(upper, lower).ApplyCondition("Name == [Alias]").Build().ToList());
+
+        // one side converted and the other not, either way round
+        Assert.Throws<WeequeryException>(() => Bound(upper, null).ApplyCondition("Name == [Alias]").Build().ToList());
+        Assert.Throws<WeequeryException>(() => Bound(null, upper).ApplyCondition("Name == [Alias]").Build().ToList());
+
+        // and two conversions that read alike but are two objects, since nothing here can tell that they agree
+        Assert.Throws<WeequeryException>(() => Bound(upper, ValueConverter.For<string>(text => text!.ToUpper()))
+            .ApplyCondition("Name == [Alias]").Build().ToList());
+
+        // the one converter, shared, is the way to say they agree
+        Assert.Empty(Bound(upper, upper).ApplyCondition("Name == [Alias]").Build().ToList());
+    }
+
+    /// <summary>
+    /// A converter that runs only against a caller's value never reached the accessor, so it is not a difference
+    /// between two sides of a comparison that has no caller's value in it at all
+    /// </summary>
+    [Fact]
+    public void AValueOnlyConverterIsNotADifferenceBetweenTwoProperties()
+    {
+        var names = MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Name, convert: ValueConverter.For<string>(text => text.ToUpper(), ConversionTarget.Value))
+            .BindProperty(minion => minion.Alias)
+            .ApplyCondition("Name == [Alias]")
+            .Build()
+            .ToList();
+
+        Assert.Empty(names);
     }
 
     /// <summary>An index makes a binding of the element's type, which a converter for the collection is not for</summary>

@@ -11,9 +11,12 @@ namespace Weequery.Builders;
 /// <remarks>
 /// <para>
 /// Notes:
-/// String comparison will differ between in-memory and SQL, in-memory will use the current culture, 
-/// SQL behaviour will depend on the column.
-/// EF Core cannot translate StringComparison, do not use as a replacement
+/// String comparison will differ between in-memory and SQL. In memory the query decides, see
+/// <see cref="InquirySettings.StringComparison"/>, which is ordinal unless it says otherwise; SQL
+/// behaviour will depend on the column.
+/// EF Core cannot translate StringComparison, so the overloads taking one are never built here. They are swapped
+/// in afterwards, and only where the expression is known to be staying in this process, see
+/// <see cref="StringComparisonRules"/>.
 /// </para>
 /// </remarks>
 internal static class StringMethods

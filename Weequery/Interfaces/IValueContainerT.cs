@@ -5,7 +5,7 @@
 /// without being one
 /// </summary>
 /// <typeparam name="T">what the values are, before they are stringified for transport</typeparam>
-public interface IValueContainer<T>
+internal interface IValueContainer<T>
 {
     /// <summary>
     /// Values to be used to test the condition

@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Weequery;
 
 /// <summary>
-/// One of a condition's valuess, and what it is: a value to compare against, or another bound
+/// One of a condition's values, and what it is: a value to compare against, or another bound
 /// property to compare against.
 /// </summary>
 /// <remarks>
@@ -37,7 +37,7 @@ public record ConditionValue<T>(ValueSource Source, T Value)
 
     /// <summary>
     /// The same operand held as text, formatted invariantly and round-trippably, which is the form it travels in.
-    /// See <see cref="ValueFormat.ToInvariantString"/>. A key is already text, so it comes back as itself.
+    /// A key is already text, so it comes back as itself.
     /// </summary>
     /// <returns></returns>
     public ConditionValue<string> Stringify()

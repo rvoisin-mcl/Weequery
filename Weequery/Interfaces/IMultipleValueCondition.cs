@@ -9,5 +9,5 @@ namespace Weequery.Interfaces;
 /// Non-generic, for typing and for the walks that only want the operands as text. Implementations should derive
 /// from <see cref="IMultipleValueCondition{T}"/>; <see cref="MultipleValueCondition{T}"/> is the one here.
 /// </remarks>
-public interface IMultipleValueCondition : IBoundCondition
+internal interface IMultipleValueCondition : IBoundCondition
 { }

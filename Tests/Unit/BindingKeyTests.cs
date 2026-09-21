@@ -394,27 +394,34 @@ public class BindingKeyTests
 
     /// <summary>
     /// And alike for a path that names nothing: null, nothing at all, and nothing but an empty segment are the
-    /// one mistake however the path is spelled, and are reported against the path rather than against a key the
-    /// caller never gave.
+    /// one mistake however the path is spelled, and are reported the same way. Each names its own parameter,
+    /// since that is the argument the caller actually passed.
     /// </summary>
     [Fact]
     public void TheTwoConstructorsRefuseAPathThatNamesNothingAlike()
     {
         var fromNullString = Assert.Throws<WeequeryException>(() => new BindingRequest((string)null!, null));
-        var fromNullArray = Assert.Throws<WeequeryException>(() => new BindingRequest((string[])null!, null));
         var fromEmptyString = Assert.Throws<WeequeryException>(() => new BindingRequest("", null));
+        var fromNullArray = Assert.Throws<WeequeryException>(() => new BindingRequest((string[])null!, null));
         var fromEmptyArray = Assert.Throws<WeequeryException>(() => new BindingRequest([], null));
         var fromEmptySegment = Assert.Throws<WeequeryException>(() => new BindingRequest([""], null));
 
-        foreach (var thrown in new[] { fromNullArray, fromEmptyString, fromEmptyArray, fromEmptySegment })
+        // one error for the one mistake, whichever constructor was handed it
+        foreach (var thrown in new[] { fromEmptyString, fromNullArray, fromEmptyArray, fromEmptySegment })
         {
             Assert.Equal(fromNullString.Error, thrown.Error);
-            Assert.Equal(fromNullString.Message, thrown.Message);
         }
 
-        // named for the argument actually at fault
         Assert.Equal(WeequeryError.ArgumentMissing, fromNullString.Error);
-        Assert.Contains("propertyPath", fromNullString.Message);
+
+        // and the same words, each against the argument it was given
+        Assert.Equal("propertyPath cannot be null or empty", fromNullString.Message);
+        Assert.Equal(fromNullString.Message, fromEmptyString.Message);
+
+        foreach (var thrown in new[] { fromNullArray, fromEmptyArray, fromEmptySegment })
+        {
+            Assert.Equal("pathSegments cannot be null or empty", thrown.Message);
+        }
     }
 
     // ---------- the predicate on its own ----------

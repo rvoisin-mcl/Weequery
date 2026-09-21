@@ -19,10 +19,10 @@ namespace Tests.Unit;
 /// </summary>
 public class NativeStyleTests
 {
-    /// <summary>Read permissively, which is what reading has always done</summary>
+    /// <summary>Read permissively, which now has to be asked for: the default is the strict grammar</summary>
     private static ICondition Parse(string query)
     {
-        return ConditionFunctions.ParseQuery(query)!;
+        return ConditionFunctions.ParseQuery(query, QueryStyle.CSharp)!;
     }
 
     /// <summary>Read under the strict grammar</summary>
@@ -417,7 +417,7 @@ public class NativeStyleTests
 
     // ---------- reachable from the places a query actually arrives ----------
 
-    private static string[] NamesFrom(string query, QueryStyle? style)
+    private static string[] NamesFrom(string query, QueryStyle style)
     {
         return MinionTestData.Minions()
             .WithWeequery()
@@ -437,9 +437,9 @@ public class NativeStyleTests
 
         Assert.Throws<WeequeryException>(() => inquiry.ApplyCondition("(Pay > 1) && (IsActive = true)", QueryStyle.Native));
 
-        // the same question in the one spelling goes through, and the permissive default is unaffected
+        // the same question in the one spelling goes through, and the older spelling still reads when it is asked for
         Assert.Equal(["Alice", "David"], NamesFrom("(Pay > 1) AND (IsActive = true)", QueryStyle.Native));
-        Assert.Equal(["Alice", "David"], NamesFrom("(Pay > 1) && (IsActive == true)", null));
+        Assert.Equal(["Alice", "David"], NamesFrom("(Pay > 1) && (IsActive == true)", QueryStyle.CSharp));
     }
 
     [Fact]

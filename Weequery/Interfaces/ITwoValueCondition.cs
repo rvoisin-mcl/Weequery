@@ -8,5 +8,5 @@ namespace Weequery.Interfaces;
 /// Non-generic, for typing and for the walks that only want the operands as text. Implementations should derive
 /// from <see cref="ITwoValueCondition{T}"/>; <see cref="TwoValueCondition{T}"/> is the one here.
 /// </remarks>
-public interface ITwoValueCondition : IBoundCondition
+internal interface ITwoValueCondition : IBoundCondition
 { }

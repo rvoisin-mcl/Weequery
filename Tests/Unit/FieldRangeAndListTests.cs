@@ -35,6 +35,21 @@ public class FieldRangeAndListTests
             .ToArray();
     }
 
+    /// <summary>
+    /// The same, read permissively. The default is the strict grammar now, so a test whose subject is the SQL
+    /// spelling has to ask for it.
+    /// </summary>
+    private static string[] MatchingSqlSpelling(string query)
+    {
+        return Query()
+            .ApplyCondition(query, QueryStyle.Sql)
+            .Build()
+            .ToList()
+            .Select(minion => minion.Name.Split(' ')[0])
+            .Order()
+            .ToArray();
+    }
+
     // Pay: Alice 12000, Bob 0, Charlie 19000, David 8000
 
     // ---------- a range ----------
@@ -63,8 +78,8 @@ public class FieldRangeAndListTests
     [Fact]
     public void TheSqlSpellingOfARangeTakesThemToo()
     {
-        Assert.Equal(["Alice", "David"], Matching("Pay BETWEEN [Floor] AND [Ceiling]"));
-        Assert.Equal(["Bob", "Charlie"], Matching("Pay NOT BETWEEN [Floor] AND [Ceiling]"));
+        Assert.Equal(["Alice", "David"], MatchingSqlSpelling("Pay BETWEEN [Floor] AND [Ceiling]"));
+        Assert.Equal(["Bob", "Charlie"], MatchingSqlSpelling("Pay NOT BETWEEN [Floor] AND [Ceiling]"));
     }
 
     /// <summary>
@@ -244,7 +259,6 @@ public class FieldRangeAndListTests
     [InlineData("Pay IsIn ([Floor], [Ceiling])", "BB")]
     [InlineData("Pay IsIn (8000, [Ceiling], 19000)", "RBR")]
     [InlineData("Pay IsIn ([Floor], 12000, [Ceiling], 19000)", "BRBR")]
-    [InlineData("Pay BETWEEN [Floor] AND 12000", "BR")]
     public void EachOperandKeepsWhatItIsWhereverItSits(string query, string expected)
     {
         var condition = Assert.IsAssignableFrom<IBoundCondition>(ConditionFunctions.ParseQuery(query));
@@ -256,6 +270,20 @@ public class FieldRangeAndListTests
 
         // and the text is still the text, in the order it was written
         Assert.Equal(condition.StringifyValues(), [.. operands.Select(operand => operand.Value)]);
+    }
+
+    /// <summary>
+    /// And the same for the SQL spelling of a range, which has to be asked for now that the default grammar is
+    /// the strict one. What an operand is does not depend on how the operator around it was spelled.
+    /// </summary>
+    [Fact]
+    public void EachOperandKeepsWhatItIsInTheSqlSpellingToo()
+    {
+        var condition = Assert.IsAssignableFrom<IBoundCondition>(ConditionFunctions.ParseQuery("Pay BETWEEN [Floor] AND 12000", QueryStyle.Sql));
+
+        var sources = string.Concat(from operand in condition.StringifyOperands() select operand.NamesProperty ? "B" : "R");
+
+        Assert.Equal("BR", sources);
     }
 
     /// <summary>
@@ -374,7 +402,7 @@ public class FieldRangeAndListTests
                 .WithWeequery()
                 .BindProperties(Minion.Bindings)
                 .BindConstant("Ceiling", 12000m)
-                .ApplyCondition("Pay IsIn (8000, [Ceiling]) || Pay IsBetween (18000, [Ceiling])")
+                .ApplyCondition("Pay IsIn (8000, [Ceiling]) OR Pay IsBetween (18000, [Ceiling])")
                 .Build()
                 .Select(minion => minion.Name)
                 .ToList();

@@ -47,7 +47,7 @@ public class ConjunctionCondition : IConjunctionCondition
     }
 
     /// <summary>
-    /// Renders in the query language. See <see cref="ConditionFunctions.ToQuery"/> for the round-trippable form,
+    /// Render in the query language. See <see cref="ConditionFunctions.ToQuery"/> for the round-trippable form,
     /// which is the same text except that this will not throw on a condition the language cannot express.
     /// </summary>
     /// <returns></returns>

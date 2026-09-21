@@ -245,7 +245,7 @@ public class EFParameterizationTests
             var names = context.Minions
                 .WithWeequery()
                 .BindProperties(Minion.Bindings)
-                .ApplyCondition("!(Pay > 10000) && (IsActive == true)")
+                .ApplyCondition("NOT (Pay > 10000) AND (IsActive == true)")
                 .ApplySorts([new Sort(nameof(Minion.Pay), SortDirection.Ascending)])
                 .Build()
                 .Select(minion => minion.Name)

@@ -9,8 +9,10 @@ namespace Weequery;
 /// <remarks>
 /// The types are <see cref="NoValueCondition"/>, <see cref="OneValueCondition{T}"/>,
 /// <see cref="TwoValueCondition{T}"/> and <see cref="MultipleValueCondition{T}"/>, and the only thing that
-/// distinguishes them is how many operands they hold. A caller with its own condition can implement
-/// <see cref="IBoundCondition"/> instead; nothing in the library requires this base.
+/// distinguishes them is how many operands they hold. Deriving from this is the library's own business, the
+/// constructor being no wider than the assembly. A caller with its own condition implements
+/// <see cref="IBoundCondition"/> instead, which is the contract everything here is written against; nothing in
+/// the library requires this base.
 /// </remarks>
 public abstract class BoundCondition : IBoundCondition
 {
@@ -39,7 +41,7 @@ public abstract class BoundCondition : IBoundCondition
     /// [OPT] which element of the collection to test, as text. Null tests the binding itself
     /// </param>
     /// <exception cref="WeequeryException">the field is missing, or the operator is not of that shape</exception>
-    protected BoundCondition(Operator op, string field, ConditionShape shape, string? index = null)
+    private protected BoundCondition(Operator op, string field, ConditionShape shape, string? index = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(field);
         WeequeryException.ThrowIfNotNullButEmpty(index);

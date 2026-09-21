@@ -91,7 +91,7 @@ public class IsMatchTests
         Assert.Equal(["Alice", "Charlie", "David"], Matching("Alias IsMatch '.'"));
 
         // And Not brings it back, since it negates the guard with the test, see the remarks on Operator
-        Assert.Equal(["Bob"], Matching("!(Alias IsMatch '.')"));
+        Assert.Equal(["Bob"], Matching("NOT (Alias IsMatch '.')"));
     }
 
     /// <summary>
@@ -131,7 +131,7 @@ public class IsMatchTests
         Assert.Equal(["Charlie"], Matching("Alias IsMatch '^Sn'"));
 
         // Between them they account for every minion but Bob, whose alias is null
-        Assert.Equal(["Alice", "Bob", "David"], Matching("!(Alias IsMatch '^Sn')"));
+        Assert.Equal(["Alice", "Bob", "David"], Matching("NOT (Alias IsMatch '^Sn')"));
     }
 
     /// <summary>

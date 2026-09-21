@@ -438,6 +438,6 @@ public class DroppedFieldsTests
     [Fact]
     public void ItReadsAsWhatHappened()
     {
-        Assert.Equal("'Gizmo' dropped from the condition, nothing bound it", new DroppedField("Gizmo", BindingUse.Condition).ToString());
+        Assert.Equal("'Gizmo' dropped from the condition, it does not match a binding", new DroppedField("Gizmo", BindingUse.Condition).ToString());
     }
 }

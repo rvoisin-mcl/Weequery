@@ -11,8 +11,20 @@ public class QueryParserTests
     /// </summary>
     private static string[] Run(string query)
     {
-        var condition = ConditionFunctions.ParseQuery(query);
+        return Matching(ConditionFunctions.ParseQuery(query));
+    }
 
+    /// <summary>
+    /// The same, read permissively. For the tests whose subject is that an older spelling still means what it
+    /// always meant: the default is the strict grammar now, so leniency has to be asked for.
+    /// </summary>
+    private static string[] RunPermissively(string query)
+    {
+        return Matching(ConditionFunctions.ParseQuery(query, QueryStyle.CSharp));
+    }
+
+    private static string[] Matching(ICondition? condition)
+    {
         return MinionTestData.Minions()
             .WithWeequery()
             .BindProperties(Minion.Bindings)
@@ -40,46 +52,46 @@ public class QueryParserTests
     // ---------- NOT applies only to its own operand ----------
 
     /// <summary>
-    /// The bug this covers: '!' used to swallow the conjunction that followed it, so
-    /// '!A &amp;&amp; B' was parsed as '!(A &amp;&amp; B)'.
+    /// The bug this covers: NOT used to swallow the conjunction that followed it, so
+    /// 'NOT A AND B' was parsed as 'NOT (A AND B)'.
     /// </summary>
     [Fact]
     public void NotBindsTighterThanAnd()
     {
-        // !(pay > 10000) is Bob + David; AND active keeps both.
-        // The old behaviour, !((pay > 10000) && active), would have returned Bob + Charlie + David.
-        AssertMatches("!(Pay > 10000) && (IsActive == true)", "Bob", "David");
+        // NOT (pay > 10000) is Bob + David; AND active keeps both.
+        // The old behaviour, NOT ((pay > 10000) AND active), would have returned Bob + Charlie + David.
+        AssertMatches("NOT (Pay > 10000) AND (IsActive == true)", "Bob", "David");
     }
 
     [Fact]
     public void NotBindsTighterThanAndWhenTrailing()
     {
-        AssertMatches("(IsActive == true) && !(Pay > 10000)", "Bob", "David");
+        AssertMatches("(IsActive == true) AND NOT (Pay > 10000)", "Bob", "David");
     }
 
     [Fact]
     public void NotBindsTighterThanOr()
     {
-        // !(active) is Charlie; OR pay == 0 adds Bob
-        AssertMatches("!(IsActive == true) || (Pay == 0)", "Bob", "Charlie");
+        // NOT (active) is Charlie; OR pay == 0 adds Bob
+        AssertMatches("NOT (IsActive == true) OR (Pay == 0)", "Bob", "Charlie");
     }
 
     [Fact]
     public void ConsecutiveNotsEachBindToOneOperand()
     {
-        AssertMatches("!(Pay > 10000) && !(IsActive == false)", "Bob", "David");
+        AssertMatches("NOT (Pay > 10000) AND NOT (IsActive == false)", "Bob", "David");
     }
 
     [Fact]
     public void NotAppliesToAParenthesizedGroup()
     {
-        AssertMatches("!((Name == 'Alice Fox') || (Name == 'Bob Samuelson'))", "Charlie", "David");
+        AssertMatches("NOT ((Name == 'Alice Fox') OR (Name == 'Bob Samuelson'))", "Charlie", "David");
     }
 
     [Fact]
     public void DoubleNegationCancels()
     {
-        AssertMatches("!!(IsActive == true)", "Alice", "Bob", "David");
+        AssertMatches("NOT NOT (IsActive == true)", "Alice", "Bob", "David");
     }
 
     [Fact]
@@ -95,7 +107,7 @@ public class QueryParserTests
     [Fact]
     public void NotKeywordIsEquivalentToBang()
     {
-        Assert.Equal(Run("!(IsActive == true)"), Run("NOT (IsActive == true)"));
+        Assert.Equal(RunPermissively("!(IsActive == true)"), Run("NOT (IsActive == true)"));
     }
 
     // ---------- grouping and precedence ----------
@@ -104,27 +116,27 @@ public class QueryParserTests
     public void NestedGroupsControlPrecedence()
     {
         // (pay > 15000 -> Charlie) or (pay < 5000 -> Bob), then AND active leaves Bob
-        AssertMatches("((Pay > 15000) || (Pay < 5000)) && (IsActive == true)", "Bob");
+        AssertMatches("((Pay > 15000) OR (Pay < 5000)) AND (IsActive == true)", "Bob");
     }
 
     [Fact]
     public void NestedGroupsControlPrecedenceWhenTrailing()
     {
-        AssertMatches("(IsActive == true) && ((Pay > 15000) || (Pay < 5000))", "Bob");
+        AssertMatches("(IsActive == true) AND ((Pay > 15000) OR (Pay < 5000))", "Bob");
     }
 
     [Fact]
     public void AndBindsTighterThanOr()
     {
-        // Reads as ((pay > 15000) && inactive) || name == Alice  ->  Charlie, Alice
-        AssertMatches("(Pay > 15000) && (IsActive == false) || (Name == 'Alice Fox')", "Alice", "Charlie");
+        // Reads as ((pay > 15000) AND inactive) OR name == Alice  ->  Charlie, Alice
+        AssertMatches("(Pay > 15000) AND (IsActive == false) OR (Name == 'Alice Fox')", "Alice", "Charlie");
     }
 
     [Fact]
     public void OrThenAndStillGroupsAndFirst()
     {
-        // Reads as name == Alice || (active && pay == 0)  ->  Alice, Bob
-        AssertMatches("(Name == 'Alice Fox') || (IsActive == true) && (Pay == 0)", "Alice", "Bob");
+        // Reads as name == Alice OR (active AND pay == 0)  ->  Alice, Bob
+        AssertMatches("(Name == 'Alice Fox') OR (IsActive == true) AND (Pay == 0)", "Alice", "Bob");
     }
 
     [Fact]
@@ -136,20 +148,20 @@ public class QueryParserTests
     [Fact]
     public void DeeplyNestedGroupsParse()
     {
-        AssertMatches("(((IsActive == true) && ((Pay > 5000) && !(Pay > 10000))) || (Name == 'Charlie Smith'))", "Charlie", "David");
+        AssertMatches("(((IsActive == true) AND ((Pay > 5000) AND NOT (Pay > 10000))) OR (Name == 'Charlie Smith'))", "Charlie", "David");
     }
 
     [Fact]
     public void ComparisonNeedsNoParentheses()
     {
         AssertMatches("Pay > 10000", "Alice", "Charlie");
-        AssertMatches("Pay > 10000 && IsActive == true", "Alice");
+        AssertMatches("Pay > 10000 AND IsActive == true", "Alice");
     }
 
     [Fact]
     public void ChainedConjunctionsFlattenIntoOneNode()
     {
-        var condition = ConditionFunctions.ParseQuery("(Pay > 1) && (IsActive == true) && (Alias IsNotNull)");
+        var condition = ConditionFunctions.ParseQuery("(Pay > 1) AND (IsActive == true) AND (Alias IsNotNull)");
 
         var conjunction = Assert.IsType<ConjunctionCondition>(condition);
         Assert.Equal(Operator.And, conjunction.Operator);
@@ -182,7 +194,7 @@ public class QueryParserTests
     [InlineData("(Pay > 10000) and (IsActive == true)")]
     public void AndSpellingsAgree(string query)
     {
-        AssertMatches(query, "Alice");
+        Assert.Equal(["Alice"], RunPermissively(query));
     }
 
     [Theory]
@@ -191,7 +203,7 @@ public class QueryParserTests
     [InlineData("(Pay == 19000) or (Pay == 0)")]
     public void OrSpellingsAgree(string query)
     {
-        AssertMatches(query, "Bob", "Charlie");
+        Assert.Equal(["Bob", "Charlie"], RunPermissively(query));
     }
 
     [Fact]
@@ -300,8 +312,8 @@ public class QueryParserTests
         foreach (var query in new[]
         {
             "(Pay > 10000)",
-            "!(Pay > 10000) && (IsActive == true)",
-            "((Pay > 15000) || (Pay < 5000)) && (IsActive == true)",
+            "NOT (Pay > 10000) AND (IsActive == true)",
+            "((Pay > 15000) OR (Pay < 5000)) AND (IsActive == true)",
             "(Name IsIn ('Alice Fox', 'Bob Samuelson'))",
             "(Pay IsBetween (8000, 12000))",
             "(Alias IsNull)",
@@ -388,7 +400,7 @@ public class QueryParserTests
     /// </summary>
     private static string Negated(int depth, string inner)
     {
-        return new string('!', depth) + inner;
+        return string.Concat(Enumerable.Repeat("NOT ", depth)) + inner;
     }
 
     [Fact]
@@ -422,7 +434,7 @@ public class QueryParserTests
     public void PrecedenceCountsTowardsTheConditionLimit()
     {
         string query = "Pay > 4";
-        for (int i = 0; i < 16; i++) { query = $"(Pay > 1 && Pay > 2 || Pay > 3 && {query})"; }
+        for (int i = 0; i < 16; i++) { query = $"(Pay > 1 AND Pay > 2 OR Pay > 3 AND {query})"; }
 
         // 16 levels of parentheses, but a tree 32 deep
         Assert.Throws<WeequeryException>(() => ConditionFunctions.ParseQuery(query));
@@ -447,7 +459,7 @@ public class QueryParserTests
     [Fact]
     public void SiblingGroupsDoNotAccumulateDepth()
     {
-        var query = string.Join(" && ", Enumerable.Repeat("(Pay > 1)", 500));
+        var query = string.Join(" AND ", Enumerable.Repeat("(Pay > 1)", 500));
 
         Assert.NotNull(ConditionFunctions.ParseQuery(query));
     }
@@ -475,7 +487,7 @@ public class QueryParserTests
         var result = MinionTestData.Minions()
             .WithWeequery()
             .BindProperties(Minion.Bindings)
-            .ApplyCondition("!(Pay > 10000) && (IsActive == true)")
+            .ApplyCondition("NOT (Pay > 10000) AND (IsActive == true)")
             .Build()
             .ToList();
 
@@ -485,7 +497,7 @@ public class QueryParserTests
     [Fact]
     public void TransportConditionCarriesAQueryString()
     {
-        var transport = new TransportCondition("!(Pay > 10000) && (IsActive == true)");
+        var transport = new TransportCondition("NOT (Pay > 10000) AND (IsActive == true)");
 
         var result = MinionTestData.Minions()
             .WithWeequery()

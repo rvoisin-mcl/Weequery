@@ -6,7 +6,7 @@ namespace Weequery;
 /// <remarks>
 /// <see cref="ConditionFunctions.GetShapeForOperation"/> maps an operator to its shape
 /// </remarks>
-public enum ConditionShape
+internal enum ConditionShape
 {
     /// <summary>No value, the operator asks about the property itself. <see cref="NoValueCondition"/></summary>
     NoValue,

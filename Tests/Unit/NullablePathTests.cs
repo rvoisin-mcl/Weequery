@@ -71,7 +71,7 @@ public class NullablePathTests
     public void AnExplicitValueInThePathStillWorks()
     {
         // ".Value" is a member of the Nullable itself, so it must not get a second .Value stubbed in
-        Assert.Equal(["Alice"], Matching("BirthDay == 5 && BirthYear == 2000"));
+        Assert.Equal(["Alice"], Matching("BirthDay == 5 AND BirthYear == 2000"));
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class NullablePathTests
     public void ADateOnlyMemberWorksTheSameWay()
     {
         // ReviewDate is DateOnly?, so this exercises a nullable of a different value type
-        Assert.Equal(["Alice"], Matching("(ReviewDate IsNotNull) && (ReviewYear == 2024)"));
+        Assert.Equal(["Alice"], Matching("(ReviewDate IsNotNull) AND (ReviewYear == 2024)"));
     }
 
     // ---------- the null link, now handled by the binding itself ----------
@@ -164,8 +164,8 @@ public class NullablePathTests
     [Fact]
     public void AnExplicitGuardIsRedundantButHarmless()
     {
-        Assert.Equal(Matching("FireYear == 2024"), Matching("(FireDate IsNotNull) && (FireYear == 2024)"));
-        Assert.Equal(["Alice", "Charlie", "David"], Matching("(FireDate IsNull) || (FireYear == 1999)"));
+        Assert.Equal(Matching("FireYear == 2024"), Matching("(FireDate IsNotNull) AND (FireYear == 2024)"));
+        Assert.Equal(["Alice", "Charlie", "David"], Matching("(FireDate IsNull) OR (FireYear == 1999)"));
     }
 
     // ---------- a bad path reports usefully ----------

@@ -31,6 +31,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The test project reaches for helpers that are not part of the published surface -->
+    <InternalsVisibleTo Include="Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Packed so it becomes the description on nuget.org, see PackageReadmeFile -->
     <None Include="..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\LICENSE" Pack="true" PackagePath="\" />

@@ -180,11 +180,17 @@ public class IsMatchTests
     /// string operators. Getting that wrong would renumber every operator after it and change what payloads
     /// already in flight mean.
     /// </summary>
+    /// <remarks>
+    /// Pinned by number rather than by being last, since operators keep being added and each new one goes after
+    /// these for the same reason these went after the conjunctions. What must not change is where the existing
+    /// ones sit.
+    /// </remarks>
     [Fact]
     public void ItIsNumberedAfterEveryOperatorThatCameBeforeIt()
     {
-        Assert.Equal(Operator.DoesNotMatch, Enum.GetValues<Operator>().Max());
         Assert.Equal(20, (int)Operator.Not);
+        Assert.Equal(21, (int)Operator.IsMatch);
+        Assert.Equal(22, (int)Operator.DoesNotMatch);
     }
 
     /// <summary>

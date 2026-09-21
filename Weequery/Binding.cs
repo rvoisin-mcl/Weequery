@@ -89,6 +89,27 @@ internal class Binding<TClass> : IBinding
     public bool IsConstant { get; init; }
 
     /// <summary>
+    /// What this binding may be used for: any combination of filtering, sorting and being read back, see
+    /// <see cref="BindingUse"/>. All three unless the binding said otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the binding rather than held beside it, so every site that resolves a field has the answer in
+    /// hand and none of them needs a second lookup passed down to it. An indexed binding inherits it from the
+    /// collection it came off, see <see cref="Indexed"/>: naming an element of something is naming it.
+    /// </remarks>
+    public BindingUse Use { get; init; }
+
+    /// <summary>
+    /// Whether this binding may be used the way described, which is the question every resolution site asks.
+    /// </summary>
+    /// <param name="use">one of the flags, not a combination</param>
+    /// <returns></returns>
+    public bool Allows(BindingUse use)
+    {
+        return (Use & use) == use;
+    }
+
+    /// <summary>
     /// ctor. Both kinds of binding come through here, so what is derived from an accessor is derived once.
     /// </summary>
     /// <param name="parameter">the "x" the accessor hangs off, shared by every binding used together</param>
@@ -97,13 +118,15 @@ internal class Binding<TClass> : IBinding
     /// <param name="accessorType">the accessor's own type, so still wrapped if it is a Nullable&lt;&gt;</param>
     /// <param name="linkChecks">what has to have a value for the accessor to be safe to read</param>
     /// <param name="isConstant"></param>
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    private Binding(ParameterExpression parameter, string name, Expression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant)
+    private Binding(ParameterExpression parameter, string name, Expression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant, BindingUse use)
     {
         WeequeryException.ThrowIfNullOrEmpty(name);
 
         Parameter = parameter;
         IsConstant = isConstant;
+        Use = use;
 
         Accessor = accessor;
         PropertyType = accessorType;
@@ -165,7 +188,7 @@ internal class Binding<TClass> : IBinding
 
         var (access, elementType) = IndexInto(Accessor, PropertyType, index, PropertyPath, checks);
 
-        return new Binding<TClass>(Parameter, $"{PropertyPath}[{index}]", access, elementType, checks, isConstant: false);
+        return new Binding<TClass>(Parameter, $"{PropertyPath}[{index}]", access, elementType, checks, isConstant: false, Use);
     }
 
     /// <summary>
@@ -285,15 +308,16 @@ internal class Binding<TClass> : IBinding
     /// <param name="parameter">[OPT] all bindings for the same query should share a common parameter</param>
     /// <param name="propertyPath"></param>
     /// <returns></returns>
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    private static Binding<TClass> FromPath(ParameterExpression? parameter, string propertyPath)
+    private static Binding<TClass> FromPath(ParameterExpression? parameter, string propertyPath, BindingUse use)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
 
         var useParameter = parameter ?? Expression.Parameter(typeof(TClass));
         var resolved = GetPropertyExpression(useParameter, propertyPath);
 
-        return new Binding<TClass>(useParameter, propertyPath, resolved.Expression, resolved.ExpressionType, resolved.LinkChecks, isConstant: false);
+        return new Binding<TClass>(useParameter, propertyPath, resolved.Expression, resolved.ExpressionType, resolved.LinkChecks, isConstant: false, use);
     }
 
     /// <summary>
@@ -305,15 +329,16 @@ internal class Binding<TClass> : IBinding
     /// <param name="key">the name a caller refers to it by</param>
     /// <param name="value"></param>
     /// <returns></returns>
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    private static Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value)
+    private static Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, BindingUse use)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNull(value);
 
         var useParameter = parameter ?? Expression.Parameter(typeof(TClass));
 
-        return new Binding<TClass>(useParameter, key, QueryValue.Of(value), typeof(TValue), [], isConstant: true);
+        return new Binding<TClass>(useParameter, key, QueryValue.Of(value), typeof(TValue), [], isConstant: true, use);
     }
 
     // FIXME Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, Func<TValue, TValue>? normalizer) // if provided, normalizer will run against both arguments of a comparison
@@ -328,13 +353,14 @@ internal class Binding<TClass> : IBinding
     /// <param name="value"></param>
     /// <param name="bindings">[OPT] binding LUT to add to, made by <see cref="BindingLookup.Create"/> so keys are matched the same way everywhere</param>
     /// <returns></returns>
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public static Binding<TClass> CreateConstant<TValue>(ParameterExpression? parameter, string key, TValue value, Dictionary<string, Binding<TClass>>? bindings)
+    public static Binding<TClass> CreateConstant<TValue>(ParameterExpression? parameter, string key, TValue value, Dictionary<string, Binding<TClass>>? bindings, BindingUse use = BindingUse.All)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        return AddTo(bindings, FromValue(parameter, key, value), key);
+        return AddTo(bindings, FromValue(parameter, key, value, use), key);
     }
 
     /// <summary>
@@ -771,14 +797,15 @@ internal class Binding<TClass> : IBinding
     /// <param name="bindings">[OPT] binding LUT to add to, made by <see cref="BindingLookup.Create"/> so keys are matched the same way everywhere</param>
     /// <param name="key">[OPT] key to use to add to LUT, if not provided, .PropertyPath will be used</param>
     /// <returns></returns>
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, Dictionary<string, Binding<TClass>>? bindings, string? key = null)
+    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All)
     {
         WeequeryException.ThrowIfNull(selector);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        var binding = FromPath(parameter, GetPropertyPath(selector));
+        var binding = FromPath(parameter, GetPropertyPath(selector), use);
 
         return AddTo(bindings, binding, key ?? binding.PropertyPath);
     }
@@ -801,8 +828,9 @@ internal class Binding<TClass> : IBinding
     /// <param name="bindings">[OPT] binding LUT to add to, made by <see cref="BindingLookup.Create"/> so keys are matched the same way everywhere</param>
     /// <param name="key">[OPT] key to use to add to LUT, if not provided, the last segment will be used</param>
     /// <returns></returns>
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, string[] segments, Dictionary<string, Binding<TClass>>? bindings, string? key = null)
+    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, string[] segments, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All)
     {
         WeequeryException.ThrowIfNull(selector);
         WeequeryException.ThrowIfNull(segments);
@@ -812,7 +840,7 @@ internal class Binding<TClass> : IBinding
 
         foreach (var segment in segments) { WeequeryException.ThrowIfNullOrEmpty(segment); }
 
-        var binding = FromPath(parameter, JoinSegments(GetPropertyPath(selector), segments));
+        var binding = FromPath(parameter, JoinSegments(GetPropertyPath(selector), segments), use);
 
         // The last segment, matching what the segments constructor of a BindingRequest does. The whole path would
         // be a legal key now that a period is one, but this overload has always keyed by the last segment and
@@ -852,13 +880,14 @@ internal class Binding<TClass> : IBinding
     /// <param name="bindings">[OPT] binding LUT to add to, made by <see cref="BindingLookup.Create"/> so keys are matched the same way everywhere</param>
     /// <param name="key">[OPT] key to use to add to LUT, if not provided, .PropertyPath will be used</param>
     /// <returns></returns>
-    public static Binding<TClass> Create(ParameterExpression? parameter, string propertyPath, Dictionary<string, Binding<TClass>>? bindings, string? key = null)
+    /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    public static Binding<TClass> Create(ParameterExpression? parameter, string propertyPath, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        var binding = FromPath(parameter, propertyPath);
+        var binding = FromPath(parameter, propertyPath, use);
 
         return AddTo(bindings, binding, key ?? binding.PropertyPath);
     }

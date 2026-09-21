@@ -56,7 +56,7 @@ public class LedgerContext(DbContextOptions<LedgerContext> options) : DbContext(
 /// </summary>
 public class CollectionIndexProviderTests
 {
-    private static ShipmentContext Context(TestProvider provider)
+    internal static ShipmentContext Context(TestProvider provider)
     {
         var builder = new DbContextOptionsBuilder<ShipmentContext>();
 

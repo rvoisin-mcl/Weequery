@@ -752,4 +752,119 @@ public static class ConditionFunctions
         return conjunction;
     }
 
+    /// <summary>
+    /// Every field a condition names, including the ones its operands name, without duplicates.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What a caller needs to answer "which bindings does this query actually use",, and for anyone auditing which
+    /// of them a given query is allowed to touch, see <see cref="BindingUse"/>.
+    /// </para>
+    /// <para>
+    /// <b>Stops at a quantifier</b>, taking the collection's key and not the fields inside it. Those resolve
+    /// against the collection's own allow-list rather than the entity's, see
+    /// <see cref="Inquiry{T}.BindCollection"/>, so putting them in one flat list would say a field is bound on the
+    /// entity when it is not. Walk into <see cref="QuantifiedCondition.Condition"/> and call this again to get
+    /// them.
+    /// </para>
+    /// <para>
+    /// Keys carry their index where a condition tested one, so "Tallies[apples]" comes back as it was written.
+    /// Names are compared without regard to case, as they are matched everywhere else, and the first spelling
+    /// seen is the one kept.
+    /// </para>
+    /// </remarks>
+    /// <param name="condition">null gives an empty list</param>
+    /// <returns>never null, in the order the fields were first met</returns>
+    public static List<string> FieldsUsed(this ICondition? condition)
+    {
+        Dictionary<string, string> seen = new(BindingLookup.KeyComparer);
+
+        Collect(condition, seen, 0);
+
+        return [.. seen.Values];
+    }
+
+    /// <summary>
+    /// One level of <see cref="FieldsUsed"/>.
+    /// </summary>
+    /// <remarks>
+    /// Stops at <see cref="ConditionNesting.MaxDepth"/> rather than throwing there. This reports what a condition
+    /// names, and a tree too deep to be built is still a tree someone may want to look at; the refusal belongs to
+    /// whatever tries to use it.
+    /// </remarks>
+    private static void Collect(ICondition? condition, Dictionary<string, string> seen, int depth)
+    {
+        if ((condition is null) || ConditionNesting.IsTooDeep(depth)) { return; }
+
+        // Read where it lies rather than unpacked: the same members are already on it, and unpacking a tree only
+        // to read the names off it would refuse a deep one where this can simply stop
+        if (condition is PackedCondition packed)
+        {
+            Keep(seen, Indexed(packed.Field, packed.Index));
+
+            // A quantifier's children are scoped to the collection's own allow-list, not the entity's
+            if (QuantifiedCondition.IsQuantifier(packed.Operator)) { return; }
+
+            foreach (var operand in packed.Values.Where(operand => operand.NamesProperty))
+            {
+                Keep(seen, operand.Value);
+            }
+
+            foreach (var child in packed.Conditions)
+            {
+                Collect(child, seen, depth + 1);
+            }
+
+            return;
+        }
+
+        // Names a collection and holds a condition scoped to one of its elements. The collection is a field of
+        // the entity; what is inside it is not, so the walk stops here.
+        if (condition is QuantifiedCondition quantified)
+        {
+            Keep(seen, quantified.Field);
+            return;
+        }
+
+        if (condition is IBound bound)
+        {
+            Keep(seen, Indexed(bound.Field, bound.Index));
+
+            if (condition is IBoundCondition valued)
+            {
+                // An operand may name another bound property rather than carrying a value, and that is a field
+                // this query uses just as much as the one on the left of the operator
+                foreach (var operand in valued.StringifyOperands().Where(operand => operand.NamesProperty))
+                {
+                    Keep(seen, operand.Value);
+                }
+            }
+
+            return;
+        }
+
+        if (condition is IConditionContainer<ICondition> container)
+        {
+            foreach (var child in container.Conditions)
+            {
+                Collect(child, seen, depth + 1);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A field with its index put back on, which is how a key carrying one is written everywhere else
+    /// </summary>
+    private static string Indexed(string field, string? index)
+    {
+        return (index is null) ? field : $"{field}[{index}]";
+    }
+
+    /// <summary>
+    /// Keep the first spelling of a name, since two that differ only in case are one field
+    /// </summary>
+    private static void Keep(Dictionary<string, string> seen, string field)
+    {
+        if (!string.IsNullOrEmpty(field)) { seen.TryAdd(field, field); }
+    }
 }

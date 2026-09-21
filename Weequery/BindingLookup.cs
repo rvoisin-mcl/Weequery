@@ -70,4 +70,32 @@ internal static class BindingLookup
 
         return (index is null) ? binding : binding.Indexed(index);
     }
+
+    /// <summary>
+    /// The spelling a field was bound under, given whatever spelling a caller used for it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keys are matched without regard to case, so "name", "NAME" and "Name" all resolve to one binding, and
+    /// anything reading a key back out has to say which of them it is. The allow-list decided, so the answer is
+    /// the one the binding was made under: a projection asked for as "name" comes back keyed "Name", and two
+    /// callers typing it differently get the same shape, see <see cref="Projection"/>.
+    /// </para>
+    /// <para>
+    /// A scan, because a Dictionary will tell you a key is present but not what it is stored as. Done once per
+    /// projected field while the query is being built, over a lookup holding as many entries as the model has
+    /// bindings, so it is not on any path worth indexing for.
+    /// </para>
+    /// </remarks>
+    /// <param name="bindings"></param>
+    /// <param name="field">a key, which may carry an index</param>
+    /// <returns>the field as bound, index and all, or the field as given where nothing claimed it</returns>
+    internal static string CanonicalKey<TClass>(Dictionary<string, Binding<TClass>> bindings, string field)
+    {
+        var (key, index) = SplitIndex(field);
+
+        var bound = bindings.Keys.FirstOrDefault(candidate => KeyComparer.Equals(candidate, key)) ?? key;
+
+        return (index is null) ? bound : $"{bound}[{index}]";
+    }
 }

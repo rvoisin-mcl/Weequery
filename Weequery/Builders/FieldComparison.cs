@@ -133,6 +133,13 @@ internal static class FieldComparison
 
         var property = BindingLookup.Resolve(bindings, value.Value);
 
+        // Comparing against a column is a read of it, so this is the back door onto a binding that does not grant
+        // Condition: allow it and the value is learnable by bisection, one query at a time
+        if (!property.Allows(BindingUse.Condition))
+        {
+            throw new WeequeryException($"'{value.Value}', compared against on field '{field}', cannot be used in a condition: it is bound for {property.Use}");
+        }
+
         // The expression api compares like with like, and promoting one side to the other would mean deciding
         // which widens to which for every pair of types, including the pairs C# itself refuses. Same type only.
         if (left.UnwrappedPropertyType != property.UnwrappedPropertyType)

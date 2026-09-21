@@ -2,7 +2,7 @@
 // what those styles still write and still read. Deprecated is not gone.
 #pragma warning disable CS0618
 
-﻿using Tests.Common;
+using Tests.Common;
 using Weequery;
 using Weequery.Interfaces;
 

@@ -9,7 +9,8 @@ namespace Weequery;
 /// disjunction := conjunction ( ('||' | 'OR') conjunction )*
 /// conjunction := unary ( ('&amp;&amp;' | 'AND') unary )*
 /// unary       := ('!' | 'NOT') unary | primary
-/// primary     := '(' expression ')' | comparison
+/// primary     := '(' expression ')' | quantified | comparison
+/// quantified  := field ('Any' | 'All' | 'None') '(' expression ')'
 /// comparison  := field operator operands?
 /// field       := WORD | QUOTED | '[' WORD ']'
 /// operands    := operand | '(' (operand (',' operand)*)? ')' | operand 'AND' operand
@@ -53,6 +54,12 @@ internal sealed class QueryParser
         { "IsNotIn", Operator.IsNotIn },
         { "IsBetween", Operator.IsBetween },
         { "IsNotBetween", Operator.IsNotBetween },
+
+        // The quantifiers. In this position they read as operators, and what follows them is a parenthesised
+        // condition rather than a value, see ParseQuantified.
+        { "Any", Operator.Any },
+        { "All", Operator.All },
+        { "None", Operator.None },
 
         // SQL spellings. The multi-word ones (IS NULL, IS NOT NULL, NOT IN, NOT BETWEEN) cannot live in a lookup
         // keyed on a single token, so ParseSqlPhrase handles those.
@@ -272,9 +279,16 @@ internal sealed class QueryParser
 
     private ICondition ParseComparison()
     {
+        int start = PositionOfCurrentOrEnd;
+
         string field = ParseField();
         string? index = ParseIndex(field);
         Operator op = ParseOperator(field);
+
+        // A quantifier is not a comparison, whatever its position looks like: what follows it is a condition about
+        // one element, not a value to compare the field against
+        if (QuantifiedCondition.IsQuantifier(op)) { return ParseQuantified(field, index, op, start); }
+
         var required = ConditionFunctions.GetNumberOfValuesRequiredForOperation(op);
 
         // 'X == null' is an accepted spelling of 'X IsNull'. Only an unquoted null counts, so a
@@ -294,6 +308,54 @@ internal sealed class QueryParser
         var operands = ParseOperands(field, op, required);
 
         return ConditionFunctions.BuildComparison(op, field, operands, index);
+    }
+
+    /// <summary>
+    /// The rest of a quantifier, once the collection and the operator have been read: a parenthesised condition
+    /// scoped to one element.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// Assignments Any (LairID = 5 AND IsPrimary = true)
+    /// </code>
+    /// The parentheses are required rather than merely conventional. Without them the end of the inner condition
+    /// would be indistinguishable from the start of whatever follows the quantifier, so
+    /// <c>Assignments Any LairID = 5 AND IsActive = true</c> could read either as one quantifier over both tests
+    /// or as a quantifier ANDed with a test on the minion, and those are different questions, see
+    /// <see cref="QuantifiedCondition"/>.
+    /// </remarks>
+    /// <param name="field">the key the collection was bound under</param>
+    /// <param name="index">whatever index followed the field, which a quantifier cannot take</param>
+    /// <param name="op">the quantifier</param>
+    /// <param name="start">where the field began, so an error about the field can point at it</param>
+    /// <exception cref="WeequeryException">the field was indexed, or no parenthesised condition follows</exception>
+    private ICondition ParseQuantified(string field, string? index, Operator op, int start)
+    {
+        var name = ConditionFunctions.GetOperationString(op);
+
+        // "Assignments[0] Any (...)" names one element and then asks about all of them. Refused rather than read
+        // as either, since neither reading is what it says.
+        if (index is not null)
+        {
+            throw new WeequeryException(Describe($"'{field}[{index}]' is one element rather than a collection, so there is nothing for '{name}' to quantify over. Drop the index to ask about every element, or compare the element itself", start));
+        }
+
+        var open = PositionOfCurrentOrEnd;
+
+        if (!Check(QueryTokenKind.GroupOpen))
+        {
+            throw new WeequeryException(Describe($"Expected '(' after '{name}' for collection '{field}', which takes a condition about one element rather than a value, as \"{field} {name} (Name = 'x')\"", open));
+        }
+
+        Index++;
+
+        Descend(open);
+        var inner = ParseDisjunction();
+        Depth--;
+
+        Take(QueryTokenKind.GroupClose, "')'");
+
+        return new QuantifiedCondition(op, field, inner);
     }
 
     /// <summary>

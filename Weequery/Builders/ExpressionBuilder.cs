@@ -137,6 +137,7 @@ internal static class ExpressionBuilder
     /// <typeparam name="TClass"></typeparam>
     /// <param name="bindings"></param>
     /// <param name="condition"></param>
+    /// <param name="collections">[OPT] the bound collections, which a quantifier resolves against</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
     /// a field is unbound, an operator does not apply to the property it names, or the tree nests deeper than
@@ -155,6 +156,7 @@ internal static class ExpressionBuilder
     /// <param name="bindings"></param>
     /// <param name="condition"></param>
     /// <param name="depth">levels of nesting already stepped into on the way here</param>
+    /// <param name="collections">[OPT] the bound collections, carried down so a quantifier at any level can resolve</param>
     private static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition, int depth, Dictionary<string, ICollectionBinding<TClass>>? collections = null)
     {
         WeequeryException.ThrowIfNull(condition);
@@ -183,6 +185,13 @@ internal static class ExpressionBuilder
             if (!bindings.TryGetValue(binding.Field, out var boundProperty))
             {
                 throw new WeequeryException($"Unbound field: '{binding.Field}'");
+            }
+
+            // Bound, but not for asking questions about. Said plainly rather than reported as unbound, which
+            // would send a caller looking for a typo in a name that works perfectly well in a projection.
+            if (!boundProperty.Allows(BindingUse.Condition))
+            {
+                throw new WeequeryException($"'{binding.Field}' cannot be used in a condition: it is bound for {boundProperty.Use}");
             }
 
             // An index turns the binding for the collection into one for the element, which is nullable whatever

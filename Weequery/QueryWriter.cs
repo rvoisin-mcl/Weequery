@@ -88,6 +88,15 @@ internal static class QueryWriter
             return Render(packedCondition.Unpack(), strict, style, depth);
         }
 
+        // Before the two it half resembles: it names a field as a comparison does and holds a condition as a
+        // container does, and is neither
+        if (condition is QuantifiedCondition quantified)
+        {
+            var name = ConditionFunctions.GetOperationString(quantified.Operator, style);
+
+            return $"({Field(quantified.Field)} {name} {Grouped(quantified.Condition, strict, style, depth + 1)})";
+        }
+
         if (condition is IBoundCondition boundCondition)
         {
             return RenderBoundCondition(boundCondition, style);
@@ -121,6 +130,36 @@ internal static class QueryWriter
         if (strict) { throw new WeequeryException($"Condition type '{condition.GetType().Name}' cannot be written as a query"); }
 
         return $"<{condition.GetType().Name}>";
+    }
+
+    /// <summary>
+    /// A condition in the parentheses a quantifier requires after its operator, see
+    /// <see cref="QueryParser"/>.
+    /// </summary>
+    /// <remarks>
+    /// Almost everything the writer emits already wraps itself, and a second pair would only be noise that reads
+    /// back the same, so the parentheses are added only where they are load bearing.
+    /// </remarks>
+    private static string Grouped(ICondition condition, bool strict, QueryStyle style, int depth)
+    {
+        var text = Render(condition, strict, style, depth);
+
+        return SelfGrouping(condition) ? text : $"({text})";
+    }
+
+    /// <summary>
+    /// Whether a condition writes itself as one parenthesised group.
+    /// </summary>
+    /// <remarks>
+    /// A comparison, a conjunction and a quantifier all do. A negation leads with its operator instead, so
+    /// <c>Any NOT ([X] = '1')</c> would not parse without a pair around the negation. A packed condition writes
+    /// whatever it unpacks to, and its operator says which shape that is.
+    /// </remarks>
+    private static bool SelfGrouping(ICondition condition)
+    {
+        if (condition is PackedCondition packed) { return packed.Operator != Operator.Not; }
+
+        return condition is not INotCondition;
     }
 
     private static string RenderConjunction(IConjunctionCondition conjunction, bool strict, QueryStyle style, int depth)

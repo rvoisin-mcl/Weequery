@@ -49,8 +49,16 @@ public class Inquiry<T> where T : class
     /// </para>
     /// </summary>
     private Dictionary<string, ICollectionBinding<T>> Collections { get; init; } = new(BindingLookup.KeyComparer);
+
     private List<ICondition> Conditions { get; init; } = new();
     private List<Sort> Sorts { get; init; } = new();
+
+    /// <summary>
+    /// Which fields <see cref="BuildProjected"/> reads back, see <see cref="ApplyProjection(string?)"/>. Empty
+    /// until a caller says otherwise, which reads every bound field.
+    /// </summary>
+    private Projection Projected { get; set; } = Projection.None;
+
     private int PageSize { get; set; } = -1;
     private int Page { get; set; } = -1;
 
@@ -94,11 +102,12 @@ public class Inquiry<T> where T : class
     /// <param name="selector"></param>
     /// <param name="key"></param>
     /// <returns></returns>
-    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string? key = null)
+    /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
+    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string? key = null, BindingUse use = BindingUse.All)
     {
-        Binding<T>.Create(SharedBindingParameter, selector, Bindings, key);
+        Binding<T>.Create(SharedBindingParameter, selector, Bindings, key, use);
 
-        return this;
+        return RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -110,7 +119,7 @@ public class Inquiry<T> where T : class
     /// <c>(x) =&gt; x.BirthDate.Year</c> against a <c>DateTime?</c>, since a Nullable exposes only its own members,
     /// and writing <c>(x) =&gt; x.BirthDate!.Value.Year</c> instead unwraps rather than reaches through, binding a
     /// plain int with no null of its own. Selecting BirthDate and naming "Year" as a segment binds
-    /// "BirthDate.Year" exactly as <see cref="BindProperty(string, string?)"/> would, while the compiler still
+    /// "BirthDate.Year" exactly as <see cref="BindProperty(string, string?, BindingUse)"/> would, while the compiler still
     /// checks the part of the path it can see. See the remarks on <see cref="Operator"/> for what reaching through
     /// a nullable means for the operators.
     /// <code>
@@ -122,12 +131,13 @@ public class Inquiry<T> where T : class
     /// <param name="segments">the rest of the path, in order</param>
     /// <param name="key"></param>
     /// <returns></returns>
+    /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null)
+    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null, BindingUse use = BindingUse.All)
     {
-        Binding<T>.Create(SharedBindingParameter, selector, segments, Bindings, key);
+        Binding<T>.Create(SharedBindingParameter, selector, segments, Bindings, key, use);
 
-        return this;
+        return RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -159,7 +169,7 @@ public class Inquiry<T> where T : class
     /// <para>
     /// The collection itself is not otherwise answerable: it is not bound as a property, so it takes no
     /// comparison and no index, and a caller naming it outside a quantifier is refused. Bind it with
-    /// <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?)"/> as well if you also want
+    /// <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?, BindingUse)"/> as well if you also want
     /// it tested for null or indexed, under a different key.
     /// </para>
     /// <para>
@@ -214,6 +224,42 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Refuse a property binding whose key a collection has already claimed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two lookups are kept apart so each can refuse what the other answers, see <see cref="Collections"/>,
+    /// but a name still only means one thing, so a key in both is refused. <see cref="BindCollection"/> checks
+    /// both before it adds, and this is the other direction: the key a property binding uses may be one the
+    /// caller named or one the binding derived, and neither is known until it has been made.
+    /// </para>
+    /// <para>
+    /// What a binding may be <i>used</i> for needs nothing here, being carried on the binding itself, see
+    /// <see cref="BindingUse"/>. A key means one thing whatever it is allowed to do with it.
+    /// </para>
+    /// <para>
+    /// The colliding property binding is taken back off before throwing, so an Inquiry a caller went on to use
+    /// after catching this is in the state it was in before the call rather than half changed.
+    /// </para>
+    /// </remarks>
+    /// <returns>this, so it can be returned from the binding call</returns>
+    /// <exception cref="WeequeryException">a key now names both a property and a collection</exception>
+    private Inquiry<T> RefuseDuplicateKeys()
+    {
+        if (Collections.Count == 0) { return this; }
+
+        foreach (var key in Collections.Keys)
+        {
+            if (Bindings.Remove(key))
+            {
+                throw new WeequeryException($"Binding already exists for '{key}', which is bound as a collection");
+            }
+        }
+
+        return this;
+    }
+
+    /// <summary>
     /// Bind a value under a name, rather than a property. A caller can then compare a property against it by name
     /// without having to say what it is.
     /// </summary>
@@ -239,15 +285,16 @@ public class Inquiry<T> where T : class
     /// <param name="key">the name a caller refers to it by</param>
     /// <param name="value">must not be null: a constant stands for a value, so it needs one</param>
     /// <returns></returns>
+    /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public Inquiry<T> BindConstant<TValue>(string key, TValue value)
+    public Inquiry<T> BindConstant<TValue>(string key, TValue value, BindingUse use = BindingUse.Condition | BindingUse.Projection)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        Binding<T>.CreateConstant(SharedBindingParameter, key, value, Bindings);
+        Binding<T>.CreateConstant(SharedBindingParameter, key, value, Bindings, use);
 
-        return this;
+        return RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -256,15 +303,16 @@ public class Inquiry<T> where T : class
     /// <param name="path"></param>
     /// <param name="key"></param>
     /// <returns></returns>
-    public Inquiry<T> BindProperty(string path, string? key = null)
+    /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
+    public Inquiry<T> BindProperty(string path, string? key = null, BindingUse use = BindingUse.All)
     {
         WeequeryException.ThrowIfNullOrEmpty(path);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        Binding<T>.Create(SharedBindingParameter, path, Bindings, key);
+        Binding<T>.Create(SharedBindingParameter, path, Bindings, key, use);
 
-        return this;
+        return RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -273,7 +321,7 @@ public class Inquiry<T> where T : class
     /// <remarks>
     /// A set of requests is resolved once for the process and kept, see <see cref="BindingSets"/>, so calling this
     /// per request costs a copy rather than a property path lookup per property. Adding to this Inquiry after it,
-    /// with this or with <see cref="BindProperty(string, string?)"/>, works as it always did: everything binds
+    /// with this or with <see cref="BindProperty(string, string?, BindingUse)"/>, works as it always did: everything binds
     /// against the same parameter either way.
     /// </remarks>
     /// <param name="bindingRequests"></param>
@@ -292,7 +340,7 @@ public class Inquiry<T> where T : class
             Bindings[binding.Key] = binding.Value;
         }
 
-        return this;
+        return RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -497,7 +545,7 @@ public class Inquiry<T> where T : class
     /// <list type="bullet">
     /// <item><description>
     /// It does not descend into a struct, so DateTime.Year is not reached this way and still has to be bound by
-    /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?)"/>. A
+    /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse)"/>. A
     /// collection is descended as the class it is rather than as its element type, so filtering into one is no
     /// more possible here than it is anywhere else in this library, and what you get from one is Count and
     /// Capacity, which a provider may well refuse to translate.
@@ -545,7 +593,7 @@ public class Inquiry<T> where T : class
     /// </para>
     /// <para>
     /// Adds to whatever is already bound rather than replacing it, so a key resolved here that a
-    /// <see cref="BindProperty(string, string?)"/> call already claimed is a duplicate and is refused, see
+    /// <see cref="BindProperty(string, string?, BindingUse)"/> call already claimed is a duplicate and is refused, see
     /// <see cref="BindProperties"/>. Resolve first and <see cref="RemoveBinding"/> what you do not want, or bind
     /// by hand and do not call this.
     /// </para>
@@ -585,6 +633,7 @@ public class Inquiry<T> where T : class
         WeequeryException.ThrowIfNullOrEmpty(key);
 
         Bindings.Remove(key);
+        Collections.Remove(key);
 
         return this;
     }
@@ -746,6 +795,65 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Read back only the fields named, rather than the whole entity. See <see cref="BuildProjected"/>, which is
+    /// what applies this; <see cref="Build"/> ignores it and hands back entities as it always has.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <code>
+    /// var rows = query.WithWeequery()
+    ///     .BindProperties(MinionBindings)
+    ///     .ApplyCondition("IsActive = true")
+    ///     .ApplyProjection("Name, Pay")
+    ///     .BuildProjected();
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>The allow-list is the same one.</b> Anything bound may be projected, under the same keys and the same
+    /// case-insensitive matching, and a field no binding claimed is refused exactly as it is in a condition. So
+    /// this grants nothing filtering did not already, and there is nothing extra to declare.
+    /// </para>
+    /// <para>
+    /// Called more than once, the last call wins, as it does for <see cref="ApplyPagination"/> and unlike
+    /// <see cref="ApplyCondition(ICondition?)"/>. A projection is one list of columns rather than something that
+    /// accumulates, and two calls asking for different columns can only mean the second changed its mind.
+    /// </para>
+    /// </remarks>
+    /// <param name="fields">
+    /// a comma separated list of keys, each written as a condition writes a field and each able to carry an
+    /// index: "Name, Pay, Tallies[apples]". Null, empty or whitespace clears any projection already applied.
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the list is malformed</exception>
+    public Inquiry<T> ApplyProjection(string? fields)
+    {
+        return ApplyProjection(Projection.Parse(fields));
+    }
+
+    /// <summary>
+    /// Read back only the fields named, from keys already in hand rather than from a string.
+    /// </summary>
+    /// <param name="keys">null or empty clears any projection already applied; a key named twice is kept once</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">a key is null or empty</exception>
+    public Inquiry<T> ApplyProjection(IEnumerable<string>? keys)
+    {
+        return ApplyProjection(Projection.Of(keys));
+    }
+
+    /// <summary>
+    /// Read back only the fields named, from a projection already read or built.
+    /// </summary>
+    /// <param name="projection">null or <see cref="Projection.None"/> clears any projection already applied</param>
+    /// <returns></returns>
+    public Inquiry<T> ApplyProjection(Projection? projection)
+    {
+        Projected = projection ?? Projection.None;
+
+        return this;
+    }
+
+    /// <summary>
     /// The predicate for one condition, bounded where it is this process that will run it.
     /// </summary>
     /// <remarks>
@@ -804,10 +912,17 @@ public class Inquiry<T> where T : class
         {
             var binding = BindingLookup.Resolve(Bindings, sort.Field);
 
-            // The same for every row, so there is nothing here to put in order
+            // The same for every row, so there is nothing here to put in order. Asked before the use, since being
+            // a constant is the more particular thing to say and both would be true of one.
             if (binding.IsConstant)
             {
                 throw new WeequeryException($"Cannot sort on '{sort.Field}', it is a constant");
+            }
+
+            // Bound, but not for ordering by
+            if (!binding.Allows(BindingUse.Sort))
+            {
+                throw new WeequeryException($"Cannot sort on '{sort.Field}': it is bound for {binding.Use}");
             }
 
             // Refused here rather than left to the comparer
@@ -921,6 +1036,170 @@ public class Inquiry<T> where T : class
         return new PagedQuery<T>(Windowed(Sorted(matches)), matches);
     }
 
+    /// <summary>
+    /// Apply everything as <see cref="Build"/> does, and read back only the projected fields rather than whole
+    /// entities. Each row is a dictionary keyed by binding key.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <code>
+    /// var rows = query.WithWeequery()
+    ///     .BindProperties(MinionBindings)
+    ///     .ApplyCondition("IsActive = true")
+    ///     .ApplyProjection("Name, Pay")
+    ///     .BuildProjected()
+    ///     .ToList();
+    ///
+    /// // [ { "Name": "Alice Fox", "Pay": 12000 }, ... ]
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>The columns are the ones asked for.</b> Against a database this is a narrower SELECT rather than a
+    /// whole row thrown away afterwards, which is the point: three columns of a wide table, over a page of
+    /// twenty, is a different amount of work from twenty whole rows. Verified translating on SQLite, PostgreSQL
+    /// and SQL Server.
+    /// </para>
+    /// <para>
+    /// <b>Keys come back as the binding spelled them</b>, not as the caller typed them. Fields are matched
+    /// without regard to case, so "name" and "NAME" both reach the binding made as "Name", and all of them read
+    /// back as "Name". Two callers asking differently get the same shape, which is what anything deserializing it
+    /// needs. Entries are added in the order asked for.
+    /// </para>
+    /// <para>
+    /// <b>Values are boxed</b>, so a row is <c>object?</c> whatever the property held, and null where the value
+    /// is null or the path to it runs through a null. A field taken at an index nothing sits at is null too,
+    /// which is the same rule everywhere else, see <see cref="Operator"/>.
+    /// </para>
+    /// <para>
+    /// With no projection applied this reads every bound field, which is the allow-list's own answer to "all of
+    /// it". A constant binding projects its value, the same for every row, see <see cref="BindConstant"/>.
+    /// </para>
+    /// </remarks>
+    /// <returns>the same query <see cref="Build"/> would return, reading dictionaries rather than entities</returns>
+    /// <exception cref="WeequeryException">
+    /// whatever <see cref="Build"/> would throw, plus a projected field that no binding claimed or that names a
+    /// bound collection
+    /// </exception>
+    public IQueryable<Dictionary<string, object?>> BuildProjected()
+    {
+        return Build().Select(Projector());
+    }
+
+    /// <summary>
+    /// Apply everything as <see cref="BuildPaged"/> does, and read back only the projected fields.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two halves a grid needs, narrowed to the columns it draws.
+    /// <code>
+    /// var (page, matches) = query.WithWeequery()
+    ///     .BindProperties(MinionBindings)
+    ///     .ApplyCondition(request.Filter)
+    ///     .ApplySorts(request.Sort, DefaultSort)
+    ///     .ApplyPagination(request.PageSize, request.Page)
+    ///     .ApplyProjection(request.Fields)
+    ///     .BuildPagedProjected();
+    ///
+    /// var total = await matches.CountAsync();
+    /// var rows  = await page.ToListAsync();
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>Only the page is projected.</b> The count is over rows rather than over what is read off them, so
+    /// narrowing it would change nothing about the number and only give a provider more to think about. Counting
+    /// <see cref="PagedQuery{T}.Matches"/> gives the same total it would without a projection, which is what it
+    /// should: the projection decides what a row says, not which rows there are.
+    /// </para>
+    /// </remarks>
+    /// <returns>the projected page, and the query counting everything the conditions matched</returns>
+    /// <exception cref="WeequeryException">whatever <see cref="BuildProjected"/> would throw</exception>
+    public PagedQuery<Dictionary<string, object?>> BuildPagedProjected()
+    {
+        // Shared, so the count is over exactly the rows the page was taken from and cannot drift from it
+        var matches = Filtered();
+
+        return new PagedQuery<Dictionary<string, object?>>(
+            Windowed(Sorted(matches)).Select(Projector()),
+            matches.Select(Projector()));
+    }
+
+    /// <summary>
+    /// The selector that turns an entity into one projected row.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A dictionary built with a collection initializer, which is the shape <c>new Dictionary&lt;string,
+    /// object?&gt; { ["Name"] = x.Name }</c> compiles to and the shape a provider reads as a list of columns.
+    /// Built over the shared parameter, as every accessor is, so the accessors compose into one lambda.
+    /// </para>
+    /// <para>
+    /// A path that can run through a null is guarded, so reading it is never attempted where there is nothing to
+    /// read: in memory that would throw, and the answer for a row whose Lair is null is that it has no LairName
+    /// rather than that the query failed. A provider propagates nulls through a join on its own, so there the
+    /// guard is saying what would have happened anyway.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="WeequeryException">a field is unbound, or names a bound collection</exception>
+    private Expression<Func<T, Dictionary<string, object?>>> Projector()
+    {
+        // Nothing asked for is everything a caller is allowed to read, which is the only other thing it could
+        // sensibly mean. A binding that does not grant Projection is not part of "all of it".
+        var fields = Projected.IsEmpty
+            ? [.. from entry in Bindings where entry.Value.Allows(BindingUse.Projection) select entry.Key]
+            : Projected.Fields;
+
+        var add = typeof(Dictionary<string, object?>).GetMethod(nameof(Dictionary<string, object?>.Add))
+            ?? throw new WeequeryException($"(Should be impossible) {nameof(Dictionary<string, object?>)} has no Add");
+
+        var entries = from field in fields select Expression.ElementInit(add, Expression.Constant(CanonicalKey(field)), Value(field));
+
+        var body = Expression.ListInit(Expression.New(typeof(Dictionary<string, object?>)), entries);
+
+        return Expression.Lambda<Func<T, Dictionary<string, object?>>>(body, SharedBindingParameter);
+    }
+
+    /// <summary>
+    /// The key one projected field reads back under, refusing what cannot be read at all
+    /// </summary>
+    /// <exception cref="WeequeryException">the field names a bound collection</exception>
+    private string CanonicalKey(string field)
+    {
+        var (key, _) = BindingLookup.SplitIndex(field);
+
+        // Refused here rather than as "unbound", since it is bound and the message would be a lie. A collection
+        // holds many values and a column holds one, so there is nothing for this to read.
+        if (Collections.ContainsKey(key))
+        {
+            throw new WeequeryException($"'{key}' is a collection, so it cannot be projected: it has no single value to read. Project a field of the entity, or ask about its elements with a quantifier");
+        }
+
+        return BindingLookup.CanonicalKey(Bindings, field);
+    }
+
+    /// <summary>
+    /// One projected value, boxed, and guarded where the path to it can run through a null
+    /// </summary>
+    /// <exception cref="WeequeryException">the field is unbound</exception>
+    private Expression Value(string field)
+    {
+        var binding = BindingLookup.Resolve(Bindings, field);
+
+        // Bound, but not for this. Said plainly rather than reported as unbound, which would send a caller
+        // looking for a typo in a name that works perfectly well in a condition.
+        if (!binding.Allows(BindingUse.Projection))
+        {
+            throw new WeequeryException($"'{field}' cannot be projected: it is bound for {binding.Use}");
+        }
+
+        Expression value = Expression.Convert(binding.Accessor, typeof(object));
+
+        // LinkNotNullCheck guards the read rather than the value: an int reached through a null navigation has
+        // nothing to box, where an int that is simply zero has
+        if (!binding.RequiresLinkCheck) { return value; }
+
+        return Expression.Condition(binding.LinkNotNullCheck, value, Expression.Constant(null, typeof(object)));
+    }
+
     // FIXME - BuildElasticsearch()  ???
     // FIXME - BuildOData() ???
 
@@ -983,7 +1262,7 @@ public class Inquiry<T> where T : class
         Dictionary<string, Binding<T>> bindings = BindingLookup.Create<T>();
         foreach (var bindingDefinition in requests)
         {
-            Binding<T>.Create(SharedBindingParameter, bindingDefinition.PropertyPath, bindings, bindingDefinition.Key);
+            Binding<T>.Create(SharedBindingParameter, bindingDefinition.PropertyPath, bindings, bindingDefinition.Key, bindingDefinition.Use);
         }
 
         // Two threads meeting on the same new set both build one, and either will do
@@ -995,6 +1274,11 @@ public class Inquiry<T> where T : class
     /// <summary>
     /// Describes a set of requests exactly, so two sets share an entry only when they would build the same
     /// bindings. The separators cannot appear in a path or a key, both of which are SQL names, dotted for a path.
+    /// <para>
+    /// The use is part of what a request builds, so it is part of what tells two sets apart: the same paths
+    /// bound for filtering and bound for projection only are two different sets of bindings, and one cache
+    /// entry cannot be both, see <see cref="BindingUse"/>.
+    /// </para>
     /// </summary>
     /// <param name="requests"></param>
     /// <returns></returns>
@@ -1004,7 +1288,7 @@ public class Inquiry<T> where T : class
 
         foreach (var request in requests)
         {
-            builder.Append(request.PropertyPath).Append('>').Append(request.Key).Append('|');
+            builder.Append(request.PropertyPath).Append('>').Append(request.Key).Append('>').Append((int)request.Use).Append('|');
         }
 
         return builder.ToString();

@@ -34,7 +34,7 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
         }
     }
 
-    public override Expression<Func<TClass, bool>> BuildTypedExpressionFromTypedCondition<TClass>(Binding<TClass> binding, TypedCondition<bool> condition)
+    protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<bool> condition)
     {
         WeequeryException.ThrowIfNull(binding);
         WeequeryException.ThrowIfNull(condition);

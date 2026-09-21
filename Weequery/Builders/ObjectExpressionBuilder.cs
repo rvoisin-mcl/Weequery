@@ -4,7 +4,7 @@ namespace Weequery.Builders;
 
 internal class ObjectExpressionBuilder : ExpressionBuilderBase<object>
 {
-    public override Expression<Func<TClass, bool>> BuildTypedExpressionFromTypedCondition<TClass>(Binding<TClass> binding, TypedCondition<object> condition)
+    protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<object> condition)
     {
         WeequeryException.ThrowIfNull(binding);
         WeequeryException.ThrowIfNull(condition);

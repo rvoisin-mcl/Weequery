@@ -753,6 +753,30 @@ public static class ConditionFunctions
     }
 
     /// <summary>
+    /// Split a field into the key it names and the index it is taken at, where it carries one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A sort, an operand and a projected field all hold an index in the field's own text, having nowhere else
+    /// to put it: "Tallies[apples]" is the key Tallies at the index apples. A comparison holds the two apart, in
+    /// <see cref="Interfaces.IBound.Field"/> and <see cref="Interfaces.IBound.Index"/>, so it needs none of this.
+    /// </para>
+    /// <para>
+    /// Public because anything reading a condition has to take the two apart the same way this library does, and
+    /// the alternative is every such thing writing its own and one of them getting a nested bracket wrong.
+    /// </para>
+    /// </remarks>
+    /// <param name="field">a field name, which may carry an index</param>
+    /// <returns>the key, and the index or null where there is none</returns>
+    /// <exception cref="WeequeryException">the field is null or empty</exception>
+    public static (string Key, string? Index) SplitIndex(string field)
+    {
+        WeequeryException.ThrowIfNullOrEmpty(field);
+
+        return BindingLookup.SplitIndex(field);
+    }
+
+    /// <summary>
     /// Every field a condition names, including the ones its operands name, without duplicates.
     /// </summary>
     /// <remarks>

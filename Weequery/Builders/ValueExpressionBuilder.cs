@@ -4,7 +4,7 @@ namespace Weequery.Builders;
 
 internal class ValueExpressionBuilder<T> : ExpressionBuilderBase<T> where T : struct
 {
-    public override Expression<Func<TClass, bool>> BuildTypedExpressionFromTypedCondition<TClass>(Binding<TClass> binding, TypedCondition<T> condition)
+    protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<T> condition)
     {
         WeequeryException.ThrowIfNull(binding);
         WeequeryException.ThrowIfNull(condition);

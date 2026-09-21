@@ -73,7 +73,7 @@ public sealed class CollectionBindingSet<TElement>
 
     /// <summary>
     /// Bind the property reached by following the selector and then the segments after it, for a path a selector
-    /// cannot write on its own. See <see cref="Inquiry{T}.BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse)"/>.
+    /// cannot write on its own. See <see cref="Inquiry{T}.BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse, ValueConverter)"/>.
     /// </summary>
     /// <typeparam name="TProperty"></typeparam>
     /// <param name="selector">as far as the compiler can follow</param>

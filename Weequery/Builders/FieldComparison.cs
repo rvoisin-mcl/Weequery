@@ -158,7 +158,13 @@ internal static class FieldComparison
     {
         try
         {
-            return ValueFormat.Parse(left.UnwrappedPropertyType, text);
+            var parsed = ValueFormat.Parse(left.UnwrappedPropertyType, text);
+
+            // The client half of a conversion, which the builders get from ExpressionBuilderBase and this path
+            // does not go through. A comparison against a property has no client value at all and skips this.
+            return ((left.Converter is null) || (!left.Converter.Runs(ConversionTarget.Client)))
+                ? parsed
+                : left.Converter.ConvertBoxed(parsed);
         }
         catch (WeequeryException ex)
         {

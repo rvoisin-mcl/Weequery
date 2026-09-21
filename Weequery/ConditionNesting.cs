@@ -5,6 +5,11 @@ namespace Weequery;
 /// <summary>
 /// How deeply conditions may nest, shared by everything that walks one.
 /// <para>
+/// Public because it is a contract rather than a detail: anything that walks a condition is held to the same
+/// limit, including a walk written outside this assembly, and the packages that translate a condition into
+/// something other than an expression tree need to be able to hold themselves to it.
+/// </para>
+/// <para>
 /// A condition is a tree, and every walk over one is recursive: packing and unpacking it, writing it as a query,
 /// building the expression. They take their input from a caller, and a caller is where the deep ones come from 
 /// a tree nesting a few thousand levels overflows the stack, which cannot be caught and takes the process with
@@ -17,14 +22,14 @@ namespace Weequery;
 /// thing. Whatever parses can therefore be packed, written and built.
 /// </para>
 /// </summary>
-internal static class ConditionNesting
+public static class ConditionNesting
 {
     /// <summary>
     /// Levels of nesting allowed. Every container is one level, so a conjunction or a negation, and a comparison
     /// is a leaf. The limit is on nesting rather than on size: a conjunction may hold as many operands as it
     /// likes, and a condition as many values.
     /// </summary>
-    internal const int MaxDepth = 16;
+    public const int MaxDepth = 16;
 
     /// <summary>
     /// Step into one more level of nesting, refusing to go past <see cref="MaxDepth"/>.
@@ -32,7 +37,7 @@ internal static class ConditionNesting
     /// <param name="depth">levels already entered</param>
     /// <returns>the depth to walk the next level at, one deeper</returns>
     /// <exception cref="WeequeryException">the condition nests deeper than the limit</exception>
-    internal static int Descend(int depth)
+    public static int Descend(int depth)
     {
         if (IsTooDeep(depth + 1)) { throw TooDeep(); }
 
@@ -46,7 +51,7 @@ internal static class ConditionNesting
     /// </summary>
     /// <param name="depth">levels entered to get here</param>
     /// <returns></returns>
-    internal static bool IsTooDeep(int depth)
+    public static bool IsTooDeep(int depth)
     {
         return depth > MaxDepth;
     }
@@ -60,7 +65,7 @@ internal static class ConditionNesting
     /// </summary>
     /// <param name="condition"></param>
     /// <returns></returns>
-    internal static bool IsTooDeep(ICondition condition)
+    public static bool IsTooDeep(ICondition condition)
     {
         return IsTooDeep(condition, 0);
     }
@@ -82,7 +87,7 @@ internal static class ConditionNesting
     /// The one exception for the one limit, so every walk reports it the same way
     /// </summary>
     /// <returns></returns>
-    internal static WeequeryException TooDeep()
+    public static WeequeryException TooDeep()
     {
         return new WeequeryException($"Condition nests deeper than the limit of {MaxDepth}");
     }

@@ -23,7 +23,7 @@ namespace Weequery.Builders;
 internal class StringExpressionBuilder : ExpressionBuilderBase<string>
 {
 
-    public override Expression<Func<TClass, bool>> BuildTypedExpressionFromTypedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
+    protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         WeequeryException.ThrowIfNull(binding);
         WeequeryException.ThrowIfNull(condition);

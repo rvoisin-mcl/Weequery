@@ -32,7 +32,9 @@ internal static class ExpressionBuilderFunctions
     private static Expression BuildContainsCheck<TClass, TProperty>(Binding<TClass> binding, List<TProperty> values)
     {
         // The list itself is parameterized the same way single values are, so it does not land in the SQL as literals
-        return Expression.Call(QueryValue.Of(values), ListContains<TProperty>.Method, binding.PropertyIsWrappedByNullable ? binding.UnwrappedAccessor : binding.Accessor);
+        // Always the unwrapped accessor: it matches List<TProperty> either way, and it is the one carrying any
+        // source side conversion, where Accessor is the raw property
+        return Expression.Call(QueryValue.Of(values), ListContains<TProperty>.Method, binding.UnwrappedAccessor);
     }
 
     /// <summary>

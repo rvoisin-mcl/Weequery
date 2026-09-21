@@ -28,6 +28,9 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Weequery\Weequery.csproj" />
+        <ProjectReference Include="..\Weequery.AutoMapper\Weequery.AutoMapper.csproj" />
+        <ProjectReference Include="..\Weequery.Elasticsearch\Weequery.Elasticsearch.csproj" />
+        <ProjectReference Include="..\Weequery.OData\Weequery.OData.csproj" />
     </ItemGroup>
 
 </Project>

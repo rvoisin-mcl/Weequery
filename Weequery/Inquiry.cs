@@ -12,8 +12,31 @@ namespace Weequery;
 /// Wrapper class that provides fluent configuration for IQueryable with Weequery
 /// </summary>
 /// <remarks>
+/// <para>
 /// The bound properties are the allow-list: a condition or a sort naming a field that no binding claimed is
 /// refused. Field names are matched against binding keys without regard to case.
+/// </para>
+/// <para>
+/// <b>An Inquiry is mutable, and it is the one thing about this library that reads like it is not.</b> Every
+/// Apply and every Bind changes the object and returns the same one, so a fluent chain is a sequence of
+/// modifications rather than a pipeline of new values. That is not how <see cref="IQueryable{T}"/> behaves, and
+/// the chain looks enough like a LINQ chain to invite the assumption.
+/// </para>
+/// <para>
+/// It matters when one is kept and used twice. Conditions <b>accumulate</b>, sorts accumulate, and everything
+/// else is last-call-wins, so a second query built off the same Inquiry carries the first one's filter with it:
+/// <code>
+/// var inquiry = query.WithWeequery().BindProperties(MinionBindings);
+///
+/// var active = inquiry.ApplyCondition("IsActive = true").Build();
+/// var paid   = inquiry.ApplyCondition("Pay &gt; 10000").Build();    // active AND paid, not paid
+/// </code>
+/// Which is an answer rather than an error, and a plausible looking one, so nothing tells you.
+/// </para>
+/// <para>
+/// Build one per query, which is what the usual shape does anyway, or <see cref="Clone"/> a configured one and
+/// branch off the copy.
+/// </para>
 /// </remarks>
 /// <typeparam name="T"></typeparam>
 public class Inquiry<T> where T : class
@@ -26,7 +49,7 @@ public class Inquiry<T> where T : class
     /// All the bindings used together have to share it: a lambda is built from one binding's parameter and a body
     /// assembled from several, so accessors rooted in different parameters would not compose. Sharing it for the
     /// whole type is what lets a binding built once be used by every query after it, see
-    /// <see cref="BindingSets"/>, and costs nothing to do — an expression tree is immutable, and a parameter is an
+    /// <see cref="BindingSetCache{T}"/>, and costs nothing to do — an expression tree is immutable, and a parameter is an
     /// identity rather than a value, so two lambdas built over the same one are still two independent lambdas.
     /// </para>
     /// <para>
@@ -58,6 +81,17 @@ public class Inquiry<T> where T : class
     /// until a caller says otherwise, which reads every bound field.
     /// </summary>
     private Projection Projected { get; set; } = Projection.None;
+
+    /// <summary>
+    /// The projection a caller applied, or <see cref="Projection.None"/> where none was, see
+    /// <see cref="ApplyProjection(string?)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Readable so that something building on this Inquiry can tell whether the caller asked for a set of
+    /// columns, which is what a different way of shaping a row has to know before it quietly ignores one. The
+    /// AutoMapper package refuses that combination on exactly this.
+    /// </remarks>
+    public Projection AppliedProjection { get { return Projected; } }
 
     private int PageSize { get; set; } = -1;
     private int Page { get; set; } = -1;
@@ -155,6 +189,49 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// A copy of this Inquiry, so one can be configured once and then branched rather than reused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The way out of the one hazard this type has, see the remarks on <see cref="Inquiry{T}"/>: an Inquiry is
+    /// mutable and its conditions accumulate, so a second query built off the same one carries the first one's
+    /// filter. Cloning gives each query its own.
+    /// <code>
+    /// var bound = query.WithWeequery().BindProperties(MinionBindings);
+    ///
+    /// var active = bound.Clone().ApplyCondition("IsActive = true").Build();
+    /// var paid   = bound.Clone().ApplyCondition("Pay &gt; 10000").Build();
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>What is copied is the lists, not what is in them.</b> A binding is immutable once built and is shared
+    /// rather than rebuilt, which is the whole reason cloning is cheap: adding a binding to the copy leaves the
+    /// original's set alone, and the bindings both of them already had are the same objects. The same goes for
+    /// the conditions, which are yours and are shared as you handed them over; a condition you go on to mutate
+    /// is mutated for both, as it would be for two queries you built without this.
+    /// </para>
+    /// <para>
+    /// <see cref="DroppedFields"/> is not copied. It describes a build rather than a configuration, and the copy
+    /// has not built anything.
+    /// </para>
+    /// </remarks>
+    /// <returns>a new Inquiry over the same query, configured the same way, sharing nothing mutable</returns>
+    public Inquiry<T> Clone()
+    {
+        return new Inquiry<T>(Query)
+        {
+            Bindings = new Dictionary<string, Binding<T>>(Bindings, BindingLookup.KeyComparer),
+            Collections = new Dictionary<string, ICollectionBinding<T>>(Collections, BindingLookup.KeyComparer),
+            Conditions = [.. Conditions],
+            Sorts = [.. Sorts],
+            Projected = Projected,
+            PageSize = PageSize,
+            Page = Page,
+            DropsUnboundFields = DropsUnboundFields,
+        };
+    }
+
+    /// <summary>
     /// Bind the property indicated by the selector func, if a key is not provided, it will be bound as the property path
     /// </summary>
     /// <typeparam name="TProperty"></typeparam>
@@ -162,9 +239,10 @@ public class Inquiry<T> where T : class
     /// <param name="key"></param>
     /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
-    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string? key = null, BindingUse use = BindingUse.All)
+    /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
+    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
-        Binding<T>.Create(SharedBindingParameter, selector, Bindings, key, use);
+        Binding<T>.Create(SharedBindingParameter, selector, Bindings, key, use, convert);
 
         return RefuseDuplicateKeys();
     }
@@ -178,7 +256,7 @@ public class Inquiry<T> where T : class
     /// <c>(x) =&gt; x.BirthDate.Year</c> against a <c>DateTime?</c>, since a Nullable exposes only its own members,
     /// and writing <c>(x) =&gt; x.BirthDate!.Value.Year</c> instead unwraps rather than reaches through, binding a
     /// plain int with no null of its own. Selecting BirthDate and naming "Year" as a segment binds
-    /// "BirthDate.Year" exactly as <see cref="BindProperty(string, string?, BindingUse)"/> would, while the compiler still
+    /// "BirthDate.Year" exactly as <see cref="BindProperty(string, string?, BindingUse, ValueConverter)"/> would, while the compiler still
     /// checks the part of the path it can see. See the remarks on <see cref="Operator"/> for what reaching through
     /// a nullable means for the operators.
     /// <code>
@@ -191,10 +269,11 @@ public class Inquiry<T> where T : class
     /// <param name="key"></param>
     /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
+    /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null, BindingUse use = BindingUse.All)
+    public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
-        Binding<T>.Create(SharedBindingParameter, selector, segments, Bindings, key, use);
+        Binding<T>.Create(SharedBindingParameter, selector, segments, Bindings, key, use, convert);
 
         return RefuseDuplicateKeys();
     }
@@ -228,7 +307,7 @@ public class Inquiry<T> where T : class
     /// <para>
     /// The collection itself is not otherwise answerable: it is not bound as a property, so it takes no
     /// comparison and no index, and a caller naming it outside a quantifier is refused. Bind it with
-    /// <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?, BindingUse)"/> as well if you also want
+    /// <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?, BindingUse, ValueConverter)"/> as well if you also want
     /// it tested for null or indexed, under a different key.
     /// </para>
     /// <para>
@@ -345,13 +424,14 @@ public class Inquiry<T> where T : class
     /// <param name="value">must not be null: a constant stands for a value, so it needs one</param>
     /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
+    /// <param name="convert">[OPT] a normalisation applied to its value, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public Inquiry<T> BindConstant<TValue>(string key, TValue value, BindingUse use = BindingUse.Condition | BindingUse.Projection)
+    public Inquiry<T> BindConstant<TValue>(string key, TValue value, BindingUse use = BindingUse.Condition | BindingUse.Projection, ValueConverter? convert = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        Binding<T>.CreateConstant(SharedBindingParameter, key, value, Bindings, use);
+        Binding<T>.CreateConstant(SharedBindingParameter, key, value, Bindings, use, convert);
 
         return RefuseDuplicateKeys();
     }
@@ -363,13 +443,14 @@ public class Inquiry<T> where T : class
     /// <param name="key"></param>
     /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
-    public Inquiry<T> BindProperty(string path, string? key = null, BindingUse use = BindingUse.All)
+    /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
+    public Inquiry<T> BindProperty(string path, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(path);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        Binding<T>.Create(SharedBindingParameter, path, Bindings, key, use);
+        Binding<T>.Create(SharedBindingParameter, path, Bindings, key, use, convert);
 
         return RefuseDuplicateKeys();
     }
@@ -378,9 +459,9 @@ public class Inquiry<T> where T : class
     /// Bind the properties in the list, if a key is not provided, they will be bound as the property path
     /// </summary>
     /// <remarks>
-    /// A set of requests is resolved once for the process and kept, see <see cref="BindingSets"/>, so calling this
+    /// A set of requests is resolved once for the process and kept, see <see cref="BindingSetCache{T}"/>, so calling this
     /// per request costs a copy rather than a property path lookup per property. Adding to this Inquiry after it,
-    /// with this or with <see cref="BindProperty(string, string?, BindingUse)"/>, works as it always did: everything binds
+    /// with this or with <see cref="BindProperty(string, string?, BindingUse, ValueConverter)"/>, works as it always did: everything binds
     /// against the same parameter either way.
     /// </remarks>
     /// <param name="bindingRequests"></param>
@@ -392,7 +473,7 @@ public class Inquiry<T> where T : class
 
         // Copied in rather than used as it stands, since this Inquiry's lookup can keep taking bindings after
         // this call and the kept set has to stay as it is
-        foreach (var binding in BindingsFor(bindingRequests))
+        foreach (var binding in BindingSetCache<T>.For(bindingRequests, SharedBindingParameter))
         {
             if (Bindings.ContainsKey(binding.Key)) { throw new WeequeryException($"Binding already exists for '{binding.Key}'"); }
 
@@ -402,176 +483,6 @@ public class Inquiry<T> where T : class
         return RefuseDuplicateKeys();
     }
 
-    /// <summary>
-    /// Whether a property's type is one the caller asked to leave out, see
-    /// <see cref="BindingResolutionSettings.IgnoreTypes"/>.
-    /// </summary>
-    /// <param name="type">the property's declared type</param>
-    /// <param name="settings"></param>
-    /// <returns></returns>
-    private static bool ShouldIgnoreType(Type type, BindingResolutionSettings settings)
-    {
-        if (settings.IgnoreTypes.Count == 0) { return false; }
-        if (settings.IgnoreTypes.Contains(type)) { return true; }
-        if (!settings.IgnoreTypeWhenAssignable) { return false; }
-        return settings.IgnoreTypes.Where(ignore => type.IsAssignableTo(ignore)).Any();
-    }
-
-    /// <summary>
-    /// Whether a type holds anything worth walking into, which a container does not.
-    /// </summary>
-    /// <remarks>
-    /// An array, a List, a Dictionary, anything a foreach would walk. What is *inside* one is not reachable from
-    /// here, since this library does not filter into a collection, so all expansion yields is the container's own
-    /// bookkeeping: Length, LongLength, Rank, SyncRoot, IsFixedSize, Count, Capacity. None of that is a question
-    /// anyone meant to ask, and a provider will refuse to translate most of it. A string is one of these too,
-    /// which is why Name.Length is not a key.
-    /// </remarks>
-    /// <param name="type"></param>
-    /// <returns></returns>
-    private static bool IsContainer(Type type)
-    {
-        // Arrays are covered by this too, every one of them implementing it
-        return type.IsAssignableTo(typeof(System.Collections.IEnumerable));
-    }
-
-    /// <summary>
-    /// Whether the walk should descend into a property, having already decided to bind it.
-    /// </summary>
-    /// <param name="type">the property's declared type</param>
-    /// <param name="settings"></param>
-    /// <param name="path">the property's whole path, which is what the ignore rules are matched against</param>
-    /// <param name="ancestors">
-    /// the types already open on the way here, see <see cref="ResolveBindables(int, BindingResolutionSettings)"/>
-    /// </param>
-    /// <returns></returns>
-    private static bool ShouldExpandType(Type type, BindingResolutionSettings settings, string path, HashSet<Type> ancestors)
-    {
-        // a container holds its elements, which are not reachable, and its own bookkeeping, which is noise
-        if (IsContainer(type)) { return false; }
-        // the property has potential properties of its own. An interface counts: what it promises is reachable
-        // through it, and a model that navigates by interface would otherwise resolve nothing below it
-        if (!(type.IsClass || type.IsInterface)) { return false; }
-        // if we have been directed to ignore child properties for this path
-        if (settings.IgnorePaths.Contains($"{path}.")) { return false; }
-        // if we have been directed not to expand this type
-        if (settings.DoNotExpandTypes.Contains(type)) { return false; }
-        // if this type is already open further up the same path, which is a cycle
-        if (ancestors.Contains(type)) { return false; }
-
-        return true;
-    }
-
-    /// <summary>
-    /// The properties of a type that resolution will consider, before any of the settings are applied.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Readable, and not an indexer: an indexer has no path to bind, so taking one would refuse the whole model
-    /// when it came to be bound.
-    /// </para>
-    /// <para>
-    /// Names are made distinct, which matters twice. GetProperties on an interface returns what that interface
-    /// declares and nothing it inherits, so the inherited ones are gathered separately and two interfaces may
-    /// well promise the same name. And a derived class that shadows a property with <c>new</c> reports both.
-    /// Either way a path can only mean one thing, so the first wins.
-    /// </para>
-    /// </remarks>
-    /// <param name="type"></param>
-    /// <returns></returns>
-    private static IEnumerable<PropertyInfo> ReadableProperties(Type type)
-    {
-        IEnumerable<PropertyInfo> properties = type.GetProperties();
-
-        if (type.IsInterface)
-        {
-            properties = properties.Concat(type.GetInterfaces().SelectMany(inherited => inherited.GetProperties()));
-        }
-
-        return properties
-            .Where(prop => prop.CanRead && (prop.GetIndexParameters().Length == 0))
-            .GroupBy(prop => prop.Name)
-            .Select(group => group.First());
-    }
-
-    /// <summary>
-    /// The key a resolved path is bound under, which is the path itself unless the language has claimed it.
-    /// </summary>
-    /// <remarks>
-    /// A property named after an operator makes a key that a query could not tell from the operator, so binding
-    /// it as it stands is refused, see <see cref="WeequeryException.ThrowIfNotBindingKey"/>. That is the right
-    /// answer for a key someone chose and the wrong one for a whole model, which would otherwise resolve to
-    /// nothing because one property happens to be called Contains. An underscore is a legal key character and no
-    /// operator ends in one, so the suffix is always enough, and it is applied only where it is needed rather
-    /// than to every key.
-    /// <para>
-    /// Only a whole key can collide: a nested "Lair.Contains" is not the operator to begin with, since the
-    /// tokenizer reads a dotted path as one word.
-    /// </para>
-    /// </remarks>
-    /// <param name="path">the resolved property path</param>
-    /// <returns>the path, or the path with an underscore where the path is a reserved word</returns>
-    private static string KeyFor(string path)
-    {
-        return QueryKeywords.IsReserved(path) ? $"{path}_" : path;
-    }
-
-    /// <summary>
-    /// Walk one level of a type, adding a request for every readable property that survives the settings, and
-    /// recursing into the ones that have properties of their own.
-    /// </summary>
-    /// <remarks>
-    /// Properties are returned in path order.
-    /// </remarks>
-    /// <param name="bindings">the list being built, added to in place</param>
-    /// <param name="type">the type to walk</param>
-    /// <param name="depth">levels already descended, so 0 for the entity itself</param>
-    /// <param name="maxDepth">how far down to go, already bounded by the caller</param>
-    /// <param name="prefix">the path so far, empty at the top, which is what makes the keys dotted</param>
-    /// <param name="settings"></param>
-    /// <param name="ancestors">
-    /// the types open on the path to here, which is what stops a cycle. A model where two types refer to each
-    /// other has no bottom, and the walk would otherwise only be stopped by <paramref name="maxDepth"/>, one
-    /// level of which multiplies the paths rather than adding to them
-    /// </param>
-    /// <returns>the same list, for the caller that started it</returns>
-    private static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors)
-    {
-        // Open on the way in and closed on the way out, so the set is what is above this point on this path
-        // rather than everything the walk has ever seen. Two properties of the same type are both expanded; the
-        // same type twice down one chain is not.
-        ancestors.Add(type);
-
-        try
-        {
-            var properties = ReadableProperties(type).OrderBy(prop => prop.Name);
-            foreach (var property in properties)
-            {
-                var pathName = (string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}");
-
-                // A value type with no builder cannot be bound at all, and taking it would refuse the whole model
-                // over one property of a struct nobody meant to filter on. Skipped the way an indexer is.
-                if (!ExpressionBuilder.CanBindPropertyType(property.PropertyType)) { continue; }
-
-                if ((!settings.IgnorePaths.Contains(pathName)) && (!ShouldIgnoreType(property.PropertyType, settings)))
-                {
-                    bindings.Add(new(pathName, KeyFor(pathName)));
-
-                    // if we haven't bottomed out, and settings say the property should be expanded
-                    if ((depth < maxDepth) && (ShouldExpandType(property.PropertyType, settings, pathName, ancestors)))
-                    {
-                        ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings, ancestors);
-                    }
-                }
-            }
-        }
-        finally
-        {
-            ancestors.Remove(type);
-        }
-
-        return bindings;
-    }
 
     /// <summary>
     /// Build a binding request for every readable property a type reaches, keyed by its path.
@@ -595,7 +506,7 @@ public class Inquiry<T> where T : class
     /// <para>
     /// A property whose path spells an operator is bound with an underscore after it, so a model holding a
     /// property called Contains resolves it as "Contains_" rather than refusing the whole model, see
-    /// <see cref="KeyFor"/>. Only a top level property can collide, a nested "Lair.Contains" being one word to
+    /// <see cref="BindingResolver.KeyFor"/>. Only a top level property can collide, a nested "Lair.Contains" being one word to
     /// the tokenizer and not the operator.
     /// </para>
     /// <para>
@@ -604,7 +515,7 @@ public class Inquiry<T> where T : class
     /// <list type="bullet">
     /// <item><description>
     /// It does not descend into a struct, so DateTime.Year is not reached this way and still has to be bound by
-    /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse)"/>. A
+    /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse, ValueConverter)"/>. A
     /// collection is descended as the class it is rather than as its element type, so filtering into one is no
     /// more possible here than it is anywhere else in this library, and what you get from one is Count and
     /// Capacity, which a provider may well refuse to translate.
@@ -639,7 +550,7 @@ public class Inquiry<T> where T : class
         // constructor, which is for copying something.
         settings = (settings is null) ? BindingResolutionSettings.Standard : new(settings);
 
-        return ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
+        return BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
     }
 
     /// <summary>
@@ -652,7 +563,7 @@ public class Inquiry<T> where T : class
     /// </para>
     /// <para>
     /// Adds to whatever is already bound rather than replacing it, so a key resolved here that a
-    /// <see cref="BindProperty(string, string?, BindingUse)"/> call already claimed is a duplicate and is refused, see
+    /// <see cref="BindProperty(string, string?, BindingUse, ValueConverter)"/> call already claimed is a duplicate and is refused, see
     /// <see cref="BindProperties"/>. Resolve first and <see cref="RemoveBinding"/> what you do not want, or bind
     /// by hand and do not call this.
     /// </para>
@@ -1250,6 +1161,19 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// The selector for this Inquiry's projection, see <see cref="ProjectionBuilder{T}"/>.
+    /// </summary>
+    /// <remarks>
+    /// The builder is handed the drop test only where the caller asked for one, so it does not have to know what
+    /// <see cref="IgnoreUnboundFields"/> is, only whether a field survives.
+    /// </remarks>
+    private Expression<Func<T, Dictionary<string, object?>>> Projector()
+    {
+        return ProjectionBuilder<T>.Build(Bindings, Collections, Projected, SharedBindingParameter,
+            DropsUnboundFields ? (field => Keep(field, BindingUse.Projection)) : null);
+    }
+
+    /// <summary>
     /// Apply everything as <see cref="BuildPaged"/> does, and read back only the projected fields.
     /// </summary>
     /// <remarks>
@@ -1291,102 +1215,6 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// The selector that turns an entity into one projected row.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// A dictionary built with a collection initializer, which is the shape <c>new Dictionary&lt;string,
-    /// object?&gt; { ["Name"] = x.Name }</c> compiles to and the shape a provider reads as a list of columns.
-    /// Built over the shared parameter, as every accessor is, so the accessors compose into one lambda.
-    /// </para>
-    /// <para>
-    /// A path that can run through a null is guarded, so reading it is never attempted where there is nothing to
-    /// read: in memory that would throw, and the answer for a row whose Lair is null is that it has no LairName
-    /// rather than that the query failed. A provider propagates nulls through a join on its own, so there the
-    /// guard is saying what would have happened anyway.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="WeequeryException">a field is unbound, or names a bound collection</exception>
-    private Expression<Func<T, Dictionary<string, object?>>> Projector()
-    {
-        // Nothing asked for is everything a caller is allowed to read, which is the only other thing it could
-        // sensibly mean. A binding that does not grant Projection is not part of "all of it".
-        // A projection that names nothing reads everything a caller may read, and one that names fields reads
-        // those. The two stay apart even after pruning: a projection whose every field was dropped asked for
-        // some columns and can have none of them, which is not the same as having asked for all of them.
-        var fields = Projected.IsEmpty
-            ? [.. from entry in Bindings where entry.Value.Allows(BindingUse.Projection) select entry.Key]
-            : Projectable(Projected.Fields);
-
-        var add = typeof(Dictionary<string, object?>).GetMethod(nameof(Dictionary<string, object?>.Add))
-            ?? throw new WeequeryException($"(Should be impossible) {nameof(Dictionary<string, object?>)} has no Add");
-
-        var entries = from field in fields select Expression.ElementInit(add, Expression.Constant(CanonicalKey(field)), Value(field));
-
-        var body = Expression.ListInit(Expression.New(typeof(Dictionary<string, object?>)), entries);
-
-        return Expression.Lambda<Func<T, Dictionary<string, object?>>>(body, SharedBindingParameter);
-    }
-
-    /// <summary>
-    /// The projected fields, less any the caller asked to have dropped rather than refused.
-    /// </summary>
-    /// <remarks>
-    /// The mildest of the three droppings: a field that goes leaves a key out of the row and changes nothing
-    /// else, see <see cref="IgnoreUnboundFields"/>. A row with no keys left is a possible answer here, and the
-    /// honest one for a caller who asked only for columns that are no longer there.
-    /// </remarks>
-    private IReadOnlyList<string> Projectable(IReadOnlyList<string> fields)
-    {
-        return DropsUnboundFields ? [.. fields.Where(field => Keep(field, BindingUse.Projection))] : fields;
-    }
-
-    /// <summary>
-    /// The key one projected field reads back under, refusing what cannot be read at all
-    /// </summary>
-    /// <exception cref="WeequeryException">the field names a bound collection</exception>
-    private string CanonicalKey(string field)
-    {
-        var (key, _) = BindingLookup.SplitIndex(field);
-
-        // Refused here rather than as "unbound", since it is bound and the message would be a lie. A collection
-        // holds many values and a column holds one, so there is nothing for this to read.
-        if (Collections.ContainsKey(key))
-        {
-            throw new WeequeryException($"'{key}' is a collection, so it cannot be projected: it has no single value to read. Project a field of the entity, or ask about its elements with a quantifier");
-        }
-
-        return BindingLookup.CanonicalKey(Bindings, field);
-    }
-
-    /// <summary>
-    /// One projected value, boxed, and guarded where the path to it can run through a null
-    /// </summary>
-    /// <exception cref="WeequeryException">the field is unbound</exception>
-    private Expression Value(string field)
-    {
-        var binding = BindingLookup.Resolve(Bindings, field);
-
-        // Bound, but not for this. Said plainly rather than reported as unbound, which would send a caller
-        // looking for a typo in a name that works perfectly well in a condition.
-        if (!binding.Allows(BindingUse.Projection))
-        {
-            throw new WeequeryException($"'{field}' cannot be projected: it is bound for {binding.Use}");
-        }
-
-        Expression value = Expression.Convert(binding.Accessor, typeof(object));
-
-        // LinkNotNullCheck guards the read rather than the value: an int reached through a null navigation has
-        // nothing to box, where an int that is simply zero has
-        if (!binding.RequiresLinkCheck) { return value; }
-
-        return Expression.Condition(binding.LinkNotNullCheck, value, Expression.Constant(null, typeof(object)));
-    }
-
-    // FIXME - BuildElasticsearch()  ???
-    // FIXME - BuildOData() ???
-
-    /// <summary>
     /// Build the predicate for a condition without needing an IQueryable, for use with Where, Any and friends.
     /// </summary>
     /// <remarks>
@@ -1412,69 +1240,7 @@ public class Inquiry<T> where T : class
         WeequeryException.ThrowIfNull(bindingRequests);
         WeequeryException.ThrowIfNull(condition);
 
-        return ExpressionBuilder.BuildExpression(BindingsFor(bindingRequests), condition);
-    }
-
-    /// <summary>
-    /// The binding sets built for this entity type, keyed by the requests that produced them.
-    /// </summary>
-    private static readonly ConcurrentDictionary<string, Dictionary<string, Binding<T>>> BindingSets = new();
-
-    /// <summary>
-    /// How many distinct binding sets to hold. Sets come from code, so an application has a handful and this is
-    /// never reached; the cap is only here so that a caller composing sets dynamically cannot grow the cache
-    /// without bound. Past it, bindings are built per call.
-    /// </summary>
-    private const int MaxCachedBindingSets = 64;
-
-    /// <summary>
-    /// The bindings for a set of requests, built once and kept, see <see cref="BindingSets"/>.
-    /// </summary>
-    /// <param name="bindingRequests"></param>
-    /// <returns>a lookup that must be treated as read only, since it is shared</returns>
-    /// <exception cref="WeequeryException">a request names a property that cannot be bound, or two claim one key</exception>
-    private static Dictionary<string, Binding<T>> BindingsFor(IEnumerable<BindingRequest> bindingRequests)
-    {
-        // Read once: the requests may be a lazy sequence, and the key has to describe the same set that gets built
-        var requests = (bindingRequests as IReadOnlyList<BindingRequest>) ?? bindingRequests.ToList();
-
-        var key = CacheKey(requests);
-        if (BindingSets.TryGetValue(key, out var cached)) { return cached; }
-
-        // Against the shared parameter, so these compose with anything else bound for this type
-        Dictionary<string, Binding<T>> bindings = BindingLookup.Create<T>();
-        foreach (var bindingDefinition in requests)
-        {
-            Binding<T>.Create(SharedBindingParameter, bindingDefinition.PropertyPath, bindings, bindingDefinition.Key, bindingDefinition.Use);
-        }
-
-        // Two threads meeting on the same new set both build one, and either will do
-        if (BindingSets.Count < MaxCachedBindingSets) { BindingSets.TryAdd(key, bindings); }
-
-        return bindings;
-    }
-
-    /// <summary>
-    /// Describes a set of requests exactly, so two sets share an entry only when they would build the same
-    /// bindings. The separators cannot appear in a path or a key, both of which are SQL names, dotted for a path.
-    /// <para>
-    /// The use is part of what a request builds, so it is part of what tells two sets apart: the same paths
-    /// bound for filtering and bound for projection only are two different sets of bindings, and one cache
-    /// entry cannot be both, see <see cref="BindingUse"/>.
-    /// </para>
-    /// </summary>
-    /// <param name="requests"></param>
-    /// <returns></returns>
-    private static string CacheKey(IReadOnlyList<BindingRequest> requests)
-    {
-        StringBuilder builder = new();
-
-        foreach (var request in requests)
-        {
-            builder.Append(request.PropertyPath).Append('>').Append(request.Key).Append('>').Append((int)request.Use).Append('|');
-        }
-
-        return builder.ToString();
+        return ExpressionBuilder.BuildExpression(BindingSetCache<T>.For(bindingRequests, SharedBindingParameter), condition);
     }
 
     /// <summary>
@@ -1486,13 +1252,20 @@ public class Inquiry<T> where T : class
     /// CultureInfo.CurrentCulture, while Contains is ordinal. A condition run through here can therefore match a
     /// different set of items than the same condition run against a database. See the remarks on
     /// <see cref="Operator"/>.
+    /// <para>
+    /// Because there is no provider here, two things are settled that <see cref="BuildExpression"/> has to leave
+    /// open: an IsMatch is bounded by <see cref="MatchTimeout"/>, and the values are written in as constants
+    /// rather than read out of the boxes that exist to become query parameters, see <see cref="ValueInliner"/>.
+    /// The predicate selects exactly what the uncompiled expression selects; it is cheaper to compile and to run.
+    /// </para>
     /// </remarks>
     /// <param name="bindingRequests"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
     public static Func<T, bool> BuildDelegate(IEnumerable<BindingRequest> bindingRequests, ICondition condition)
     {
-        // Nothing is going to translate this one, so an IsMatch in it is bounded by MatchTimeout
-        return RegexTimeout.Apply(BuildExpression(bindingRequests, condition)).Compile();
+        // Nothing is going to translate this one, so an IsMatch in it is bounded by MatchTimeout and the values
+        // need not stay reachable as parameters. Inlining last, so anything the bounding put in is covered too.
+        return ValueInliner.Apply(RegexTimeout.Apply(BuildExpression(bindingRequests, condition))).Compile();
     }
 }

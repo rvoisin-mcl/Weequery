@@ -110,6 +110,31 @@ internal class Binding<TClass> : IBinding
     }
 
     /// <summary>
+    /// The normalisation applied to this binding's values, or null where there is none, see
+    /// <see cref="ValueConverter"/>.
+    /// </summary>
+    /// <remarks>
+    /// The source half of it is already folded into <see cref="UnwrappedAccessor"/>, so every comparison gets it
+    /// without asking. This is kept for the client half, which runs on a value rather than on a tree.
+    /// </remarks>
+    public ValueConverter? Converter { get; init; }
+
+    /// <summary>
+    /// One value the caller supplied, normalised where the converter runs against the client side.
+    /// </summary>
+    /// <remarks>
+    /// Called once per value as the query is built, so both ends of a range and every entry of a list go through
+    /// it. Left alone where there is no converter, or where it was declared for the source side only.
+    /// </remarks>
+    /// <typeparam name="TValue">the unwrapped property type, which is what the builder was chosen by</typeparam>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    public TValue ConvertClientValue<TValue>(TValue value)
+    {
+        return ((Converter is null) || (!Converter.Runs(ConversionTarget.Client))) ? value : Converter.Convert(value);
+    }
+
+    /// <summary>
     /// ctor. Both kinds of binding come through here, so what is derived from an accessor is derived once.
     /// </summary>
     /// <param name="parameter">the "x" the accessor hangs off, shared by every binding used together</param>
@@ -119,8 +144,9 @@ internal class Binding<TClass> : IBinding
     /// <param name="linkChecks">what has to have a value for the accessor to be safe to read</param>
     /// <param name="isConstant"></param>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    private Binding(ParameterExpression parameter, string name, Expression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant, BindingUse use)
+    private Binding(ParameterExpression parameter, string name, Expression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant, BindingUse use, ValueConverter? converter)
     {
         WeequeryException.ThrowIfNullOrEmpty(name);
 
@@ -143,6 +169,22 @@ internal class Binding<TClass> : IBinding
 
         // The two trees every operator is built from, settled here rather than rebuilt on each read
         UnwrappedAccessor = PropertyIsWrappedByNullable ? Expression.Property(Accessor, "Value") : Accessor;
+
+        // The source half of a conversion lives here and nowhere else, which is what keeps it to comparisons:
+        // every operator reads the unwrapped accessor, while sorting and projecting read Accessor and so see the
+        // value as it is stored. Checked against the property's own type first, since a conversion written for
+        // the wrong one would otherwise build a tree nothing can run.
+        if (converter is not null)
+        {
+            if (converter.ValueType != UnwrappedPropertyType)
+            {
+                throw new WeequeryException($"The converter for '{name}' reads a {converter.ValueType.Name}, and the property is a {UnwrappedPropertyType.Name}. A converter is declared for the unwrapped type, so an int? property takes ValueConverter.For<int>");
+            }
+
+            Converter = converter;
+
+            if (converter.Runs(ConversionTarget.Source)) { UnwrappedAccessor = converter.Inline(UnwrappedAccessor); }
+        }
         NotNullCheck = BuildNotNullCheck(Accessor, PropertyType, PropertyIsWrappedByNullable, LinkChecks);
         LinkNotNullCheck = (LinkChecks.Count == 0) ? Expression.Constant(true) : LinkChecks.Aggregate(Expression.AndAlso);
 
@@ -188,7 +230,7 @@ internal class Binding<TClass> : IBinding
 
         var (access, elementType) = IndexInto(Accessor, PropertyType, index, PropertyPath, checks);
 
-        return new Binding<TClass>(Parameter, $"{PropertyPath}[{index}]", access, elementType, checks, isConstant: false, Use);
+        return new Binding<TClass>(Parameter, $"{PropertyPath}[{index}]", access, elementType, checks, isConstant: false, Use, converter: null);
     }
 
     /// <summary>
@@ -309,15 +351,16 @@ internal class Binding<TClass> : IBinding
     /// <param name="propertyPath"></param>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    private static Binding<TClass> FromPath(ParameterExpression? parameter, string propertyPath, BindingUse use)
+    private static Binding<TClass> FromPath(ParameterExpression? parameter, string propertyPath, BindingUse use, ValueConverter? converter)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
 
         var useParameter = parameter ?? Expression.Parameter(typeof(TClass));
         var resolved = GetPropertyExpression(useParameter, propertyPath);
 
-        return new Binding<TClass>(useParameter, propertyPath, resolved.Expression, resolved.ExpressionType, resolved.LinkChecks, isConstant: false, use);
+        return new Binding<TClass>(useParameter, propertyPath, resolved.Expression, resolved.ExpressionType, resolved.LinkChecks, isConstant: false, use, converter);
     }
 
     /// <summary>
@@ -330,18 +373,17 @@ internal class Binding<TClass> : IBinding
     /// <param name="value"></param>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    private static Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, BindingUse use)
+    private static Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, BindingUse use, ValueConverter? converter)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNull(value);
 
         var useParameter = parameter ?? Expression.Parameter(typeof(TClass));
 
-        return new Binding<TClass>(useParameter, key, QueryValue.Of(value), typeof(TValue), [], isConstant: true, use);
+        return new Binding<TClass>(useParameter, key, QueryValue.Of(value), typeof(TValue), [], isConstant: true, use, converter);
     }
-
-    // FIXME Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, Func<TValue, TValue>? normalizer) // if provided, normalizer will run against both arguments of a comparison
 
     /// <summary>
     /// Create a binding for a value rather than a property, optionally adding it to the bindings LUT under the key
@@ -354,13 +396,14 @@ internal class Binding<TClass> : IBinding
     /// <param name="bindings">[OPT] binding LUT to add to, made by <see cref="BindingLookup.Create"/> so keys are matched the same way everywhere</param>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public static Binding<TClass> CreateConstant<TValue>(ParameterExpression? parameter, string key, TValue value, Dictionary<string, Binding<TClass>>? bindings, BindingUse use = BindingUse.All)
+    public static Binding<TClass> CreateConstant<TValue>(ParameterExpression? parameter, string key, TValue value, Dictionary<string, Binding<TClass>>? bindings, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        return AddTo(bindings, FromValue(parameter, key, value, use), key);
+        return AddTo(bindings, FromValue(parameter, key, value, use, converter), key);
     }
 
     /// <summary>
@@ -798,14 +841,15 @@ internal class Binding<TClass> : IBinding
     /// <param name="key">[OPT] key to use to add to LUT, if not provided, .PropertyPath will be used</param>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All)
+    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNull(selector);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        var binding = FromPath(parameter, GetPropertyPath(selector), use);
+        var binding = FromPath(parameter, GetPropertyPath(selector), use, converter);
 
         return AddTo(bindings, binding, key ?? binding.PropertyPath);
     }
@@ -829,8 +873,9 @@ internal class Binding<TClass> : IBinding
     /// <param name="key">[OPT] key to use to add to LUT, if not provided, the last segment will be used</param>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
-    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, string[] segments, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All)
+    public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, string[] segments, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNull(selector);
         WeequeryException.ThrowIfNull(segments);
@@ -840,7 +885,7 @@ internal class Binding<TClass> : IBinding
 
         foreach (var segment in segments) { WeequeryException.ThrowIfNullOrEmpty(segment); }
 
-        var binding = FromPath(parameter, JoinSegments(GetPropertyPath(selector), segments), use);
+        var binding = FromPath(parameter, JoinSegments(GetPropertyPath(selector), segments), use, converter);
 
         // The last segment, matching what the segments constructor of a BindingRequest does. The whole path would
         // be a legal key now that a period is one, but this overload has always keyed by the last segment and
@@ -881,13 +926,14 @@ internal class Binding<TClass> : IBinding
     /// <param name="key">[OPT] key to use to add to LUT, if not provided, .PropertyPath will be used</param>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
-    public static Binding<TClass> Create(ParameterExpression? parameter, string propertyPath, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All)
+    /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
+    public static Binding<TClass> Create(ParameterExpression? parameter, string propertyPath, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        var binding = FromPath(parameter, propertyPath, use);
+        var binding = FromPath(parameter, propertyPath, use, converter);
 
         return AddTo(bindings, binding, key ?? binding.PropertyPath);
     }

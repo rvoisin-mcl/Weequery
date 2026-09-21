@@ -82,6 +82,8 @@ public class ProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void SortingAndPaginationTranslate(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         using var context = TestDatabase.Create(provider);
 
         var sql = context.Minions
@@ -284,6 +286,8 @@ public class ProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void SortsAndPaginationReturnTheCorrectRows(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         Assert.SkipUnless(TestDatabase.IsAvailable(provider), TestDatabase.UnavailableReason(provider) ?? string.Empty);
 
         var context = TestDatabase.CreateSeeded(provider);

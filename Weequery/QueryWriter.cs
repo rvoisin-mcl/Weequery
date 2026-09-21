@@ -235,9 +235,9 @@ internal static class QueryWriter
         // bracket pairs the parser reads back rather than quoted whole: "[Tallies][apples]", not "'Tallies[apples]'"
         if (field.Contains('['))
         {
-            var (key, index) = BindingLookup.SplitIndex(field);
+            var split = BindingLookup.SplitIndex(field);
 
-            return $"{Field(key)}{IndexText(index)}";
+            return $"{Field(split.Key)}{IndexText(split.Index)}";
         }
 
         return QueryTokenizer.IsBareWord(field) ? $"[{field}]" : ValueFormat.Quote(field);

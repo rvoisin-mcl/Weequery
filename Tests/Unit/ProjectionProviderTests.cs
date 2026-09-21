@@ -70,6 +70,8 @@ public class ProjectionProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AConditionOnAnUnprojectedColumnStillApplies(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var sql = Sql(provider, "Tags", "Id > 1");
 
         Assert.DoesNotContain("Id", SelectList(sql));

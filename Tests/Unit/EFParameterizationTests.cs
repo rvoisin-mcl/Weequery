@@ -170,6 +170,8 @@ public class EFParameterizationTests
     [Fact]
     public void EveryValueInAnInListIsParameterized()
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var sql = QueryStringFor(new MultipleValueCondition<decimal>(Operator.IsIn, nameof(Minion.Pay), [11m, 22m, 33m]));
 
         Assert.Equal(3, sql.Split(".param set").Length - 1);
@@ -235,6 +237,8 @@ public class EFParameterizationTests
     [Fact]
     public void ParameterizedQueriesReturnTheCorrectRowsAgainstARealDatabase()
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var context = Context();
         try
         {

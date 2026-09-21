@@ -1,14 +1,13 @@
-using AutoMapper;
+using Mapster;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Tests.Common;
 using Weequery;
-using Weequery.AutoMapper;
+using Weequery.Mapster;
 
 namespace Tests.Unit;
 
-/// <summary>What a caller reads a minion back as, which is three of its columns under different names</summary>
-public class MinionSummary
+/// <summary>What a caller reads a minion back as here, which is three of its columns under different names</summary>
+public class MinionBrief
 {
     public string Name { get; set; } = "";
     public string? Alias { get; set; }
@@ -16,27 +15,27 @@ public class MinionSummary
 }
 
 /// <summary>
-/// Reading an Inquiry's rows back as a DTO through AutoMapper.
+/// Reading an Inquiry's rows back as a DTO through Mapster.
 /// <para>
-/// Weequery decides which rows and AutoMapper decides what a row looks like, so most of what these check is that
-/// the two halves stay in their own lane: the filter and the sort are still the entity's, the shape is still the
-/// DTO's, and the count is still over rows rather than over what is read off them.
+/// The same division of labour the AutoMapper companion has, see <see cref="AutoMapperProjectionTests"/>:
+/// Weequery decides which rows and Mapster decides what a row looks like, so most of what these check is that
+/// the two halves stay in their own lane. What differs is that Mapster maps by convention, so the configuration
+/// is optional and a DTO whose names line up needs none at all.
 /// </para>
 /// </summary>
-public class AutoMapperProjectionTests
+public class MapsterProjectionTests
 {
-    /// <remarks>
-    /// The two argument shape, which is what AutoMapper 15 takes: 14's one argument constructor is gone. This
-    /// is the only line in this repository the move off 14 touched, the ProjectTo surface the package is built
-    /// on being the same across 14, 15 and 16.
-    /// </remarks>
-    private static IConfigurationProvider Configuration()
+    /// <summary>
+    /// Scoped to the test rather than Mapster's global settings, which are process wide and would leak from one
+    /// test into the next.
+    /// </summary>
+    private static TypeAdapterConfig Configuration()
     {
-        return new MapperConfiguration(
-            config => config
-                .CreateMap<Minion, MinionSummary>()
-                .ForMember(summary => summary.Salary, to => to.MapFrom(minion => minion.Pay)),
-            NullLoggerFactory.Instance);
+        var config = new TypeAdapterConfig();
+
+        config.NewConfig<Minion, MinionBrief>().Map(brief => brief.Salary, minion => minion.Pay);
+
+        return config;
     }
 
     private static Inquiry<Minion> Bound()
@@ -54,23 +53,31 @@ public class AutoMapperProjectionTests
     [Fact]
     public void ARowComesBackAsTheDto()
     {
-        var rows = Bound().ApplyCondition("Name = 'Alice Fox'").ProjectTo<Minion, MinionSummary>(Configuration()).ToList();
+        var rows = Bound().ApplyCondition("Name = 'Alice Fox'").ProjectTo<Minion, MinionBrief>(Configuration()).ToList();
 
         var row = Assert.Single(rows);
 
         Assert.Equal("Alice Fox", row.Name);
         Assert.Equal("Ghost", row.Alias);
 
-        // The map renamed it, which is the DTO's business and not Weequery's
+        // The mapping renamed it, which is the DTO's business and not Weequery's
         Assert.Equal(12000m, row.Salary);
     }
 
+    /// <summary>
+    /// The configuration is optional, which is the one way this differs from the AutoMapper companion. Without
+    /// one, the members that line up by name still map and the renamed one is left at its default.
+    /// </summary>
     [Fact]
-    public void AMapperWorksWhereTheConfigurationWould()
+    public void NoConfigurationMapsWhatLinesUpByName()
     {
-        var mapper = new Mapper(Configuration());
+        var row = Bound().ApplyCondition("Name = 'Alice Fox'").ProjectTo<Minion, MinionBrief>().ToList().Single();
 
-        Assert.Equal(4, Bound().ProjectTo<Minion, MinionSummary>(mapper).Count());
+        Assert.Equal("Alice Fox", row.Name);
+        Assert.Equal("Ghost", row.Alias);
+
+        // Pay and Salary are not the same word, and nothing was told they were
+        Assert.Equal(0m, row.Salary);
     }
 
     // ---------- the rows are Weequery's ----------
@@ -78,23 +85,23 @@ public class AutoMapperProjectionTests
     [Fact]
     public void TheConditionStillApplies()
     {
-        var names = Bound().ApplyCondition("Pay > 10000").ProjectTo<Minion, MinionSummary>(Configuration()).ToList().Select(row => row.Name);
+        var rows = Bound().ApplyCondition("IsActive = true").ProjectTo<Minion, MinionBrief>(Configuration()).ToList();
 
-        Assert.Equal(["Alice Fox", "Charlie Smith"], names.Order());
+        Assert.Equal(3, rows.Count);
+        Assert.DoesNotContain("Charlie Smith", rows.Select(row => row.Name));
     }
 
-    /// <summary>Sorted on the entity, before the projection, which is what lets a sort name a field the DTO lacks</summary>
+    /// <summary>The sort names a binding on the entity, which the DTO need not expose at all</summary>
     [Fact]
     public void TheSortStillAppliesAndIsOverTheEntity()
     {
-        var names = Bound()
+        var rows = Bound()
             .ApplySorts([new Sort("IsActive", SortDirection.Ascending), new Sort("Name", SortDirection.Descending)])
-            .ProjectTo<Minion, MinionSummary>(Configuration())
-            .ToList()
-            .Select(row => row.Name);
+            .ProjectTo<Minion, MinionBrief>(Configuration())
+            .ToList();
 
-        // Charlie is the only inactive one, and IsActive is nowhere on the DTO
-        Assert.Equal(["Charlie Smith", "David Edgars", "Bob Samuelson", "Alice Fox"], names);
+        // IsActive is nowhere on MinionBrief and still decides the order
+        Assert.Equal(["Charlie Smith", "David Edgars", "Bob Samuelson", "Alice Fox"], rows.Select(row => row.Name));
     }
 
     [Fact]
@@ -103,17 +110,16 @@ public class AutoMapperProjectionTests
         var rows = Bound()
             .ApplySorts([new Sort("Name", SortDirection.Ascending)])
             .ApplyPagination(pageSize: 2, page: 1)
-            .ProjectTo<Minion, MinionSummary>(Configuration())
+            .ProjectTo<Minion, MinionBrief>(Configuration())
             .ToList();
 
         Assert.Equal(["Charlie Smith", "David Edgars"], rows.Select(row => row.Name));
     }
 
-    /// <summary>A field nobody bound is refused exactly as it is anywhere else</summary>
     [Fact]
     public void TheAllowListStillDecides()
     {
-        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Morale > 1").ProjectTo<Minion, MinionSummary>(Configuration()).ToList());
+        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Morale > 0").ProjectTo<Minion, MinionBrief>(Configuration()).ToList());
     }
 
     // ---------- paged ----------
@@ -125,32 +131,20 @@ public class AutoMapperProjectionTests
             .ApplyCondition("IsActive = true")
             .ApplySorts([new Sort("Name", SortDirection.Ascending)])
             .ApplyPagination(pageSize: 2, page: 0)
-            .ProjectToPaged<Minion, MinionSummary>(Configuration());
+            .ProjectToPaged<Minion, MinionBrief>(Configuration());
 
         Assert.Equal(3, matches.Count());
         Assert.Equal(["Alice Fox", "Bob Samuelson"], page.ToList().Select(row => row.Name));
 
-        // The count half is still over the entity, which is what lets it be counted without the map
+        // The count half is still over the entity, which is what lets it be counted without the mapping
         Assert.IsAssignableFrom<IQueryable<Minion>>(matches);
-    }
-
-    [Fact]
-    public void APagedMapperWorksTheSameWay()
-    {
-        var (page, matches) = Bound().ProjectToPaged<Minion, MinionSummary>(new Mapper(Configuration()));
-
-        Assert.Equal(4, matches.Count());
-        Assert.Equal(4, page.Count());
     }
 
     /// <summary>Neither half has run, exactly as BuildPaged promises</summary>
     [Fact]
     public void NeitherHalfHasRun()
     {
-        var (page, matches) = Bound().ApplyPagination(pageSize: 1, page: 0).ProjectToPaged<Minion, MinionSummary>(Configuration());
-
-        Assert.NotNull(page);
-        Assert.NotNull(matches);
+        var (page, matches) = Bound().ApplyPagination(pageSize: 1, page: 0).ProjectToPaged<Minion, MinionBrief>(Configuration());
 
         // The window is on the page and not on the count, so they disagree on purpose
         Assert.Equal(1, page.Count());
@@ -159,38 +153,33 @@ public class AutoMapperProjectionTests
 
     // ---------- two answers to one question ----------
 
-    /// <summary>
-    /// A projection says a row is the keys the caller named and a DTO says a row is the DTO. Going ahead would
-    /// honour the second and drop the first without saying so.
-    /// </summary>
     [Fact]
     public void AnAppliedProjectionIsRefusedRatherThanIgnored()
     {
         var error = Assert.Throws<WeequeryException>(() => Bound()
             .ApplyProjection("Name, Pay")
-            .ProjectTo<Minion, MinionSummary>(Configuration()));
+            .ProjectTo<Minion, MinionBrief>(Configuration()));
 
         Assert.Contains(nameof(Inquiry<Minion>.ApplyProjection), error.Message);
         Assert.Contains("Name", error.Message);
 
         Assert.Throws<WeequeryException>(() => Bound()
             .ApplyProjection("Name")
-            .ProjectToPaged<Minion, MinionSummary>(Configuration()));
+            .ProjectToPaged<Minion, MinionBrief>(Configuration()));
     }
 
     [Fact]
     public void AndAnInquiryWithoutOneIsFine()
     {
         Assert.True(Bound().AppliedProjection.IsEmpty);
-        Assert.Equal(4, Bound().ProjectTo<Minion, MinionSummary>(Configuration()).Count());
+        Assert.Equal(4, Bound().ProjectTo<Minion, MinionBrief>(Configuration()).Count());
     }
 
     [Fact]
     public void TheArgumentsAreChecked()
     {
-        Assert.Throws<WeequeryException>(() => Bound().ProjectTo<Minion, MinionSummary>((IConfigurationProvider)null!));
-        Assert.Throws<WeequeryException>(() => Bound().ProjectTo<Minion, MinionSummary>((IMapper)null!));
-        Assert.Throws<WeequeryException>(() => Bound().ProjectToPaged<Minion, MinionSummary>((IConfigurationProvider)null!));
+        Assert.Throws<WeequeryException>(() => ((Inquiry<Minion>)null!).ProjectTo<Minion, MinionBrief>(Configuration()));
+        Assert.Throws<WeequeryException>(() => ((Inquiry<Minion>)null!).ProjectToPaged<Minion, MinionBrief>(Configuration()));
     }
 
     // ---------- against a provider ----------
@@ -210,7 +199,7 @@ public class AutoMapperProjectionTests
                 .WithWeequery()
                 .BindProperties(Minion.Bindings)
                 .ApplyCondition("IsActive = true")
-                .ProjectTo<Minion, MinionSummary>(Configuration())
+                .ProjectTo<Minion, MinionBrief>(Configuration())
                 .ToQueryString()
                 .Replace("\r", " ")
                 .Replace("\n", " ");

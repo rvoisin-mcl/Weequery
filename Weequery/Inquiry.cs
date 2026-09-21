@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using Weequery.Builders;
 using Weequery.Interfaces;
@@ -10,17 +11,11 @@ namespace Weequery;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The bound properties are the allow-list: a condition or a sort naming a field that no binding claimed is
-/// refused. Field names are matched against binding keys without regard to case.
+/// The bound properties are the allow-list: a condition or a sort naming against a field with no binding is refused 
+/// or dropped.
 /// </para>
 /// <para>
-/// <b>An Inquiry is immutable.</b> Every Apply and every Bind leaves the one it was called on exactly as it was
-/// and hands back a new one carrying the change, so a fluent chain is a pipeline of values rather than a
-/// sequence of modifications. That is how <see cref="IQueryable{T}"/> behaves, and the chain looks enough like a
-/// LINQ chain that it had better.
-/// </para>
-/// <para>
-/// Which means a configured one can be kept and branched, and neither branch can reach the other:
+/// Inquiry is Immutable, which means a configured one can be kept and branched, and neither branch can reach the other:
 /// <code>
 /// var bound = query.WithWeequery().BindProperties(MinionBindings);
 ///
@@ -30,12 +25,11 @@ namespace Weequery;
 /// Nothing accumulates across the two, because there is nothing they share to accumulate in.
 /// </para>
 /// <para>
-/// <b>What is copied is the lists, not what is in them.</b> A binding is immutable once built and is shared
-/// rather than rebuilt, so a copy costs a dictionary and two lists and no more. A condition is yours and is
-/// shared as you handed it over, so one you go on to mutate is mutated for every query holding it.
+/// <b>What *IS* copied is the lists, not what is in them.</b> A binding is immutable once built and is shared
+/// rather than rebuilt, so a copy costs a dictionary and two lists and no more.
 /// </para>
 /// <para>
-/// The one thing written after construction is <see cref="DroppedFields"/>, which reports on the build that
+/// The one outlier to this is <see cref="DroppedFields"/>, which reports on the build that
 /// filled it rather than forming part of the configuration, see <see cref="Build"/>.
 /// </para>
 /// </remarks>
@@ -53,24 +47,13 @@ public class Inquiry<T> where T : class
     /// <see cref="BindingSetCache{T}"/>, and costs nothing to do — an expression tree is immutable, and a parameter is an
     /// identity rather than a value, so two lambdas built over the same one are still two independent lambdas.
     /// </para>
-    /// <para>
-    /// The one place it would matter is a lambda nested inside another over the same type, where the inner one
-    /// would rebind the parameter and shadow the outer. Weequery never builds that shape; a caller composing two
-    /// predicates of its own into one is the only way to reach it, see the remarks on
-    /// <see cref="BuildExpression"/>.
-    /// </para>
     /// </summary>
     private static readonly ParameterExpression SharedBindingParameter = Expression.Parameter(typeof(T));
 
     private Dictionary<string, Binding<T>> Bindings { get; init; } = BindingLookup.Create<T>();
 
     /// <summary>
-    /// The bound collections, kept apart from the properties because they answer a different kind of question.
-    /// <para>
-    /// A collection is not something the comparison operators can be asked, and a property is not something a
-    /// quantifier can be asked, so one lookup would only mean each of them refusing half its entries. Keyed the
-    /// same way, so a collection and a property still cannot share a name, see <see cref="BindCollection"/>.
-    /// </para>
+    /// Bound collections, seperate from bound properties
     /// </summary>
     private Dictionary<string, ICollectionBinding<T>> Collections { get; init; } = new(BindingLookup.KeyComparer);
 
@@ -78,8 +61,8 @@ public class Inquiry<T> where T : class
     private List<Sort> Sorts { get; init; } = new();
 
     /// <summary>
-    /// Which fields <see cref="BuildProjected"/> reads back, see <see cref="ApplyProjection(string?)"/>. Empty
-    /// until a caller says otherwise, which reads every bound field.
+    /// Which fields <see cref="BuildProjected"/> reads back, see <see cref="ApplyProjection(string?)"/>. Default empty will return
+    /// every bound field.
     /// </summary>
     private Projection Projected { get; set; } = Projection.None;
 
@@ -88,9 +71,7 @@ public class Inquiry<T> where T : class
     /// <see cref="ApplyProjection(string?)"/>.
     /// </summary>
     /// <remarks>
-    /// Readable so that something building on this Inquiry can tell if the caller asked for a set of
-    /// columns, which is what a different way of shaping a row has to know before it quietly ignores one. The
-    /// AutoMapper package refuses that combination on exactly this.
+    /// A projection builder will need to query this to determine what to retain.
     /// </remarks>
     public Projection AppliedProjection { get { return Projected; } }
 
@@ -99,34 +80,26 @@ public class Inquiry<T> where T : class
     /// <see cref="InquirySettings.DefaultPageSize"/> is the one that decides. Not zero, which would read as a
     /// page holding nothing.
     /// </summary>
-    private const int NoPageSize = -1;
+    private const int UnsetPageSize = -1;
 
-    private int PageSize { get; set; } = NoPageSize;
+    private int PageSize { get; set; } = UnsetPageSize;
     private int Page { get; set; } = -1;
 
     /// <summary>
-    /// If a field nothing bound is dropped rather than refused, see <see cref="IgnoreUnboundFields"/>. Off,
-    /// which is the answer that never surprises anyone.
+    /// If a field referenced but not bound is dropped rather than refused, see <see cref="IgnoreUnboundFields"/>.
     /// </summary>
     private bool DropsUnboundFields { get; set; }
 
     private List<DroppedField> Dropped { get; init; } = new();
 
     /// <summary>
-    /// What the last build took out of the query for naming a field nothing bound, see
-    /// <see cref="IgnoreUnboundFields"/>.
+    /// What the last build dropped from the query, see <see cref="IgnoreUnboundFields"/>.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Empty unless dropping was asked for, since nothing is dropped otherwise. Filled in by whichever of
     /// <see cref="Build"/>, <see cref="BuildPaged"/>, <see cref="BuildProjected"/> and
-    /// <see cref="BuildPagedProjected"/> was called, and <b>reset by each of them</b>, so it describes the query
-    /// you have rather than accumulating across builds.
-    /// </para>
-    /// <para>
-    /// Populated while the query is being built rather than when it is enumerated, which is the same point
-    /// everything else is resolved at, so it is ready as soon as the build returns and before a single row has
-    /// been read.
+    /// <see cref="BuildPagedProjected"/> was called, so it describes the last built rather than accumulating
     /// </para>
     /// <code>
     /// var rows = inquiry.Build().ToList();
@@ -145,18 +118,15 @@ public class Inquiry<T> where T : class
     public IReadOnlyList<DroppedField> DroppedFields { get { return Dropped; } }
 
     /// <summary>
-    /// Note a field as dropped, unless that part of the query has already lost it.
+    /// Mark a field as dropped, if it has not already been noted for the given use
     /// </summary>
     /// <remarks>
-    /// The same key can genuinely be dropped from two parts of a query, and both are worth saying. What is not
-    /// worth saying twice is one part losing it twice, which is what a projected field read by two of the build
-    /// methods, or a key written twice in one condition, would otherwise produce.
+    /// We are unlikely to care if it is dropped from the query twice, but we might care if it was dropped from the 
+    /// query AND the sort.
     /// </remarks>
     private void Drop(string field, BindingUse from)
     {
-        // The index goes: an unbound "Tallies[apples]" is one missing binding called Tallies rather than a missing
-        // element, and naming it that way is what lets two indexes into the same absent collection say it once
-        (field, _) = BindingLookup.SplitIndex(field);
+        field = BindingLookup.SplitIndex(field).Key; // A index would be meaningless here
 
         if (Dropped.Any(entry => (entry.From == from) && BindingLookup.KeyComparer.Equals(entry.Field, field))) { return; }
 
@@ -164,41 +134,24 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// How long <see cref="Operator.IsMatch"/> may spend on one value before giving up, when the match runs in
-    /// this process. One second by default; assign to change it, or
+    /// Configurable timeout for <see cref="Operator.IsMatch"/>. One second by default; assign to change it, or
     /// <see cref="Regex.InfiniteMatchTimeout"/> to remove the bound.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A pattern is caller input, and a regular expression can be made to cost far more than it looks: matching
-    /// <c>(a+)+$</c> against a few dozen characters that do not match takes time exponential in their number.
-    /// Every other operator is bounded by the size of the data, so this is the one that can turn a filter into a
-    /// denial of service, and it is bounded rather than left to run.
-    /// </para>
-    /// <para>
     /// A value that exceeds it raises <see cref="RegexMatchTimeoutException"/> from wherever the query is being
-    /// enumerated, rather than a <see cref="WeequeryException"/>: it is the framework reporting what it stopped
-    /// doing, and no answer is available for that row.
+    /// enumerated, rather than a <see cref="WeequeryException"/>: as it is the framework reporting
     /// </para>
     /// <para>
-    /// This bounds the match only where Weequery runs it, which is in memory. Translated to SQL the pattern is
-    /// the database's to run and its own limits apply, see <see cref="Operator.IsMatch"/>. The reason it cannot
-    /// be both is that the overload of
-    /// <see cref="Regex.IsMatch(string, string, RegexOptions, TimeSpan)"/> carrying a timeout is not one any
-    /// provider translates, so an expression built with it would stop being a query and start being a table
-    /// scan on the client.
+    /// This bounds the match only when it is run in-memory Weequery runs it; via EF the databased limits will apply
     /// </para>
     /// </remarks>
+    [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static TimeSpan MatchTimeout { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// What this query decides for itself, see <see cref="InquirySettings"/>. Never null:
-    /// <see cref="InquirySettings.Default"/> where the caller gave none.
+    /// Any evaluation tuning knobs for this query <see cref="InquirySettings"/>. 
     /// </summary>
-    /// <remarks>
-    /// Per query rather than per process, unlike <see cref="MatchTimeout"/>, because the rules a comparison
-    /// follows are part of what the caller is asking rather than a bound on what it may cost.
-    /// </remarks>
     public InquirySettings Settings { get; init; } = InquirySettings.Default;
 
     internal Inquiry(IQueryable<T> query)
@@ -207,8 +160,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// This Inquiry's configuration on a new one, which is what every Apply and every Bind hands back rather
-    /// than changing the one it was called on.
+    /// Return a cloned copy of this Inquiry.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -218,12 +170,8 @@ public class Inquiry<T> where T : class
     /// same goes for the conditions, which are yours and are shared as you handed them over; a condition you go
     /// on to mutate is mutated for both, as it would be for two queries you built without this.
     /// </para>
-    /// <para>
-    /// <see cref="DroppedFields"/> is not copied. It reports on a build rather than describing a configuration,
-    /// and the copy has not built anything.
-    /// </para>
     /// </remarks>
-    /// <returns>a new Inquiry over the same query, configured the same way, sharing nothing mutable</returns>
+    /// <returns>a clone, sharing nothing mutable</returns>
     private Inquiry<T> Copy()
     {
         return new Inquiry<T>(Query)
@@ -260,8 +208,7 @@ public class Inquiry<T> where T : class
 
     /// <summary>
     /// Bind the property reached by following the selector and then the segments after it, for a path a selector
-    /// cannot write on its own. If a key is not provided, the whole path is used, a period being a legal key
-    /// character.
+    /// cannot write on its own. If a key is not provided, the full path is used.
     /// </summary>
     /// <remarks>
     /// The case this exists for is a path through a <see cref="Nullable{T}"/>: C# will not compile
@@ -307,25 +254,15 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// <b>The inside is its own allow-list.</b> Binding the collection exposes nothing within it; what a caller
-    /// may name inside the brackets is what the inner configuration bound, and nothing else. That is the same
-    /// rule the outer bindings follow, applied one level down, and it is why this takes a configuration rather
-    /// than reaching into the element type on its own.
+    /// <b>The inside is its own allow-list.</b> Properties bound within the collection are not visible outside it
     /// </para>
     /// <para>
-    /// The condition inside is scoped to <b>one element</b>, which is the whole reason a quantifier holds a
-    /// condition rather than the caller writing two of them: "Any (LairID = 5 AND IsPrimary = true)" asks for one
-    /// assignment that is both, where two separate quantifiers ANDed together ask only that each is true of some
-    /// assignment, possibly different ones.
+    /// The collection is only bound for the specified tests, it cannot be used for direct compariions unless it
+    /// is also bound with <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?, BindingUse, ValueConverter)"/> 
+    /// under a different key.
     /// </para>
     /// <para>
-    /// The collection itself is not otherwise answerable: it is not bound as a property, so it takes no
-    /// comparison and no index, and a caller naming it outside a quantifier is refused. Bind it with
-    /// <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?, BindingUse, ValueConverter)"/> as well if you also want
-    /// it tested for null or indexed, under a different key.
-    /// </para>
-    /// <para>
-    /// <b>If this reaches a database is the provider's business.</b> A quantifier becomes Any or All over
+    /// How EF Core chooses to interpret this or not is up to the provider. A quantifier becomes Any or All over
     /// the collection, which EF Core translates to EXISTS against a navigation collection. See the remarks on
     /// <see cref="Operator.Any"/> for what it means over one that is empty or missing.
     /// </para>
@@ -352,14 +289,11 @@ public class Inquiry<T> where T : class
         WeequeryException.ThrowIfNotBindingKey(key);
         WeequeryException.ThrowIfNull(configure);
 
-        // One name for one thing, whichever of the two lookups it lands in
         if (Bindings.ContainsKey(key) || Collections.ContainsKey(key))
         {
             throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{key}'");
         }
 
-        // Not added to Bindings: a collection answers a quantifier and nothing else, and putting it there would
-        // offer it to every operator that cannot use it
         var collection = Binding<T>.Create(SharedBindingParameter, selector, bindings: null);
 
         var inner = new CollectionBindingSet<TElement>();
@@ -378,24 +312,8 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Refuse a property binding whose key a collection has already claimed.
+    /// Refuse a property binding if a collection is using the same key
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The two lookups are kept apart so each can refuse what the other answers, see <see cref="Collections"/>,
-    /// but a name still only means one thing, so a key in both is refused. <see cref="BindCollection"/> checks
-    /// both before it adds, and this is the other direction: the key a property binding uses may be one the
-    /// caller named or one the binding derived, and neither is known until it has been made.
-    /// </para>
-    /// <para>
-    /// What a binding may be <i>used</i> for needs nothing here, being carried on the binding itself, see
-    /// <see cref="BindingUse"/>. A key means one thing whatever it is allowed to do with it.
-    /// </para>
-    /// <para>
-    /// Nothing needs putting back when this throws. It runs on the copy the binding call is assembling, so the
-    /// Inquiry the caller still holds was never touched by the call at all, and the half built one goes nowhere.
-    /// </para>
-    /// </remarks>
     /// <returns>the copy it was called on, so it can be returned from the binding call</returns>
     /// <exception cref="WeequeryException">a key now names both a property and a collection</exception>
     private Inquiry<T> RefuseDuplicateKeys()
@@ -428,11 +346,7 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// As it is a constant value, a sort on it is refused.
-    /// </para>
-    /// <para>
-    /// Deliberately not part of <see cref="BindingRequest"/>, as those are cached for the life of the process, 
-    /// which may not be ideal for a value that may differ from one request to the next.
+    /// As it is a constant value, it cannot be used to sort on
     /// </para>
     /// </remarks>
     /// <typeparam name="TValue"></typeparam>
@@ -476,13 +390,11 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Bind the properties in the list, if a key is not provided, they will be bound as the property path
+    /// Bind the properties in the list, if a key for one is not provided, it will be bound as the property path
     /// </summary>
     /// <remarks>
     /// A set of requests is resolved once for the process and kept, see <see cref="BindingSetCache{T}"/>, so calling this
-    /// per request costs a copy rather than a property path lookup per property. Adding to this Inquiry after it,
-    /// with this or with <see cref="BindProperty(string, string?, BindingUse, ValueConverter)"/>, works as it always did: everything binds
-    /// against the same parameter either way.
+    /// per request is merely a copy instead of a full evaluation per request. 
     /// </remarks>
     /// <param name="bindingRequests"></param>
     /// <returns></returns>
@@ -491,15 +403,12 @@ public class Inquiry<T> where T : class
     {
         WeequeryException.ThrowIfNull(bindingRequests);
 
-        // Copied in rather than used as it stands, since this Inquiry's lookup can keep taking bindings after
-        // this call and the kept set has to stay as it is
         var next = Copy();
 
         foreach (var binding in BindingSetCache<T>.For(bindingRequests, SharedBindingParameter))
         {
             if (next.Bindings.TryGetValue(binding.Key, out var existing))
             {
-                // The rule AddTo follows, so a duplicate is answered the same way whichever route it arrives by
                 if (!Binding<T>.IsSameBinding(existing, binding.Value)) { throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{binding.Key}'"); }
 
                 continue;
@@ -511,31 +420,23 @@ public class Inquiry<T> where T : class
         return next.RefuseDuplicateKeys();
     }
 
-
     /// <summary>
     /// Build a binding request for every readable property a type reaches, keyed by its path.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This is the opposite of an allow-list, and it is worth stopping on.</b> Everywhere else in this library
-    /// you say what may be asked about and everything else is refused. This says "all of it", so every property
-    /// name on the type, and on every type it reaches, goes on the wire for a caller to read and filter by. That
-    /// is a reasonable thing to want for an internal tool over a model you control, and an unreasonable thing to
-    /// do to an entity with an audit trail, a password hash or another tenant's rows hanging off it. Use
+    /// An allow-list, where the list is <b>ALL OF IT</b> Every property name on the type, and on every type
+    /// it reaches, goes on the wire for a caller to read and filter by. Use
     /// <see cref="BindingResolutionSettings"/> to subtract, or write the bindings out and know what they are.
     /// </para>
     /// <para>
-    /// A nested property is keyed by its whole dotted path, "Lair.Capacity" rather than "Capacity", which is a
-    /// legal key because a period is a legal key character, see
-    /// <see cref="WeequeryException.ThrowIfNotBindingKey"/>. Paths are distinct by construction, so nothing here
-    /// collides with anything else here; it can still collide with a binding already made by hand, see
-    /// <see cref="BindResolve"/>.
+    /// Paths are distinct by construction, so nothing here collides with anything else here; but can still
+    /// collide with a binding already made by hand, see <see cref="BindResolve"/>.
     /// </para>
     /// <para>
-    /// A property whose path spells an operator is bound with an underscore after it, so a model holding a
+    /// A property whose path conflicts with an operator is bound with an underscore after it, so a model holding a
     /// property called Contains resolves it as "Contains_" rather than refusing the whole model, see
-    /// <see cref="BindingResolver.KeyFor"/>. Only a top level property can collide, a nested "Lair.Contains" being one word to
-    /// the tokenizer and not the operator.
+    /// <see cref="BindingResolver.KeyFor"/>.
     /// </para>
     /// <para>
     /// Three things about the walk are worth knowing before you trust the result:
@@ -544,25 +445,21 @@ public class Inquiry<T> where T : class
     /// <item><description>
     /// It does not descend into a struct, so DateTime.Year is not reached this way and still has to be bound by
     /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse, ValueConverter)"/>. A
-    /// collection is descended as the class it is rather than as its element type, so filtering into one is no
-    /// more possible here than it is anywhere else in this library, and what you get from one is Count and
+    /// collection is descended as the class it is rather than as its element type, and what you get from one is Count and
     /// Capacity, which a provider may well refuse to translate.
     /// </description></item>
     /// <item><description>
-    /// A type already open on the path is not entered again, so a model that refers back to itself terminates
-    /// rather than multiplying. Two properties of the same type are both expanded; the same type twice down one
-    /// chain is not, so "Parent.Parent" is never resolved.
+    /// A type already open on the path is not entered again, Two properties of the same type are both expanded; the same type
+    /// down the chain is not, so "Parent.Parent" is never resolved.
     /// </description></item>
     /// <item><description>
-    /// The cycle guard bounds depth, not width. A wide model still grows with
-    /// <paramref name="maxDepth"/> a level at a time, which is why the default is low rather than the limit.
+    /// The cycle guard bounds depth, not width.
     /// </description></item>
     /// </list>
     /// </remarks>
     /// <param name="maxDepth">
     /// how many levels below the entity to reach, so 0 for its own properties and nothing nested, 1 for their
-    /// properties as well. Defaults to 1; bounded to [0, 16] rather than refused, so a larger number is quietly
-    /// the limit
+    /// properties as well. Defaults to 1; bounded to [0, 16]
     /// </param>
     /// <param name="settings">
     /// [OPT] what to leave out; null leaves out
@@ -570,6 +467,7 @@ public class Inquiry<T> where T : class
     /// </param>
     /// <returns>the requests, in path order, ready for <see cref="BindProperties"/></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key</exception>
+    [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static IReadOnlyList<BindingRequest> ResolveBindables(int maxDepth = 1, BindingResolutionSettings? settings = null)
     {
         maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
@@ -815,7 +713,7 @@ public class Inquiry<T> where T : class
         // out and a field left at nonsense are the same accident and answering one with a page and the other
         // with a 400 is a distinction nobody asked for. A size that could not hold a page is no size, and the
         // default decides; a page behind the first one is the first one
-        int size = ((pageSize is int named) && (named > 0)) ? named : NoPageSize;
+        int size = ((pageSize is int named) && (named > 0)) ? named : UnsetPageSize;
         int index = (page > 0) ? page : 0;
 
         // The one pair with no nearby answer to fold into. Only checkable here where the size is one the caller
@@ -892,7 +790,7 @@ public class Inquiry<T> where T : class
     /// </summary>
     private bool IsBound(string field)
     {
-        var (key, _) = BindingLookup.SplitIndex(field);
+        var key = BindingLookup.SplitIndex(field).Key;
 
         return Bindings.ContainsKey(key) || Collections.ContainsKey(key);
     }
@@ -1538,6 +1436,7 @@ public class Inquiry<T> where T : class
     /// <param name="bindingRequests"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static Expression<Func<T, bool>> BuildExpression(IEnumerable<BindingRequest> bindingRequests, ICondition condition)
     {
         WeequeryException.ThrowIfNull(bindingRequests);
@@ -1567,6 +1466,7 @@ public class Inquiry<T> where T : class
     /// <param name="condition"></param>
     /// <param name="settings">[OPT] the rules to compile in, see <see cref="InquirySettings"/>; the defaults where none are given</param>
     /// <returns></returns>
+    [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static Func<T, bool> BuildDelegate(IEnumerable<BindingRequest> bindingRequests, ICondition condition, InquirySettings? settings = null)
     {
         // Nothing is going to translate this one, so an IsMatch in it is bounded by MatchTimeout, the string

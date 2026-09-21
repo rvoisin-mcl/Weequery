@@ -91,6 +91,8 @@ public class InListTranslationTests
     [InlineData(TestProvider.SqlServer)]
     public void ExpandingProvidersBucketTheParameterCount(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var eight = SqlFor(provider, InList(Enumerable.Range(1, 8).Select(value => (decimal)value).ToArray()));
         var nine = SqlFor(provider, InList(Enumerable.Range(1, 9).Select(value => (decimal)value).ToArray()));
 

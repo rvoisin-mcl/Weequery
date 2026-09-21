@@ -41,6 +41,8 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AnyBecomesExists(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var sql = Sql(provider, "Legs Any (Miles > 100)");
 
         Assert.Contains("EXISTS", sql);
@@ -66,6 +68,8 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheInnerConditionTranslatesToo(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var sql = Sql(provider, "Legs Any (Miles > 100 AND Miles < 500)");
 
         Assert.Contains("EXISTS", sql);
@@ -78,6 +82,8 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AQuantifierCombinesWithAnOrdinaryTest(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var sql = Sql(provider, "Id > 1 AND Legs Any (Miles > 100)");
 
         var where = sql[sql.IndexOf("WHERE", StringComparison.Ordinal)..];

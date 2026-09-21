@@ -114,6 +114,8 @@ public class PagedQueryTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheCountQueryAsksForNoOrderingAndNoWindow(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var (page, matches) = StatementsFor(provider);
 
         Assert.Contains("WHERE", matches);
@@ -133,6 +135,8 @@ public class PagedQueryTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void BothHalvesCarryTheSameFilter(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var (page, matches) = StatementsFor(provider);
 
         string Where(string statement)

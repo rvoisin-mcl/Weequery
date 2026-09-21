@@ -29,7 +29,7 @@ internal static class ExpressionBuilderFunctions
     /// <param name="binding"></param>
     /// <param name="values">must not be empty, callers short circuit that case</param>
     /// <returns></returns>
-    private static Expression BuildContainsCheck<TClass, TProperty>(Binding<TClass> binding, List<TProperty> values)
+    private static MethodCallExpression BuildContainsCheck<TClass, TProperty>(Binding<TClass> binding, List<TProperty> values)
     {
         // The list itself is parameterized the same way single values are, so it does not land in the SQL as literals
         // Always the unwrapped accessor: it matches List<TProperty> either way, and it is the one carrying any
@@ -123,7 +123,7 @@ internal static class ExpressionBuilderFunctions
     /// <summary>
     /// value >= low AND value &lt;= high
     /// </summary>
-    private static Expression Between<TClass, TProperty>(Binding<TClass> binding, TypedCondition<TProperty> condition)
+    private static BinaryExpression Between<TClass, TProperty>(Binding<TClass> binding, TypedCondition<TProperty> condition)
     {
         return Expression.AndAlso(
             Ordered(binding, condition.Values[0], Expression.GreaterThanOrEqual),

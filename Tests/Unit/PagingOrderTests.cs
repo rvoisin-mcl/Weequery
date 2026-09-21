@@ -64,6 +64,8 @@ public class PagingOrderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void PagingWithASortOrdersByTheSortedColumn(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var statement = StatementFor(provider, new Sort(nameof(Minion.Pay), SortDirection.Ascending));
 
         Assert.Contains("ORDER BY", statement);

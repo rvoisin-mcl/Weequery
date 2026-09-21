@@ -83,7 +83,7 @@ internal static class ExpressionBuilder
     /// </summary>
     private static readonly ConcurrentDictionary<Type, IExpressionBuilder> Builders = new();
 
-    private static IExpressionBuilder? GetBuilderForBinding(IBinding binding)
+    private static IExpressionBuilder? GetBuilderForBinding<TClass>(Binding<TClass> binding)
     {
         var check = HasBuilderForBinding(binding);
         if (!check) { return null; }

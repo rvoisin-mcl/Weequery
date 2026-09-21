@@ -139,7 +139,7 @@ public abstract class ConditionTranslator<TResult, TScope>
     /// <param name="condition">the condition they came from, so the message can name it</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">there is not exactly one</exception>
-    protected static TValue Single<TValue>(IReadOnlyList<TValue> values, IBoundCondition condition)
+    protected static TValue Only<TValue>(IReadOnlyList<TValue> values, IBoundCondition condition)
     {
         return (values.Count == 1)
             ? values[0]

@@ -172,6 +172,8 @@ public class EnumOrderingTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void ItTranslatesToAComparisonAgainstAParameter(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         using var context = TestDatabase.Create(provider);
 
         var queryString = context.Minions

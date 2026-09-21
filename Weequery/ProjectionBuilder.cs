@@ -78,7 +78,7 @@ internal static class ProjectionBuilder<T> where T : class
     /// <exception cref="WeequeryException">the field names a bound collection</exception>
     private static string CanonicalKey(Dictionary<string, Binding<T>> bindings, Dictionary<string, ICollectionBinding<T>> collections, string field)
     {
-        var (key, _) = BindingLookup.SplitIndex(field);
+        var key = BindingLookup.SplitIndex(field).Key;
 
         // Refused here rather than as "unbound", since it is bound and the message would be a lie. A collection
         // holds many values and a column holds one, so there is nothing for this to read.

@@ -103,6 +103,8 @@ public class CollectionIndexProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AListIndexTranslates(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         var where = Where(provider, "Tags[0] = 'urgent'");
 
         Assert.Contains("@Value", where);
@@ -113,6 +115,8 @@ public class CollectionIndexProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AnArrayIndexTranslates(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         Assert.Contains("@Value", Where(provider, "Counts[1] > 2"));
     }
 

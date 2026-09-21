@@ -212,7 +212,7 @@ internal static class FieldComparison
     /// <summary>
     /// field >= low AND field &lt;= high, inclusive of both ends as the range is everywhere else
     /// </summary>
-    private static Expression Range<TClass>(Binding<TClass> left, List<Operand<TClass>> operands)
+    private static BinaryExpression Range<TClass>(Binding<TClass> left, List<Operand<TClass>> operands)
     {
         return Expression.AndAlso(
             Compare(left, Operator.GreaterThanOrEqual, left.UnwrappedAccessor, operands[0].Expression),
@@ -278,7 +278,7 @@ internal static class FieldComparison
     /// <summary>
     /// values.Contains(field), on a list of the field's own type
     /// </summary>
-    private static Expression Contains<TClass>(Binding<TClass> left, List<object> values)
+    private static MethodCallExpression Contains<TClass>(Binding<TClass> left, List<object> values)
     {
         var listType = ListTypes.GetOrAdd(left.UnwrappedPropertyType, static forType =>
         {
@@ -317,7 +317,7 @@ internal static class FieldComparison
     /// stepped down to what it is based on
     /// </summary>
     /// <returns>null if the operator does not apply to a pair of values</returns>
-    private static Expression? CompareValues<TClass>(Binding<TClass> left, Operator op, Expression one, Expression other)
+    private static BinaryExpression? CompareValues<TClass>(Binding<TClass> left, Operator op, Expression one, Expression other)
     {
         // A bool orders no better against another property than it does against a value
         if ((left.UnwrappedPropertyType == typeof(bool)) && (op is not (Operator.Equals or Operator.NotEqual)))

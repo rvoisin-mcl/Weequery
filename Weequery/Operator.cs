@@ -1,4 +1,6 @@
-﻿namespace Weequery;
+﻿using System.Diagnostics.CodeAnalysis;
+
+namespace Weequery;
 
 /// <summary>
 /// The operation a condition performs.
@@ -48,6 +50,7 @@
 /// ignorable, and neither matches on SQLite. Case sensitivity varies by provider as well and is not something
 /// this settles: LIKE is case insensitive for ASCII on SQLite but case sensitive on PostgreSQL.
 /// </remarks>
+[SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "Operator is what this is called in the query language, in the error messages and on the wire, so renaming the type would leave the name everywhere it is actually read. A caller writes it as text far more often than as C#.")]
 public enum Operator
 {
     /// <summary>Bound property is null. Requires a nullable property and takes no value</summary>

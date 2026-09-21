@@ -317,6 +317,8 @@ public class ValueConverterTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheSourceHalfTranslates(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         using var context = CollectionIndexProviderTests.Context(provider);
 
         var sql = context.Shipments

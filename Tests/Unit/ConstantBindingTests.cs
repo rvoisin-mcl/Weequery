@@ -152,6 +152,8 @@ public class ConstantBindingTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheValueIsParameterized(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         using var context = TestDatabase.Create(provider);
 
         string Statement(decimal threshold)

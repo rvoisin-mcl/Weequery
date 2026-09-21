@@ -111,7 +111,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// <summary>
     /// property.Method(value), on the value with any Nullable already stepped through
     /// </summary>
-    private static Expression Call<TClass>(Binding<TClass> binding, MethodInfo method, TypedCondition<string> condition)
+    private static MethodCallExpression Call<TClass>(Binding<TClass> binding, MethodInfo method, TypedCondition<string> condition)
     {
         return Expression.Call(binding.UnwrappedAccessor, method, QueryValue.Of(condition.Values[0]));
     }
@@ -119,7 +119,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// <summary>
     /// Regex.IsMatch(property, pattern), on the value with any Nullable already stepped through
     /// </summary>
-    private static Expression Match<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
+    private static MethodCallExpression Match<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         return Expression.Call(StringMethods.IsMatch, binding.UnwrappedAccessor, QueryValue.Of(condition.Values[0]));
     }
@@ -128,7 +128,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// string.Compare(property, value), which is negative, zero or positive as the property sorts before, with, or
     /// after the value
     /// </summary>
-    private static Expression Compare<TClass>(Binding<TClass> binding, string value)
+    private static MethodCallExpression Compare<TClass>(Binding<TClass> binding, string value)
     {
         return Expression.Call(StringMethods.Compare, binding.UnwrappedAccessor, QueryValue.Of(value));
     }
@@ -137,7 +137,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// value >= low AND value &lt;= high, in the order the comparison gives, inclusive of both ends as the range is
     /// everywhere else
     /// </summary>
-    private static Expression Between<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
+    private static BinaryExpression Between<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         return Expression.AndAlso(
             Expression.GreaterThanOrEqual(Compare(binding, condition.Values[0]), StringMethods.Zero),

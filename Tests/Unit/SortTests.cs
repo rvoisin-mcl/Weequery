@@ -100,6 +100,8 @@ public class SortTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void EveryClauseReachesTheProviderInOrder(TestProvider provider)
     {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
         using var context = TestDatabase.Create(provider);
 
         var statement = TestDatabase.StatementOnly(context.Minions

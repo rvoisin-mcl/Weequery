@@ -329,7 +329,7 @@ internal sealed class QueryParser
     /// <param name="op">the quantifier</param>
     /// <param name="start">where the field began, so an error about the field can point at it</param>
     /// <exception cref="WeequeryException">the field was indexed, or no parenthesised condition follows</exception>
-    private ICondition ParseQuantified(string field, string? index, Operator op, int start)
+    private QuantifiedCondition ParseQuantified(string field, string? index, Operator op, int start)
     {
         var name = ConditionFunctions.GetOperationString(op);
 

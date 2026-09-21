@@ -153,6 +153,33 @@ public static class TestDatabase
     }
 
     /// <summary>
+    /// Whether the SQL a test pins is the SQL this framework's EF Core actually writes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tests that assert on generated SQL were written against EF Core 10, and EF is not obliged to keep
+    /// its output stable across majors: 8 names its parameters differently, and its SQLite provider refuses a
+    /// decimal in an ORDER BY that 10 handles. Neither is something Weequery can do anything about, and neither
+    /// says the library is wrong on net8.0.
+    /// </para>
+    /// <para>
+    /// So those tests skip rather than fail there, and the skip count says how much of the provider surface the
+    /// net8.0 run is not covering. Everything that is about Weequery's own behaviour still runs on both.
+    /// </para>
+    /// </remarks>
+    public static bool ProviderSqlIsPinned { get; } =
+#if NET10_0_OR_GREATER
+        true;
+#else
+        false;
+#endif
+
+    /// <summary>
+    /// Why <see cref="ProviderSqlIsPinned"/> is false, for the skip message.
+    /// </summary>
+    public const string ProviderSqlUnpinned = "the SQL asserted here is EF Core 10's, and this run is on net8.0 with EF Core 8";
+
+    /// <summary>
     /// Only ever used to let EF build a model and generate SQL when no server is configured, never connected to
     /// </summary>
     private static string SqlGenerationOnlyConnectionString(TestProvider provider)

@@ -1,0 +1,48 @@
+{
+  "name": "weequery",
+  "version": "0.1.0",
+  "description": "Build and validate Weequery filters in TypeScript: a condition as a tree or as a string, and the JSON the C# library reads. No dependencies.",
+  "license": "MIT",
+  "author": "Rene Voisin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rvoisin-mcl/Weequery.git",
+    "directory": "js"
+  },
+  "homepage": "https://github.com/rvoisin-mcl/Weequery/tree/main/js",
+  "keywords": [
+    "weequery",
+    "filter",
+    "query-language",
+    "query-builder",
+    "validation",
+    "iqueryable",
+    "efcore"
+  ],
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^20.14.0"
+  }
+}

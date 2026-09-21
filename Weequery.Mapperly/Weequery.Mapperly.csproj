@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<Description>Mapperly support for Weequery. Filter, sort and page with Weequery, then read the rows back as your own DTO through a Mapperly generated queryable projection, so only the columns the DTO needs leave the database. Adds ProjectTo and ProjectToPaged to Inquiry.</Description>
+		<PackageTags>weequery;mapperly;riok;source-generator;iqueryable;linq;efcore;dto;projection</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Weequery\Weequery.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>

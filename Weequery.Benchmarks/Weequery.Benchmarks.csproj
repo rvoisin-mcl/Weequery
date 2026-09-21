@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- One framework rather than the two Directory.Build.props sets: a benchmark measures the current runtime -->
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <!-- BenchmarkDotNet builds and runs the benchmarks as a process of their own, so this is a console app -->
+    <OutputType>Exe</OutputType>
+    <!-- Nothing here ships, and dotnet pack over the solution has to skip it the way it skips Tests -->
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- As in Tests: Recommended is for what ships -->
+    <AnalysisMode>Default</AnalysisMode>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ICondition and its family live here, and every benchmark names one -->
+    <Using Include="Weequery.Interfaces" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageReference Include="Fop" Version="1.0.3" />
+    <PackageReference Include="Gridify" Version="2.20.0" />
+    <PackageReference Include="Sieve" Version="2.5.5" />
+    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.7.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Weequery\Weequery.csproj" />
+    <ProjectReference Include="..\Weequery.Elasticsearch\Weequery.Elasticsearch.csproj" />
+    <ProjectReference Include="..\Weequery.OData\Weequery.OData.csproj" />
+  </ItemGroup>
+
+</Project>

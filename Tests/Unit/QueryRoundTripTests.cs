@@ -177,10 +177,10 @@ public class QueryRoundTripTests
         var condition = new OneValueCondition<DateTime>(Operator.Equals, nameof(Minion.HireDate), stamp);
 
         // The full round-trip format, so no precision is dropped on the way through the text
-        Assert.Equal("([HireDate] == 2024-12-25T13:45:30.1230000)", condition.ToQuery());
+        Assert.Equal("([HireDate] = 2024-12-25T13:45:30.1230000)", condition.ToQuery());
 
         // and once parsed the value is a string, so it comes back quoted, and stays that way
-        Assert.Equal("([HireDate] == '2024-12-25T13:45:30.1230000')", RoundTrip(condition).ToQuery());
+        Assert.Equal("([HireDate] = '2024-12-25T13:45:30.1230000')", RoundTrip(condition).ToQuery());
 
         AssertRoundTrips(condition, Matching);
     }
@@ -207,7 +207,7 @@ public class QueryRoundTripTests
         // PackedCondition had no ToString at all, so it used to render as its type name
         var packed = (PackedCondition)new OneValueCondition<decimal>(Operator.Equals, nameof(Minion.Pay), 12000m).Pack();
 
-        Assert.Equal("([Pay] == '12000')", packed.ToQuery());
+        Assert.Equal("([Pay] = '12000')", packed.ToQuery());
 
         // A PackedCondition has to be unpacked before it can be built, so compare against what it unpacks to
         Assert.Equal(Matching(packed.Unpack()), Matching(RoundTrip(packed)));
@@ -224,7 +224,7 @@ public class QueryRoundTripTests
         var condition = new OneValueCondition<int>(Operator.Equals, "my field", 5);
 
         var written = condition.ToQuery();
-        Assert.Equal("('my field' == 5)", written);
+        Assert.Equal("('my field' = 5)", written);
 
         var reparsed = Assert.IsType<OneValueCondition<string>>(ConditionFunctions.ParseQuery(written));
         Assert.Equal("my field", reparsed.Field);
@@ -260,7 +260,7 @@ public class QueryRoundTripTests
         var condition = new OneValueCondition<FileAccessLike>(Operator.Equals, "Perm", FileAccessLike.Read | FileAccessLike.Write);
 
         var written = condition.ToQuery();
-        Assert.Equal("([Perm] == 'Read, Write')", written);
+        Assert.Equal("([Perm] = 'Read, Write')", written);
 
         var reparsed = Assert.IsType<OneValueCondition<string>>(ConditionFunctions.ParseQuery(written));
         Assert.Equal("Read, Write", reparsed.Value.Value);

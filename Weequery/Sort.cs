@@ -26,7 +26,8 @@ public record Sort(string Field, SortDirection Direction)
     /// </code>
     /// <para>
     /// Asc, Ascending, Desc and Descending are all accepted, without regard to case, as are ORDER BY and
-    /// OrderBy. This is separate text from a condition rather than part of one, so the two travel apart.
+    /// OrderBy, though <see cref="QueryStyle.Native"/> takes only the one word spelling of the prefix. This is
+    /// separate text from a condition rather than part of one, so the two travel apart.
     /// </para>
     /// <para>
     /// See <see cref="SortParser"/> for the grammar.
@@ -38,11 +39,15 @@ public record Sort(string Field, SortDirection Direction)
     /// a page of an unordered query holds arbitrary rows, see <see cref="Inquiry{T}.ApplyPagination"/>. Copied,
     /// so the list returned can be changed without changing the default.
     /// </param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to take only the one word OrderBy prefix, refusing ORDER BY and naming the
+    /// spelling to use. Null, the default, takes both, which is what reading has always done
+    /// </param>
     /// <returns>never null; empty when there was nothing to read and no default was given</returns>
-    /// <exception cref="WeequeryException">the clause is malformed</exception>
-    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort = null)
+    /// <exception cref="WeequeryException">the clause is malformed, or spells the prefix a way the style refuses</exception>
+    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort = null, QueryStyle? style = null)
     {
-        return SortParser.Parse(sortString, defaultSort);
+        return SortParser.Parse(sortString, defaultSort, style);
     }
 
     /// <summary>

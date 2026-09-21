@@ -44,7 +44,7 @@ internal static class QueryWriter
     /// <returns></returns>
     public static string Describe(ICondition condition)
     {
-        return (condition is null) ? string.Empty : Render(condition, strict: false, QueryStyle.CSharp, 0);
+        return (condition is null) ? string.Empty : Render(condition, strict: false, QueryStyle.Native, 0);
     }
 
     /// <summary>
@@ -100,16 +100,20 @@ internal static class QueryWriter
 
         if (condition is INotCondition notCondition)
         {
+            // "!" can butt up against its operand, "NOT" needs a space to stay a separate word
+            var not = ConditionFunctions.GetOperationString(Operator.Not, style);
+#pragma warning disable CS0618 // the deprecated style is still written
+            var gap = (style == QueryStyle.CSharp) ? string.Empty : " ";
+#pragma warning restore CS0618
+
             if (notCondition.Conditions.Count == 0)
             {
                 if (strict) { throw new WeequeryException($"{nameof(Operator.Not)} has no condition to negate, so it cannot be written as a query"); }
 
-                return "!<nothing>";
+                // The placeholder takes the style's spelling too, so a ToString does not read half in one
+                // language and half in another
+                return $"{not}{gap}<nothing>";
             }
-
-            // "!" can butt up against its operand, "NOT" needs a space to stay a separate word
-            var not = ConditionFunctions.GetOperationString(Operator.Not, style);
-            var gap = (style == QueryStyle.Sql) ? " " : string.Empty;
 
             return $"{not}{gap}{Render(notCondition.Conditions.First(), strict, style, depth + 1)}";
         }

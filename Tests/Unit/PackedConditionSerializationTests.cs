@@ -124,7 +124,7 @@ public class PackedConditionSerializationTests
         var back = JsonSerializer.Deserialize<TransportCondition>(JsonSerializer.Serialize(transport));
 
         Assert.NotNull(back);
-        Assert.Equal("([Pay] == '12000')", back.Unpack()!.ToQuery());
+        Assert.Equal("([Pay] = '12000')", back.Unpack()!.ToQuery());
     }
 
     // ---------- the non-null defaults hold for a payload that leaves members out ----------

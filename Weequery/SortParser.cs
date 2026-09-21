@@ -9,7 +9,9 @@ namespace Weequery;
 /// direction := 'ASC' | 'ASCENDING' | 'DESC' | 'DESCENDING'
 /// </code>
 /// So "Pay DESC, Name", "ORDER BY Pay DESC, Name" and "OrderBy Pay DESC, Name" are all the same clause, and a
-/// field written without a direction sorts ascending, as it does in SQL.
+/// field written without a direction sorts ascending, as it does in SQL. Under
+/// <see cref="QueryStyle.Native"/> the two word prefix is refused and only OrderBy is read, see
+/// <see cref="PrefixLength"/>.
 /// <para>
 /// A field is written the way a condition writes one, see <see cref="QueryParser"/>: bare, quoted, or between
 /// brackets, so a key that needs quoting reads the same in both. Everything is matched without regard to case.
@@ -56,18 +58,22 @@ internal sealed class SortParser
     /// </summary>
     /// <param name="sortString">null, empty or whitespace to take the default</param>
     /// <param name="defaultSort">what to sort by when the caller asked for nothing, copied rather than kept</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to take only the one word prefix, see <see cref="PrefixLength"/>. Null, or
+    /// either deprecated style, takes both spellings
+    /// </param>
     /// <returns>never null; empty when there was nothing to read and no default</returns>
-    /// <exception cref="WeequeryException">the clause is malformed</exception>
-    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort)
+    /// <exception cref="WeequeryException">the clause is malformed, or spells the prefix a way the style refuses</exception>
+    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort, QueryStyle? style = null)
     {
-        var tokens = QueryTokenizer.Tokenize(sortString ?? string.Empty);
+        var tokens = QueryTokenizer.Tokenize(sortString ?? string.Empty, style);
 
         // Nothing asked for, return the default
         if (tokens.Count == 0) { return [.. defaultSort ?? []]; }
 
         var parser = new SortParser(tokens, sortString!);
 
-        parser.SkipOrderBy();
+        parser.SkipOrderBy(style);
 
         var sorts = parser.ParseSorts();
 
@@ -89,27 +95,48 @@ internal sealed class SortParser
     /// direction. OrderBy is one word with nothing after it to check, so at the front of a clause it is always
     /// the prefix. No binding may be named OrderBy for exactly that reason, so nothing legal collides with it.
     /// </remarks>
-    private void SkipOrderBy()
+    private void SkipOrderBy(QueryStyle? style)
     {
-        Index += PrefixLength(Tokens, 0);
+        Index += PrefixLength(Tokens, 0, style);
     }
 
     /// <summary>
     /// How many tokens the prefix takes at a given point, or zero where there is none.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Shared with <see cref="ParsedQuery"/>, which splits a combined string on the prefix and so has to
     /// recognise exactly what this skips.
+    /// </para>
+    /// <para>
+    /// <see cref="QueryStyle.Native"/> takes only OrderBy. The rule it applies to the operators, that a name is
+    /// one word, is not one a separator gets to be exempt from for being a separator. The two word spelling is
+    /// still recognised here rather than simply going unmatched, so what a caller gets back names the spelling to
+    /// use instead of reporting a stray word called ORDER.
+    /// </para>
     /// </remarks>
     /// <param name="tokens"></param>
     /// <param name="index">where to look</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to refuse ORDER BY, null or either deprecated style to take it
+    /// </param>
     /// <returns>2 for ORDER BY, 1 for OrderBy, 0 for neither</returns>
-    internal static int PrefixLength(List<QueryToken> tokens, int index)
+    /// <exception cref="WeequeryException">the style refuses the spelling that is there</exception>
+    internal static int PrefixLength(List<QueryToken> tokens, int index, QueryStyle? style = null)
     {
         // Two words, and only together
-        if (((index + 1) < tokens.Count) && IsWord(tokens[index], "ORDER") && IsWord(tokens[index + 1], "BY")) { return 2; }
+        if (((index + 1) < tokens.Count) && IsWord(tokens[index], "ORDER") && IsWord(tokens[index + 1], "BY"))
+        {
+            if (style == QueryStyle.Native)
+            {
+                throw new WeequeryException($"'ORDER BY' at position {tokens[index].Position} is not valid in the {nameof(QueryStyle.Native)} style, write 'OrderBy'");
+            }
 
-        // One word, which is the spelling a caller reaches for having written it in C#
+            return 2;
+        }
+
+        // One word, which is the spelling a caller reaches for having written it in C#, and the only one Native
+        // will take
         if ((index < tokens.Count) && IsWord(tokens[index], "ORDERBY")) { return 1; }
 
         return 0;

@@ -188,7 +188,7 @@ public class NestingLimitTests
     [Fact]
     public void AConditionWithinTheLimitStillWritesNormally()
     {
-        Assert.Equal("!!([Pay] > 10000)", NestedCondition(2).ToQuery());
+        Assert.Equal("NOT NOT ([Pay] > 10000)", NestedCondition(2).ToQuery());
     }
 
     // ---------- through the public surface ----------

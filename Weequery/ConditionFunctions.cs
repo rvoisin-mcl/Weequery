@@ -8,16 +8,21 @@ namespace Weequery;
 public static class ConditionFunctions
 {
     /// <summary>
-    /// The friendly string for an operator in the requested style. Only the operators with two spellings differ,
-    /// see <see cref="QueryStyle"/>.
+    /// The friendly string for an operator in the requested style. Only the operators with more than one spelling
+    /// differ, see <see cref="QueryStyle"/>.
     /// </summary>
     /// <param name="op"></param>
-    /// <param name="style"></param>
+    /// <param name="style">defaults to <see cref="QueryStyle.Native"/>, as everything that writes does</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
-    public static string GetOperationString(Operator op, QueryStyle style = QueryStyle.CSharp)
+    public static string GetOperationString(Operator op, QueryStyle style = QueryStyle.Native)
     {
-        var sql = (style == QueryStyle.Sql);
+        // Native and SQL agree on the comparison symbols and part company on the conjunctions, which Native
+        // writes as words in upper case. The deprecated styles are still written: that is what deprecated means.
+#pragma warning disable CS0618
+        var symbolic = (style == QueryStyle.CSharp);
+        var native = (style == QueryStyle.Native);
+#pragma warning restore CS0618
 
         switch (op)
         {
@@ -28,10 +33,10 @@ public static class ConditionFunctions
                 return "IsNotNull";
 
             case Operator.Equals:
-                return sql ? "=" : "==";
+                return symbolic ? "==" : "=";
 
             case Operator.NotEqual:
-                return sql ? "<>" : "!=";
+                return symbolic ? "!=" : "<>";
 
             case Operator.LessThan:
                 return "<";
@@ -82,13 +87,13 @@ public static class ConditionFunctions
                 return "DoesNotMatch";
 
             case Operator.And:
-                return sql ? "And" : "&&";
+                return symbolic ? "&&" : native ? "AND" : "And";
 
             case Operator.Or:
-                return sql ? "Or" : "||";
+                return symbolic ? "||" : native ? "OR" : "Or";
 
             case Operator.Not:
-                return sql ? "Not" : "!";
+                return symbolic ? "!" : native ? "NOT" : "Not";
 
             default:
                 throw new WeequeryException($"Operator {op} is invalid");
@@ -117,15 +122,16 @@ public static class ConditionFunctions
     /// </remarks>
     /// <param name="condition"></param>
     /// <param name="style">
-    /// which spelling to use for the operators that have two, so &amp;&amp;/||/!/==/!= or AND/OR/NOT/=/&lt;&gt;.
-    /// Either reads back, see <see cref="QueryStyle"/>
+    /// which spelling to use for the operators that have more than one. Defaults to
+    /// <see cref="QueryStyle.Native"/>, which writes AND/OR/NOT/=/&lt;&gt; and one word per named operator. Every
+    /// style reads back, see <see cref="QueryStyle"/>
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
     /// the condition cannot be expressed in the query language, which can happen for a conjunction with no operands,
     /// since the language has no way to say "match everything"
     /// </exception>
-    public static string ToQuery(this ICondition condition, QueryStyle style = QueryStyle.CSharp)
+    public static string ToQuery(this ICondition condition, QueryStyle style = QueryStyle.Native)
     {
         return QueryWriter.Write(condition, style);
     }
@@ -133,12 +139,31 @@ public static class ConditionFunctions
     /// <summary>
     /// Parse a query string into a condition tree.
     /// </summary>
-    /// <param name="query">eg. "(Age &gt; 20) &amp;&amp; !(Name StartsWith 'Bob')"</param>
+    /// <remarks>
+    /// <para>
+    /// Reading is permissive by default, and has to stay that way: every spelling the language has ever accepted
+    /// is sitting in somebody's saved filter, and a deprecated style is one that still works. So with no style
+    /// named, <c>&amp;&amp;</c> and <c>AND</c> are both read, and so are <c>IS NULL</c>, <c>IN</c> and
+    /// <c>BETWEEN</c>.
+    /// </para>
+    /// <para>
+    /// Passing <see cref="QueryStyle.Native"/> asks for the strict grammar instead, where each operator has one
+    /// spelling and every alternate is refused by name. Worth doing where the queries are yours, or where you
+    /// would rather a caller heard about <c>&amp;&amp;</c> now than have it stop working later.
+    /// </para>
+    /// </remarks>
+    /// <param name="query">eg. "(Age &gt; 20) AND NOT (Name StartsWith 'Bob')"</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to accept only the one spelling of each operator. Null, or either
+    /// deprecated style, accepts every spelling, which is what reading has always done
+    /// </param>
     /// <returns>null if the query is empty or whitespace</returns>
-    /// <exception cref="WeequeryException">the query is malformed</exception>
-    public static ICondition? ParseQuery(string query)
+    /// <exception cref="WeequeryException">
+    /// the query is malformed, or spells an operator a way the requested style does not accept
+    /// </exception>
+    public static ICondition? ParseQuery(string query, QueryStyle? style = null)
     {
-        return QueryParser.Parse(query);
+        return QueryParser.Parse(query, style);
     }
 
     /// <summary>
@@ -677,4 +702,35 @@ public static class ConditionFunctions
 
         return conjunction;
     }
+
+    /// <summary>
+    /// Add a comparison to test a field matches (via regex) the specified value to the conjunction
+    /// </summary>
+    /// <param name="conjunction"></param>
+    /// <param name="field"></param>
+    /// <param name="value"></param>
+    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <returns></returns>
+    public static IConjunctionCondition AddIsMatchTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
+    {
+        conjunction.Conditions.Add(new OneValueCondition<string>(Operator.IsMatch, field, new ConditionValue<string>(source, value)));
+
+        return conjunction;
+    }
+
+    /// <summary>
+    /// Add a comparison to test a field does NOT match (via regex) the specified value to the conjunction
+    /// </summary>
+    /// <param name="conjunction"></param>
+    /// <param name="field"></param>
+    /// <param name="value"></param>
+    /// <param name="source">whether the value is something to compare against or the key of another bound property, see <see cref="ValueSource"/>. A key is a name, so it is passed as text whatever the property holds</param>
+    /// <returns></returns>
+    public static IConjunctionCondition AddDoesNotMatchTest(this IConjunctionCondition conjunction, string field, string value, ValueSource source = ValueSource.Raw)
+    {
+        conjunction.Conditions.Add(new OneValueCondition<string>(Operator.DoesNotMatch, field, new ConditionValue<string>(source, value)));
+
+        return conjunction;
+    }
+
 }

@@ -48,30 +48,37 @@ public record ParsedQuery(ICondition? Condition, List<Sort> Sorts)
     /// what to sort by where the string named no sorts, copied rather than kept. Worth supplying wherever the
     /// query is paged, see <see cref="Inquiry{T}.ApplyPagination"/>.
     /// </param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to hold both halves to the strict grammar, so one spelling per operator in
+    /// the condition and the one word OrderBy for the separator. Null, the default, accepts every spelling, which
+    /// is what reading has always done. See <see cref="ConditionFunctions.ParseQuery"/>
+    /// </param>
     /// <returns>never null, though both halves of it may be empty</returns>
-    /// <exception cref="WeequeryException">either half is malformed</exception>
-    public static ParsedQuery Parse(string? query, IEnumerable<Sort>? defaultSort = null)
+    /// <exception cref="WeequeryException">either half is malformed, or spells something a way the style refuses</exception>
+    public static ParsedQuery Parse(string? query, IEnumerable<Sort>? defaultSort = null, QueryStyle? style = null)
     {
-        var tokens = QueryTokenizer.Tokenize(query ?? string.Empty);
+        var tokens = QueryTokenizer.Tokenize(query ?? string.Empty, style);
 
         if (tokens.Count == 0) { return new ParsedQuery(null, [.. defaultSort ?? []]); }
 
         // No condition(s) found, only (presumable) ordering
-        if (SortParser.PrefixLength(tokens, 0) > 0) { return new ParsedQuery(null, Sort.Parse(query, defaultSort)); }
+        if (SortParser.PrefixLength(tokens, 0, style) > 0) { return new ParsedQuery(null, Sort.Parse(query, defaultSort, style)); }
 
-        var condition = QueryParser.ParseLeading(tokens, query!, out var stopped);
+        var condition = QueryParser.ParseLeading(tokens, query!, out var stopped, style);
 
         // (Presumable) condition(s) found, but no ordering
         if (stopped >= tokens.Count) { return new ParsedQuery(condition, [.. defaultSort ?? []]); }
 
-        // Check for unexpected text between the condition text and the ordering text
-        if (SortParser.PrefixLength(tokens, stopped) == 0)
+        // Check for unexpected text between the condition text and the ordering text. A style that refuses the
+        // spelling that is there throws from here rather than returning zero, so the separator a caller did write
+        // is named instead of being reported as a stray word.
+        if (SortParser.PrefixLength(tokens, stopped, style) == 0)
         {
             throw new WeequeryException(QueryText.Describe(query!, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
         }
 
         // Condition(s) found, ordering found
-        return new ParsedQuery(condition, Sort.Parse(query![tokens[stopped].Position..], defaultSort));
+        return new ParsedQuery(condition, Sort.Parse(query![tokens[stopped].Position..], defaultSort, style));
     }
 
     /// <summary>
@@ -84,19 +91,24 @@ public record ParsedQuery(ICondition? Condition, List<Sort> Sorts)
     /// </para>
     /// </remarks>
     /// <param name="style">
-    /// which spelling the condition uses for the operators that have two. It does not reach the sorts, which
-    /// have none, nor the separator, which is required either way
+    /// which spelling the condition uses for the operators that have more than one. It does not reach the sorts,
+    /// which have none, and of the separator it decides only how it is spelled, never whether there is one:
+    /// <see cref="QueryStyle.Native"/> writes OrderBy, every other style ORDER BY
     /// </param>
     /// <returns>the empty string where there is neither a condition nor a sort</returns>
     /// <exception cref="WeequeryException">
     /// the condition cannot be written, or a sort names no field. See <see cref="ConditionFunctions.ToQuery"/>
     /// and <see cref="SortFunctions.ToQuery(IEnumerable{Sort}, QueryStyle)"/>
     /// </exception>
-    public string ToQuery(QueryStyle style = QueryStyle.CSharp)
+    public string ToQuery(QueryStyle style = QueryStyle.Native)
     {
-        // Always the SQL style for the sorts, since that is the one that writes the separator. An empty list
-        // gives the empty string rather than a bare prefix, so this is also the test for having any.
-        var sorts = Sorts.ToQuery(QueryStyle.Sql);
+        // The clause with no prefix on it, which every style but SQL writes, so the separator can be put on in
+        // this style's spelling. An empty list gives the empty string, so this is also the test for having any.
+        var clause = Sorts.ToQuery(QueryStyle.Native);
+
+        // Unlike the standalone clause, the separator here is not optional: it is the only thing telling the two
+        // halves apart, see Parse
+        var sorts = (clause.Length == 0) ? string.Empty : $"{SortFunctions.Separator(style)} {clause}";
 
         if (Condition is null) { return sorts; }
 

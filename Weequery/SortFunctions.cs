@@ -15,7 +15,7 @@ public static class SortFunctions
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the sort is null, or names no field</exception>
-    public static string ToQuery(this Sort sort, QueryStyle style = QueryStyle.CSharp)
+    public static string ToQuery(this Sort sort, QueryStyle style = QueryStyle.Native)
     {
         if (sort is null) { throw new WeequeryException($"{nameof(sort)} cannot be null"); }
 
@@ -29,12 +29,12 @@ public static class SortFunctions
     /// </summary>
     /// <param name="sorts">null, or none, gives the empty string, which reads back as no sorts at all</param>
     /// <param name="style">
-    /// <see cref="QueryStyle.Sql"/> writes the ORDER BY the parser will accept but does not require;
-    /// <see cref="QueryStyle.CSharp"/> leaves it off, since nothing needs it to read the clause back
+    /// <see cref="QueryStyle.Sql"/> writes the ORDER BY the parser will accept but does not require. Every other
+    /// style leaves it off, since nothing needs it to read a clause back on its own
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">one of the sorts is null, or names no field</exception>
-    public static string ToQuery(this IEnumerable<Sort>? sorts, QueryStyle style = QueryStyle.CSharp)
+    public static string ToQuery(this IEnumerable<Sort>? sorts, QueryStyle style = QueryStyle.Native)
     {
         if (sorts is null) { return string.Empty; }
 
@@ -66,11 +66,35 @@ public static class SortFunctions
     }
 
     /// <summary>
-    /// What the clause opens with, which is the only thing a style decides here
+    /// What the clause opens with, which is the only thing a style decides here.
+    /// <para>
+    /// Only <see cref="QueryStyle.Sql"/> writes one. A clause on its own does not need it to read back, so
+    /// <see cref="QueryStyle.Native"/> leaves it off exactly as the C# style did, and a caller who wants it says
+    /// so. Where it is not optional is between a condition and a clause in one string, which is
+    /// <see cref="Separator"/>.
+    /// </para>
     /// </summary>
     private static string Prefix(QueryStyle style)
     {
+#pragma warning disable CS0618 // the deprecated style is still written
         return (style == QueryStyle.Sql) ? "ORDER BY " : string.Empty;
+#pragma warning restore CS0618
+    }
+
+    /// <summary>
+    /// The word that separates a condition from a sort clause when the two are written as one string, see
+    /// <see cref="ParsedQuery.ToQuery"/>. Mandatory there, so this always returns one.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="QueryStyle.Native"/> takes the one word spelling, since a style whose rule is that an operator
+    /// name holds no spaces cannot then hand back a separator spelled with one. The parser reads both, whichever
+    /// style asked for it.
+    /// </remarks>
+    /// <param name="style"></param>
+    /// <returns></returns>
+    internal static string Separator(QueryStyle style)
+    {
+        return (style == QueryStyle.Native) ? "OrderBy" : "ORDER BY";
     }
 
     /// <summary>

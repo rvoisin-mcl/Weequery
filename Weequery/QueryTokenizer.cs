@@ -50,11 +50,23 @@ internal static class QueryTokenizer
         return !QueryKeywords.IsKeyword(text);
     }
 
-    public static List<QueryToken> Tokenize(string query)
+    /// <summary>
+    /// Turn a query into tokens.
+    /// </summary>
+    /// <param name="query"></param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to refuse the symbolic spellings, see <see cref="Refuse"/>. Null, or
+    /// either deprecated style, reads them all
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the query is malformed, or spells an operator a way the style refuses</exception>
+    public static List<QueryToken> Tokenize(string query, QueryStyle? style = null)
     {
         List<QueryToken> tokens = new();
 
         if (string.IsNullOrWhiteSpace(query)) { return tokens; }
+
+        var strict = (style == QueryStyle.Native);
 
         int i = 0;
         while (i < query.Length)
@@ -91,7 +103,7 @@ internal static class QueryTokenizer
                     continue;
             }
 
-            if (TryReadOperator(query, i, tokens, out int afterOperator))
+            if (TryReadOperator(query, i, tokens, strict, out int afterOperator))
             {
                 i = afterOperator;
                 continue;
@@ -163,10 +175,33 @@ internal static class QueryTokenizer
     }
 
     /// <summary>
+    /// The message for a spelling <see cref="QueryStyle.Native"/> does not accept. Always names what to write
+    /// instead, since the spelling being refused is one that worked for years and the caller is entitled to know
+    /// where it went.
+    /// </summary>
+    /// <param name="found">the spelling in the query</param>
+    /// <param name="instead">the one Native accepts</param>
+    /// <param name="position">where it is, so the message can point at it</param>
+    private static WeequeryException Refuse(string found, string instead, int position)
+    {
+        return new WeequeryException($"'{found}' at position {position} is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'");
+    }
+
+    /// <summary>
     /// Read a comparison or conjunction operator, normalizing the alternate spellings ('=' and '&lt;&gt;') as we go.
     /// </summary>
+    /// <param name="query"></param>
+    /// <param name="start"></param>
+    /// <param name="tokens"></param>
+    /// <param name="strict">
+    /// true where the style is <see cref="QueryStyle.Native"/>, so the conjunction symbols are refused rather
+    /// than read. The comparison symbols all survive, '==' and '!=' included: they are unambiguous, a database
+    /// spells inequality both ways, and what Native settles is what gets written, see
+    /// <see cref="QueryStyle.Native"/>.
+    /// </param>
+    /// <param name="next"></param>
     /// <returns>false if the character does not start an operator</returns>
-    private static bool TryReadOperator(string query, int start, List<QueryToken> tokens, out int next)
+    private static bool TryReadOperator(string query, int start, List<QueryToken> tokens, bool strict, out int next)
     {
         next = start;
 
@@ -176,7 +211,7 @@ internal static class QueryTokenizer
         switch (ch)
         {
             case '=':
-                // '=' and '==' both mean Equals
+                // '=' and '==' both mean Equals, in every style. Native writes '='
                 tokens.Add(new(QueryTokenKind.Symbol, "==", start));
                 next = (peek == '=') ? (start + 2) : (start + 1);
                 return true;
@@ -188,6 +223,9 @@ internal static class QueryTokenizer
                     next = start + 2;
                     return true;
                 }
+
+                if (strict) { throw Refuse("!", "NOT", start); }
+
                 tokens.Add(new(QueryTokenKind.Not, "!", start));
                 next = start + 1;
                 return true;
@@ -204,12 +242,14 @@ internal static class QueryTokenizer
                 return true;
 
             case '&':
+                if (strict) { throw Refuse("&&", "AND", start); }
                 if (peek != '&') { throw new WeequeryException($"Expected '&&' at position {start}"); }
                 tokens.Add(new(QueryTokenKind.And, "&&", start));
                 next = start + 2;
                 return true;
 
             case '|':
+                if (strict) { throw Refuse("||", "OR", start); }
                 if (peek != '|') { throw new WeequeryException($"Expected '||' at position {start}"); }
                 tokens.Add(new(QueryTokenKind.Or, "||", start));
                 next = start + 2;

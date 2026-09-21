@@ -40,6 +40,33 @@ internal static class ExpressionBuilder
     }
 
     /// <summary>
+    /// Whether a binding could be made for a property of this type, asked of the type alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same rule <see cref="Binding{TClass}"/> applies when it is built, hoisted to where a caller can ask
+    /// before building one. A reference type with no builder is still bindable, as an object supporting only the
+    /// null tests; a value type with no builder is not, since there is nothing to compare it with and no null to
+    /// test for, and constructing that binding throws.
+    /// </para>
+    /// <para>
+    /// For <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings)"/>, which walks a type it was not given the chance to vet and
+    /// would otherwise refuse a whole model over one property of a struct nobody meant to filter on.
+    /// </para>
+    /// </remarks>
+    /// <param name="type">a property's declared type, still wrapped if it is a Nullable&lt;&gt;</param>
+    /// <returns></returns>
+    internal static bool CanBindPropertyType(Type type)
+    {
+        if (type is null) { return false; }
+
+        var unwrapped = Nullable.GetUnderlyingType(type) ?? type;
+        var useType = unwrapped.IsEnum ? Enum.GetUnderlyingType(unwrapped) : unwrapped;
+
+        return SupportedTypes.Contains(useType) || (!unwrapped.IsValueType);
+    }
+
+    /// <summary>
     /// One builder per property type, kept for the life of the process.
     /// <para>
     /// The builders hold no state of their own every method takes the binding and the condition it is working

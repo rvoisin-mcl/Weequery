@@ -262,6 +262,29 @@ internal class Binding<TClass> : IBinding
         WeequeryException.ThrowIfNull(parameter);
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
 
+        // One step along the path, which is PropertyOrField except where the type is an interface.
+        //
+        // An interface does not inherit members the way a class does: reflection reports what the interface
+        // itself declares and nothing from the interfaces it is built on, and PropertyOrField asks reflection. So
+        // "IPlace.Capacity" resolves and "IPlace.DisplayName", declared on the INamed it extends, does not. The
+        // interfaces above are searched only when the interface itself does not declare the name, so one that
+        // redeclares a member still wins. Searched rather than left to fail, since a caller naming a member of an
+        // interface has no way to know which of its interfaces declared it, and no reason to care.
+        static Expression StepInto(Expression on, string segment)
+        {
+            if (on.Type.IsInterface && (on.Type.GetProperty(segment) is null))
+            {
+                foreach (var declaring in on.Type.GetInterfaces())
+                {
+                    var inherited = declaring.GetProperty(segment);
+
+                    if (inherited is not null) { return Expression.Property(on, inherited); }
+                }
+            }
+
+            return Expression.PropertyOrField(on, segment);
+        }
+
         // Build member expression from the provided path
         Expression exp = parameter;
         List<Expression> linkChecks = new();
@@ -282,7 +305,7 @@ internal class Binding<TClass> : IBinding
 
             try
             {
-                exp = Expression.PropertyOrField(exp, segment);
+                exp = StepInto(exp, segment);
             }
             catch (ArgumentException ex)
             {
@@ -410,8 +433,9 @@ internal class Binding<TClass> : IBinding
 
         var binding = FromPath(parameter, string.Join(".", [GetPropertyPath(selector), .. segments]));
 
-        // The last segment, matching what the segments constructor of a BindingRequest does, since the whole path
-        // has periods in it and so cannot be a key
+        // The last segment, matching what the segments constructor of a BindingRequest does. The whole path would
+        // be a legal key now that a period is one, but this overload has always keyed by the last segment and
+        // changing it would rename a key already on the wire. Pass one to get the other.
         return AddTo(bindings, binding, key ?? segments[^1]);
     }
 

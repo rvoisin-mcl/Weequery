@@ -69,9 +69,15 @@ public class TransportCondition
     /// <summary>
     /// Attempt to unpack into to a condition, if both .Condition and .Query are present, it will prefer .Condition
     /// </summary>
+    /// <param name="style">
+    /// how strictly to read the query half, where that is the half that arrived. <see cref="QueryStyle.Native"/>
+    /// accepts one spelling per operator; null, the default, accepts every spelling. It has no bearing on the
+    /// packed half, which carries operators as values rather than as text. See
+    /// <see cref="ConditionFunctions.ParseQuery"/>
+    /// </param>
     /// <returns></returns>
-    public ICondition? Unpack()
+    public ICondition? Unpack(QueryStyle? style = null)
     {
-        return (Condition is not null) ? Condition.Unpack() : (Query is not null) ? ConditionFunctions.ParseQuery(Query) : null;
+        return (Condition is not null) ? Condition.Unpack() : (Query is not null) ? ConditionFunctions.ParseQuery(Query, style) : null;
     }
 }

@@ -251,7 +251,7 @@ public class ValueRoundTripTests
 
         foreach (var culture in Cultures)
         {
-            Assert.Equal("([HireDate] == 2024-12-25T13:45:30.1230000)", InCulture(culture, () => condition.ToString()));
+            Assert.Equal("([HireDate] = 2024-12-25T13:45:30.1230000)", InCulture(culture, () => condition.ToString()));
         }
     }
 

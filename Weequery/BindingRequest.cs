@@ -19,7 +19,12 @@ public class BindingRequest
     /// ctor
     /// </summary>
     /// <param name="propertyPath">PropertyPath, should be a single property name, or Parent.Child.Grandchild.etc</param>
-    /// <param name="key">[OPT] Key to use for binding, if not specified, PropertyPath will be used. NOTE: If propertyPath has links, then key MUST be provided, as the auto-generated key will be invalid</param>
+    /// <param name="key">
+    /// [OPT] Key to use for binding, if not specified, PropertyPath will be used. A dotted path makes a legal key,
+    /// a period being a legal key character, so a nested property needs no key of its own unless you want the
+    /// caller to see a different name
+    /// </param>
+    /// <exception cref="WeequeryException">the key, given or derived, is not one</exception>
     public BindingRequest(string propertyPath, string? key)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
@@ -28,13 +33,21 @@ public class BindingRequest
 
         PropertyPath = propertyPath;
         Key = key ?? propertyPath;
+
+        // The derived key as well as the given one. Binding would refuse it later either way, and a request is
+        // usually a static declaration, so the error is worth more where the declaration is.
+        WeequeryException.ThrowIfNotBindingKey(Key, nameof(key));
     }
 
     /// <summary>
     /// ctor
     /// </summary>
     /// <param name="propertyPath">PropertyPath, should [Property Name], or [Parent,Child,Grandchild,...]</param>
-    /// <param name="key">[OPT] Key to use for binding, if not specified, PropertyPath will be used. NOTE: If propertyPath has links, then key MUST be provided, as the auto-generated key will be invalid</param>
+    /// <param name="key">
+    /// [OPT] Key to use for binding, if not specified, the last segment is used. The joined path would be a legal
+    /// key now that a period is one, but this overload has always keyed by the last segment and changing it would
+    /// rename a key already on the wire. Pass the path as a string to key by the whole of it
+    /// </param>
     /// <exception cref="WeequeryException"></exception>
     public BindingRequest(string[] propertyPath, string? key)
     {

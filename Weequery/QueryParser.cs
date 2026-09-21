@@ -80,27 +80,39 @@ internal sealed class QueryParser
     private int Index;
     private int Depth;
 
-    private QueryParser(List<QueryToken> tokens, string query)
+    /// <summary>
+    /// True where the style is <see cref="QueryStyle.Native"/>, which takes one spelling per operator. The
+    /// symbolic spellings never reach here, the tokenizer having refused them; what is left for this to refuse is
+    /// the words: IS NULL, IN, BETWEEN and their negatives.
+    /// </summary>
+    private readonly bool Strict;
+
+    private QueryParser(List<QueryToken> tokens, string query, bool strict)
     {
         Tokens = tokens;
         Query = query;
+        Strict = strict;
     }
 
     /// <summary>
     /// Parse a query string into a condition tree.
     /// </summary>
     /// <param name="query"></param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> for the strict grammar, null or either deprecated style for the permissive
+    /// one, see <see cref="ConditionFunctions.ParseQuery"/>
+    /// </param>
     /// <returns>null if the query is empty or whitespace</returns>
     /// <exception cref="WeequeryException">
-    /// the query is malformed, or the condition it describes nests deeper than
-    /// <see cref="ConditionNesting.MaxDepth"/>
+    /// the query is malformed, spells an operator a way the style refuses, or the condition it describes nests
+    /// deeper than <see cref="ConditionNesting.MaxDepth"/>
     /// </exception>
-    public static ICondition? Parse(string query)
+    public static ICondition? Parse(string query, QueryStyle? style = null)
     {
-        var tokens = QueryTokenizer.Tokenize(query);
+        var tokens = QueryTokenizer.Tokenize(query, style);
         if (tokens.Count == 0) { return null; }
 
-        var condition = ParseLeading(tokens, query, out var stopped);
+        var condition = ParseLeading(tokens, query, out var stopped, style);
 
         // Anything left over means the query was not a single well-formed expression (eg. "(A) (B)")
         if (stopped < tokens.Count)
@@ -124,11 +136,16 @@ internal sealed class QueryParser
     /// <param name="tokens">at least one, since an empty stream has no condition to read</param>
     /// <param name="query">the text the tokens came from, for the errors to point into</param>
     /// <param name="stopped">index of the first token the condition did not take, so tokens.Count when it took them all</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> for the strict grammar, null or either deprecated style for the permissive
+    /// one. The tokens must have been produced under the same style, since the tokenizer refuses the symbolic
+    /// spellings and this refuses the worded ones.
+    /// </param>
     /// <returns></returns>
-    /// <exception cref="WeequeryException">the condition is malformed, or nests too deep</exception>
-    internal static ICondition? ParseLeading(List<QueryToken> tokens, string query, out int stopped)
+    /// <exception cref="WeequeryException">the condition is malformed, spells an operator a refused way, or nests too deep</exception>
+    internal static ICondition? ParseLeading(List<QueryToken> tokens, string query, out int stopped, QueryStyle? style = null)
     {
-        var parser = new QueryParser(tokens, query);
+        var parser = new QueryParser(tokens, query, style == QueryStyle.Native);
 
         var condition = parser.ParseDisjunction();
 
@@ -328,6 +345,11 @@ internal sealed class QueryParser
 
             Index++;
             op = negated ? Operator.IsNotNull : Operator.IsNull;
+
+            // Read all the way through before refusing, so the message names the whole phrase rather than the
+            // first word of it
+            if (Strict) { throw Refuse(negated ? "IS NOT NULL" : "IS NULL", op, isPosition); }
+
             return true;
         }
 
@@ -341,6 +363,9 @@ internal sealed class QueryParser
             {
                 Index++;
                 op = Operator.IsNotIn;
+
+                if (Strict) { throw Refuse("NOT IN", op, notPosition); }
+
                 return true;
             }
 
@@ -348,6 +373,9 @@ internal sealed class QueryParser
             {
                 Index++;
                 op = Operator.IsNotBetween;
+
+                if (Strict) { throw Refuse("NOT BETWEEN", op, notPosition); }
+
                 return true;
             }
 
@@ -355,6 +383,21 @@ internal sealed class QueryParser
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The message for a spelling <see cref="QueryStyle.Native"/> does not accept. Always names the operator to
+    /// write instead, since what is being refused worked for years and the caller is entitled to know where it
+    /// went.
+    /// </summary>
+    /// <param name="found">the spelling in the query</param>
+    /// <param name="op">the operator it meant, whose name is what Native takes</param>
+    /// <param name="position">where it is, so the message can point at it</param>
+    private WeequeryException Refuse(string found, Operator op, int position)
+    {
+        var instead = ConditionFunctions.GetOperationString(op, QueryStyle.Native);
+
+        return new WeequeryException(Describe($"'{found}' is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'", position));
     }
 
     private Operator ParseOperator(string field)
@@ -429,6 +472,17 @@ internal sealed class QueryParser
             // SQL writes a range as "BETWEEN low AND high" rather than as a list. In operand position that AND can
             // only be the separator, so there is nothing to disambiguate, and a following AND is still read as the
             // conjunction: "Pay BETWEEN 1 AND 5 AND IsActive == true" splits where SQL splits it.
+            //
+            // Native does not take it. Reading one AND as a separator and the next as a conjunction is exactly the
+            // sort of two-ways sentence the style exists to be rid of, and the parenthesised list says the same
+            // thing without asking anyone to know the rule.
+            if (Strict)
+            {
+                var name = ConditionFunctions.GetOperationString(op, QueryStyle.Native);
+
+                throw new WeequeryException(Describe($"A range written as 'low AND high' is not valid in the {nameof(QueryStyle.Native)} style, write '{name} (low, high)' for field '{field}'", position));
+            }
+
             Read();
 
             if (Match(QueryTokenKind.And)) { Read(); }

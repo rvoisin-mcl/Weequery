@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Weequery.Builders;
@@ -201,20 +202,13 @@ public class Inquiry<T> where T : class
         return this;
     }
 
-    public record BindingResolutionSettings(HashSet<string> IgnorePaths, HashSet<Type> IgnoreTypes, bool IgnoreTypeWhenAssignable)
-    {
-        /// <summary>
-        /// copy ctor
-        /// </summary>
-        /// <param name="settings"></param>
-        public BindingResolutionSettings(BindingResolutionSettings settings)
-        {
-            IgnorePaths = (settings.IgnorePaths.Comparer != StringComparer.OrdinalIgnoreCase) ? settings.IgnorePaths.ToHashSet(StringComparer.OrdinalIgnoreCase) : settings.IgnorePaths; // ensure this is string insensitive
-            IgnoreTypes = settings.IgnoreTypes;
-            IgnoreTypeWhenAssignable = settings.IgnoreTypeWhenAssignable;
-        }
-    }
-
+    /// <summary>
+    /// Whether a property's type is one the caller asked to leave out, see
+    /// <see cref="BindingResolutionSettings.IgnoreTypes"/>.
+    /// </summary>
+    /// <param name="type">the property's declared type</param>
+    /// <param name="settings"></param>
+    /// <returns></returns>
     private static bool ShouldIgnoreType(Type type, BindingResolutionSettings settings)
     {
         if (settings.IgnoreTypes.Count == 0) { return false; }
@@ -223,45 +217,276 @@ public class Inquiry<T> where T : class
         return settings.IgnoreTypes.Where(ignore => type.IsAssignableTo(ignore)).Any();
     }
 
-    private static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings)
+    /// <summary>
+    /// Whether a type holds anything worth walking into, which a container does not.
+    /// </summary>
+    /// <remarks>
+    /// An array, a List, a Dictionary, anything a foreach would walk. What is *inside* one is not reachable from
+    /// here, since this library does not filter into a collection, so all expansion yields is the container's own
+    /// bookkeeping: Length, LongLength, Rank, SyncRoot, IsFixedSize, Count, Capacity. None of that is a question
+    /// anyone meant to ask, and a provider will refuse to translate most of it. A string is one of these too,
+    /// which is why Name.Length is not a key.
+    /// </remarks>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    private static bool IsContainer(Type type)
     {
-        var properties = type.GetProperties().Where(prop => prop.CanRead).OrderBy(prop => prop.Name);
-        foreach (var property in properties)
+        // Arrays are covered by this too, every one of them implementing it
+        return type.IsAssignableTo(typeof(System.Collections.IEnumerable));
+    }
+
+    /// <summary>
+    /// Whether the walk should descend into a property, having already decided to bind it.
+    /// </summary>
+    /// <param name="type">the property's declared type</param>
+    /// <param name="settings"></param>
+    /// <param name="path">the property's whole path, which is what the ignore rules are matched against</param>
+    /// <param name="ancestors">
+    /// the types already open on the way here, see <see cref="ResolveBindables(int, BindingResolutionSettings)"/>
+    /// </param>
+    /// <returns></returns>
+    private static bool ShouldExpandType(Type type, BindingResolutionSettings settings, string path, HashSet<Type> ancestors)
+    {
+        // a container holds its elements, which are not reachable, and its own bookkeeping, which is noise
+        if (IsContainer(type)) { return false; }
+        // the property has potential properties of its own. An interface counts: what it promises is reachable
+        // through it, and a model that navigates by interface would otherwise resolve nothing below it
+        if (!(type.IsClass || type.IsInterface)) { return false; }
+        // if we have been directed to ignore child properties for this path
+        if (settings.IgnorePaths.Contains($"{path}.")) { return false; }
+        // if we have been directed not to expand this type
+        if (settings.DoNotExpandTypes.Contains(type)) { return false; }
+        // if this type is already open further up the same path, which is a cycle
+        if (ancestors.Contains(type)) { return false; }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The properties of a type that resolution will consider, before any of the settings are applied.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Readable, and not an indexer: an indexer has no path to bind, so taking one would refuse the whole model
+    /// when it came to be bound.
+    /// </para>
+    /// <para>
+    /// Names are made distinct, which matters twice. GetProperties on an interface returns what that interface
+    /// declares and nothing it inherits, so the inherited ones are gathered separately and two interfaces may
+    /// well promise the same name. And a derived class that shadows a property with <c>new</c> reports both.
+    /// Either way a path can only mean one thing, so the first wins.
+    /// </para>
+    /// </remarks>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    private static IEnumerable<PropertyInfo> ReadableProperties(Type type)
+    {
+        IEnumerable<PropertyInfo> properties = type.GetProperties();
+
+        if (type.IsInterface)
         {
-            var pathName = (string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}");
+            properties = properties.Concat(type.GetInterfaces().SelectMany(inherited => inherited.GetProperties()));
+        }
 
-            if ((!settings.IgnorePaths.Contains(pathName)) && (!ShouldIgnoreType(property.PropertyType, settings)))
+        return properties
+            .Where(prop => prop.CanRead && (prop.GetIndexParameters().Length == 0))
+            .GroupBy(prop => prop.Name)
+            .Select(group => group.First());
+    }
+
+    /// <summary>
+    /// The key a resolved path is bound under, which is the path itself unless the language has claimed it.
+    /// </summary>
+    /// <remarks>
+    /// A property named after an operator makes a key that a query could not tell from the operator, so binding
+    /// it as it stands is refused, see <see cref="WeequeryException.ThrowIfNotBindingKey"/>. That is the right
+    /// answer for a key someone chose and the wrong one for a whole model, which would otherwise resolve to
+    /// nothing because one property happens to be called Contains. An underscore is a legal key character and no
+    /// operator ends in one, so the suffix is always enough, and it is applied only where it is needed rather
+    /// than to every key.
+    /// <para>
+    /// Only a whole key can collide: a nested "Lair.Contains" is not the operator to begin with, since the
+    /// tokenizer reads a dotted path as one word.
+    /// </para>
+    /// </remarks>
+    /// <param name="path">the resolved property path</param>
+    /// <returns>the path, or the path with an underscore where the path is a reserved word</returns>
+    private static string KeyFor(string path)
+    {
+        return QueryKeywords.IsReserved(path) ? $"{path}_" : path;
+    }
+
+    /// <summary>
+    /// Walk one level of a type, adding a request for every readable property that survives the settings, and
+    /// recursing into the ones that have properties of their own.
+    /// </summary>
+    /// <remarks>
+    /// Properties are returned in path order.
+    /// </remarks>
+    /// <param name="bindings">the list being built, added to in place</param>
+    /// <param name="type">the type to walk</param>
+    /// <param name="depth">levels already descended, so 0 for the entity itself</param>
+    /// <param name="maxDepth">how far down to go, already bounded by the caller</param>
+    /// <param name="prefix">the path so far, empty at the top, which is what makes the keys dotted</param>
+    /// <param name="settings"></param>
+    /// <param name="ancestors">
+    /// the types open on the path to here, which is what stops a cycle. A model where two types refer to each
+    /// other has no bottom, and the walk would otherwise only be stopped by <paramref name="maxDepth"/>, one
+    /// level of which multiplies the paths rather than adding to them
+    /// </param>
+    /// <returns>the same list, for the caller that started it</returns>
+    private static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors)
+    {
+        // Open on the way in and closed on the way out, so the set is what is above this point on this path
+        // rather than everything the walk has ever seen. Two properties of the same type are both expanded; the
+        // same type twice down one chain is not.
+        ancestors.Add(type);
+
+        try
+        {
+            var properties = ReadableProperties(type).OrderBy(prop => prop.Name);
+            foreach (var property in properties)
             {
-                bindings.Add(new(pathName, null));
+                var pathName = (string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}");
 
-                // if we haven't bottomed out, the property has popential properties of its own, and we haven't been directed to ignore any child properties of this one, resolve
-                if ((depth < maxDepth) && (property.PropertyType.IsClass) && (!settings.IgnorePaths.Contains($"{pathName}.")))
+                // A value type with no builder cannot be bound at all, and taking it would refuse the whole model
+                // over one property of a struct nobody meant to filter on. Skipped the way an indexer is.
+                if (!ExpressionBuilder.CanBindPropertyType(property.PropertyType)) { continue; }
+
+                if ((!settings.IgnorePaths.Contains(pathName)) && (!ShouldIgnoreType(property.PropertyType, settings)))
                 {
-                    ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings);
+                    bindings.Add(new(pathName, KeyFor(pathName)));
+
+                    // if we haven't bottomed out, and settings say the property should be expanded
+                    if ((depth < maxDepth) && (ShouldExpandType(property.PropertyType, settings, pathName, ancestors)))
+                    {
+                        ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings, ancestors);
+                    }
                 }
             }
+        }
+        finally
+        {
+            ancestors.Remove(type);
         }
 
         return bindings;
     }
 
-    public static IReadOnlyList<BindingRequest> ResolveBindables<T>(int maxDepth = 16, BindingResolutionSettings? settings = null)
+    /// <summary>
+    /// Build a binding request for every readable property a type reaches, keyed by its path.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the opposite of an allow-list, and it is worth stopping on.</b> Everywhere else in this library
+    /// you say what may be asked about and everything else is refused. This says "all of it", so every property
+    /// name on the type, and on every type it reaches, goes on the wire for a caller to read and filter by. That
+    /// is a reasonable thing to want for an internal tool over a model you control, and an unreasonable thing to
+    /// do to an entity with an audit trail, a password hash or another tenant's rows hanging off it. Use
+    /// <see cref="BindingResolutionSettings"/> to subtract, or write the bindings out and know what they are.
+    /// </para>
+    /// <para>
+    /// A nested property is keyed by its whole dotted path, "Lair.Capacity" rather than "Capacity", which is a
+    /// legal key because a period is a legal key character, see
+    /// <see cref="WeequeryException.ThrowIfNotBindingKey"/>. Paths are distinct by construction, so nothing here
+    /// collides with anything else here; it can still collide with a binding already made by hand, see
+    /// <see cref="BindResolve"/>.
+    /// </para>
+    /// <para>
+    /// A property whose path spells an operator is bound with an underscore after it, so a model holding a
+    /// property called Contains resolves it as "Contains_" rather than refusing the whole model, see
+    /// <see cref="KeyFor"/>. Only a top level property can collide, a nested "Lair.Contains" being one word to
+    /// the tokenizer and not the operator.
+    /// </para>
+    /// <para>
+    /// Three things about the walk are worth knowing before you trust the result:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// It does not descend into a struct, so DateTime.Year is not reached this way and still has to be bound by
+    /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?)"/>. A
+    /// collection is descended as the class it is rather than as its element type, so filtering into one is no
+    /// more possible here than it is anywhere else in this library, and what you get from one is Count and
+    /// Capacity, which a provider may well refuse to translate.
+    /// </description></item>
+    /// <item><description>
+    /// A type already open on the path is not entered again, so a model that refers back to itself terminates
+    /// rather than multiplying. Two properties of the same type are both expanded; the same type twice down one
+    /// chain is not, so "Parent.Parent" is never resolved.
+    /// </description></item>
+    /// <item><description>
+    /// The cycle guard bounds depth, not width. A wide model still grows with
+    /// <paramref name="maxDepth"/> a level at a time, which is why the default is low rather than the limit.
+    /// </description></item>
+    /// </list>
+    /// </remarks>
+    /// <param name="maxDepth">
+    /// how many levels below the entity to reach, so 0 for its own properties and nothing nested, 1 for their
+    /// properties as well. Defaults to 1; bounded to [0, 16] rather than refused, so a larger number is quietly
+    /// the limit
+    /// </param>
+    /// <param name="settings">
+    /// [OPT] what to leave out; null leaves out
+    /// nothing but does not expand a string into its Length
+    /// </param>
+    /// <returns>the requests, in path order, ready for <see cref="BindProperties"/></returns>
+    /// <exception cref="WeequeryException">a resolved path does not make a valid key</exception>
+    public static IReadOnlyList<BindingRequest> ResolveBindables(int maxDepth = 1, BindingResolutionSettings? settings = null)
     {
         maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
-        settings = new(settings);
 
-        return ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings);
+        // A caller who named no settings gets the standard ones. Handled here rather than in the copy
+        // constructor, which is for copying something.
+        settings = (settings is null) ? BindingResolutionSettings.Standard : new(settings);
+
+        return ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
     }
 
-    public Inquiry<T> BindResolve(int maxDepth = 16, BindingResolutionSettings? settings = null)
+    /// <summary>
+    /// Bind every readable property this entity reaches, as <see cref="ResolveBindables(int, BindingResolutionSettings)"/> resolves them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Read the warning on <see cref="ResolveBindables(int, BindingResolutionSettings)"/> first.</b> This is the allow-list saying yes to
+    /// everything, which is a decision rather than a shortcut.
+    /// </para>
+    /// <para>
+    /// Adds to whatever is already bound rather than replacing it, so a key resolved here that a
+    /// <see cref="BindProperty(string, string?)"/> call already claimed is a duplicate and is refused, see
+    /// <see cref="BindProperties"/>. Resolve first and <see cref="RemoveBinding"/> what you do not want, or bind
+    /// by hand and do not call this.
+    /// </para>
+    /// </remarks>
+    /// <param name="maxDepth">
+    /// how many levels below the entity to reach. Defaults to 1, and bounded to [0, 16]; a deep model is worth
+    /// resolving once and looking at before you raise it
+    /// </param>
+    /// <param name="settings">
+    /// [OPT] what to leave out; null leaves nothing out, but does not expand a string into its Length
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">a resolved path does not make a valid key, or two bindings claim one key</exception>
+    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null)
     {
-        var reqs = ResolveBindables<T>(maxDepth, settings);
+        var reqs = ResolveBindables(maxDepth, settings);
 
         BindProperties(reqs);
 
         return this;
     }
 
+    /// <summary>
+    /// Take a binding back off this Inquiry, so the key stops being answerable.
+    /// </summary>
+    /// <remarks>
+    /// The pairing this exists for is <see cref="BindResolve"/>: bind everything, then subtract the handful you
+    /// did not mean, for a model where that is shorter than naming the ones you did. Keys are matched without
+    /// regard to case, as they are everywhere else, and removing one that was never bound is a no-op rather than
+    /// an error, since the state afterwards is the state that was asked for either way.
+    /// </remarks>
+    /// <param name="key">the key to stop answering, which must not be null or empty</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the key is null or empty</exception>
     public Inquiry<T> RemoveBinding(string key)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
@@ -289,12 +514,17 @@ public class Inquiry<T> where T : class
     /// Parse a query string and add the condition it describes, to be applied when built. Will be AND'ed with any
     /// other root conditions
     /// </summary>
-    /// <param name="query">eg. "(Pay &gt; 10000) &amp;&amp; !(Name StartsWith 'Temp')"</param>
+    /// <param name="query">eg. "(Pay &gt; 10000) AND NOT (Name StartsWith 'Temp')"</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to accept only the one spelling of each operator, so a caller sending
+    /// <c>&amp;&amp;</c> or <c>IS NULL</c> is refused and told what to write. Null, the default, accepts every
+    /// spelling, which is what this has always done. See <see cref="ConditionFunctions.ParseQuery"/>
+    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the query is malformed, see <see cref="ConditionFunctions.ParseQuery"/></exception>
-    public Inquiry<T> ApplyCondition(string query)
+    public Inquiry<T> ApplyCondition(string query, QueryStyle? style = null)
     {
-        var condition = ConditionFunctions.ParseQuery(query);
+        var condition = ConditionFunctions.ParseQuery(query, style);
         if (condition is null) { return this; }
 
         Conditions.Add(condition);
@@ -355,11 +585,15 @@ public class Inquiry<T> where T : class
     /// </remarks>
     /// <param name="sortString">eg. "Pay DESC, Name". Null, empty or whitespace takes <paramref name="defaultSort"/></param>
     /// <param name="defaultSort">what to sort by when the caller asked for nothing; null, or none, is a NOP</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to take only the one word OrderBy prefix, refusing ORDER BY. Null, the
+    /// default, takes both. See <see cref="Sort.Parse"/>
+    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the clause is malformed, see <see cref="Sort.Parse"/></exception>
-    public Inquiry<T> ApplySorts(string? sortString, IEnumerable<Sort>? defaultSort = null)
+    public Inquiry<T> ApplySorts(string? sortString, IEnumerable<Sort>? defaultSort = null, QueryStyle? style = null)
     {
-        return ApplySorts(Sort.Parse(sortString, defaultSort));
+        return ApplySorts(Sort.Parse(sortString, defaultSort, style));
     }
 
     /// <summary>

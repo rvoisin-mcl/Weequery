@@ -1,3 +1,7 @@
+// The C# and SQL styles are deprecated, and these tests are part of why the deprecation is safe: they pin
+// what those styles still write and still read. Deprecated is not gone.
+#pragma warning disable CS0618
+
 using System.Text;
 using Tests.Common;
 using Weequery;
@@ -6,11 +10,12 @@ using Weequery.Interfaces;
 namespace Tests.Unit;
 
 /// <summary>
-/// ToQuery can write the operators that have two spellings either way: C# (&amp;&amp;, ||, !, ==, !=) or SQL
-/// (And, Or, Not, =, &lt;&gt;).
+/// The two deprecated styles: C# (&amp;&amp;, ||, !, ==, !=) and SQL (And, Or, Not, =, &lt;&gt;). Deprecated is
+/// not gone, so what they wrote they still write, and what they read they still read; this is where that is
+/// pinned. <see cref="NativeStyleTests"/> covers the style that replaced them.
 /// <para>
-/// The parser accepts both, so the choice only affects what comes out. Both styles must round trip and must select
-/// the same rows, which is what most of these check.
+/// The parser accepts both spellings, so the choice only affects what comes out. Both styles must round trip and
+/// must select the same rows, which is what most of these check.
 /// </para>
 /// <para>
 /// Nothing here pins the case of an operator spelled as a word. The parser reads one without regard to case, so
@@ -98,21 +103,26 @@ public class QueryStyleTests
         Assert.Equal("([Pay] <> '12000')", Parse("Pay != 12000").ToQuery(QueryStyle.Sql));
     }
 
+    /// <summary>
+    /// It was C# until the deprecation, and moved with it. A style nothing should be writing any more is not one
+    /// to leave as the answer for a caller who did not choose.
+    /// </summary>
     [Fact]
-    public void CSharpIsTheDefault()
+    public void NativeIsTheDefault()
     {
         var condition = Parse("(Pay > 10000) && (IsActive == true)");
 
-        Assert.Equal(condition.ToQuery(QueryStyle.CSharp), condition.ToQuery());
+        Assert.Equal(condition.ToQuery(QueryStyle.Native), condition.ToQuery());
+        Assert.NotEqual(condition.ToQuery(QueryStyle.CSharp), condition.ToQuery());
     }
 
     [Fact]
-    public void ToStringKeepsTheCSharpStyle()
+    public void ToStringTakesTheDefaultStyleToo()
     {
         // ToString cannot take an argument, so it stays on the default
         var condition = Parse("!(Pay > 10000) && (IsActive == true)");
 
-        Assert.Equal(condition.ToQuery(QueryStyle.CSharp), condition.ToString());
+        Assert.Equal(condition.ToQuery(QueryStyle.Native), condition.ToString());
     }
 
     /// <summary>
@@ -299,11 +309,12 @@ public class QueryStyleTests
     }
 
     [Fact]
-    public void TheSingleArgumentOverloadStillGivesTheCSharpSpelling()
+    public void TheSingleArgumentOverloadGivesTheNativeSpelling()
     {
-        // Kept as it was, so existing callers are unaffected
-        Assert.Equal("==", ConditionFunctions.GetOperationString(Operator.Equals));
-        Assert.Equal("!=", ConditionFunctions.GetOperationString(Operator.NotEqual));
+        // Moved with the default, so one call with no style named gives the same answer as the next
+        Assert.Equal("=", ConditionFunctions.GetOperationString(Operator.Equals));
+        Assert.Equal("<>", ConditionFunctions.GetOperationString(Operator.NotEqual));
+        Assert.Equal("AND", ConditionFunctions.GetOperationString(Operator.And));
     }
 
     // ---------- a hand built tree, in both styles ----------

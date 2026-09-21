@@ -1,3 +1,7 @@
+// The C# and SQL styles are deprecated, and these tests are part of why the deprecation is safe: they pin
+// what those styles still write and still read. Deprecated is not gone.
+#pragma warning disable CS0618
+
 using Tests.Common;
 using Weequery;
 
@@ -25,7 +29,7 @@ public class ParsedQueryTests
     [InlineData("Pay > 10000 ORDER BY Pay DESC", "([Pay] > '10000')", "Pay Descending")]
     [InlineData("Pay > 10000 OrderBy Pay DESC", "([Pay] > '10000')", "Pay Descending")]
     [InlineData("Pay > 10000 order by Pay desc, Name", "([Pay] > '10000')", "Pay Descending, Name Ascending")]
-    [InlineData("(Pay > 1) && (IsActive == true) ORDER BY Name", "(([Pay] > '1') && ([IsActive] == 'true'))", "Name Ascending")]
+    [InlineData("(Pay > 1) && (IsActive == true) ORDER BY Name", "(([Pay] > '1') AND ([IsActive] = 'true'))", "Name Ascending")]
     [InlineData("Alias IsNull ORDER BY Pay DESC", "([Alias] IsNull)", "Pay Descending")]
     [InlineData("Name IsIn ('a', 'b') OrderBy Name", "([Name] IsIn ('a', 'b'))", "Name Ascending")]
     public void ItSplitsAConditionFromItsSorts(string query, string condition, string sorts)
@@ -130,7 +134,7 @@ public class ParsedQueryTests
     {
         var parsed = ParsedQuery.Parse("Name == 'ORDER BY' ORDER BY Pay DESC");
 
-        Assert.Equal("([Name] == 'ORDER BY')", parsed.Condition!.ToQuery());
+        Assert.Equal("([Name] = 'ORDER BY')", parsed.Condition!.ToQuery());
         Assert.Equal("Pay Descending", Describe(parsed.Sorts));
     }
 
@@ -164,10 +168,10 @@ public class ParsedQueryTests
     // ---------- writing both halves back out ----------
 
     [Theory]
-    [InlineData("Pay > 10000 ORDER BY Pay DESC", "([Pay] > '10000') ORDER BY [Pay] DESC")]
-    [InlineData("Pay > 10000 OrderBy Pay DESC, Name", "([Pay] > '10000') ORDER BY [Pay] DESC, [Name] ASC")]
+    [InlineData("Pay > 10000 ORDER BY Pay DESC", "([Pay] > '10000') OrderBy [Pay] DESC")]
+    [InlineData("Pay > 10000 OrderBy Pay DESC, Name", "([Pay] > '10000') OrderBy [Pay] DESC, [Name] ASC")]
     [InlineData("Pay > 10000", "([Pay] > '10000')")]
-    [InlineData("ORDER BY Pay DESC", "ORDER BY [Pay] DESC")]
+    [InlineData("ORDER BY Pay DESC", "OrderBy [Pay] DESC")]
     public void ItWritesBothHalvesAsOneString(string query, string expected)
     {
         Assert.Equal(expected, ParsedQuery.Parse(query).ToQuery());
@@ -238,7 +242,7 @@ public class ParsedQueryTests
     [Fact]
     public void ItPrintsAsItsOwnText()
     {
-        Assert.Equal("([Pay] > '10000') ORDER BY [Pay] DESC", ParsedQuery.Parse("Pay > 10000 ORDER BY Pay DESC").ToString());
+        Assert.Equal("([Pay] > '10000') OrderBy [Pay] DESC", ParsedQuery.Parse("Pay > 10000 ORDER BY Pay DESC").ToString());
     }
 
     // ---------- malformed ----------

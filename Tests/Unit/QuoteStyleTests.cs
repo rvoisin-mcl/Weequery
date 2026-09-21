@@ -194,7 +194,7 @@ public class QuoteStyleTests
         var condition = new OneValueCondition<string>(Operator.Equals, nameof(Minion.Name), "say \"hi\"");
 
         var written = condition.ToQuery();
-        Assert.Equal("([Name] == 'say \"hi\"')", written);
+        Assert.Equal("([Name] = 'say \"hi\"')", written);
 
         Assert.Equal("say \"hi\"", ParseValue(written).Value.Value);
     }

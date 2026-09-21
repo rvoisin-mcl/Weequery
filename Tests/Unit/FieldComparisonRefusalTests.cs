@@ -121,7 +121,7 @@ public class FieldComparisonRefusalTests
     {
         var condition = new OneValueCondition<string>(Operator.Equals, "LairName", ConditionValue.Binding("Lair.Name"));
 
-        Assert.Equal("([LairName] == [Lair.Name])", ConditionFunctions.ToQuery(condition));
+        Assert.Equal("([LairName] = [Lair.Name])", ConditionFunctions.ToQuery(condition));
     }
 
     /// <summary>

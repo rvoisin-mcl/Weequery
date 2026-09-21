@@ -1,3 +1,7 @@
+// The C# and SQL styles are deprecated, and these tests are part of why the deprecation is safe: they pin
+// what those styles still write and still read. Deprecated is not gone.
+#pragma warning disable CS0618
+
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
 using Tests.Common;

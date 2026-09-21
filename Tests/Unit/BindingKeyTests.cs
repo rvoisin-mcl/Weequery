@@ -29,8 +29,10 @@ public class BindingKeyTests
             "my field", " leading", "trailing ", "two  spaces", "with\ttab", "with\nnewline", "with\rreturn", " ",
             // leading digit
             "1name", "9", "0_name",
-            // the punctuation the spec calls out
-            "minion-name", "Minion.Name", "path/name",
+            // the punctuation the spec calls out. A period is legal between two names, see ValidDottedKeys, and
+            // these are the ways it can still be written that are not that
+            "minion-name", "path/name",
+            ".", "..", ".Name", "Name.", "Lair..Name", "Lair. Name", "Lair.1Name", "Lair.-Name", "Lair.Name.",
             // and the rest of it
             "name!", "name?", "name*", "name+", "name=", "name%", "name$", "name#", "name@", "name&", "name|",
             "name:", "name;", "name,", "name'", "name\"", "name(", "name)", "name[", "name]", "name{", "name}",
@@ -58,6 +60,27 @@ public class BindingKeyTests
             "MINION_NAME_2",
             "a",
             "A123456789");
+    }
+
+    /// <summary>
+    /// Keys with a period in them, which is what makes a nested property's own path a key.
+    /// <para>
+    /// Held separately from <see cref="ValidKeys"/> because the two predicates differ on exactly this:
+    /// IsSqlName is one unquoted name and refuses a period, IsBindingKey is a period separated sequence of them.
+    /// </para>
+    /// </summary>
+    public static TheoryData<string> ValidDottedKeys()
+    {
+        return new TheoryData<string>(
+            "Lair.Name",
+            "Lair.Capacity",
+            "A.B.C",
+            "_a._b",
+            "Lair.Name2",
+            "LairAssignments.LairID",
+            // A segment spelling a keyword is not the keyword: only a whole word is promoted, and this is one word
+            "Lair.And",
+            "Not.Contains");
     }
 
     // ---------- every route that takes an explicit key ----------
@@ -274,10 +297,33 @@ public class BindingKeyTests
         return new List<LairAssignment>().AsQueryable();
     }
 
+    /// <summary>
+    /// A period is a legal key character, so the path a nested property already has is a key. This used to throw,
+    /// which is what made naming one mandatory.
+    /// </summary>
     [Fact]
-    public void ANestedPropertyMustBeGivenAKeyBecauseItsPathIsNotAValidName()
+    public void ANestedPropertyBindsUnderItsOwnPath()
     {
-        Assert.Throws<WeequeryException>(() => Assignments().WithWeequery().BindProperty("Lair.Name"));
+        var result = Assignments()
+            .WithWeequery()
+            .BindProperty("Lair.Name")
+            .ApplyCondition("Lair.Name IsNull")
+            .Build()
+            .ToList();
+
+        // the point is that it bound, and that the dotted key resolved unquoted in a query string
+        Assert.Empty(result);
+    }
+
+    /// <summary>
+    /// And it reads back the way any other key does, bracketed rather than quoted, since a period was never a
+    /// delimiter to the tokenizer
+    /// </summary>
+    [Fact]
+    public void ADottedKeyWritesBackAsABracketedField()
+    {
+        Assert.Equal("([Lair.Name] IsNull)", ConditionFunctions.ParseQuery("Lair.Name IsNull")!.ToQuery());
+        Assert.Equal("[Lair.Name] ASC", Sort.Parse("Lair.Name", null).ToQuery());
     }
 
     [Fact]
@@ -329,5 +375,125 @@ public class BindingKeyTests
     {
         Assert.False(WeequeryException.IsSqlName(null));
         Assert.False(WeequeryException.IsSqlName(string.Empty));
+    }
+
+    // ---------- the period, and where the two predicates part company ----------
+
+    /// <summary>
+    /// IsSqlName is still one unquoted name, which is what a single column may be called, and a period is not
+    /// part of one. The key rule is the looser one, and it is the one keys are held to.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidDottedKeys))]
+    public void IsSqlNameStillRefusesAPeriodWhereABindingKeyTakesIt(string key)
+    {
+        Assert.False(WeequeryException.IsSqlName(key));
+        Assert.True(WeequeryException.IsQualifiedSqlName(key));
+        Assert.True(WeequeryException.IsBindingKey(key));
+    }
+
+    /// <summary>
+    /// A name with no period in it is both, so nothing that was a key before has stopped being one
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidKeys))]
+    public void EveryPlainNameIsStillAKey(string key)
+    {
+        Assert.True(WeequeryException.IsSqlName(key));
+        Assert.True(WeequeryException.IsBindingKey(key));
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidKeys))]
+    public void IsBindingKeyRejectsWhatTheRouteRejects(string key)
+    {
+        Assert.False(WeequeryException.IsBindingKey(key));
+    }
+
+    /// <summary>
+    /// The reserved words are still reserved, and still only as whole keys. A segment that spells one is fine,
+    /// since the tokenizer promotes a whole word and a dotted key is one word.
+    /// </summary>
+    [Theory]
+    [InlineData("Contains")]
+    [InlineData("AND")]
+    [InlineData("IsNull")]
+    [InlineData("OrderBy")]
+    public void AReservedWordIsStillRefusedAsAWholeKey(string key)
+    {
+        Assert.True(WeequeryException.IsQualifiedSqlName(key));
+        Assert.False(WeequeryException.IsBindingKey(key));
+        Assert.Throws<WeequeryException>(() => new BindingRequest(nameof(Minion.Name), key));
+    }
+
+    [Fact]
+    public void IsQualifiedSqlNameRejectsNullAndEmpty()
+    {
+        Assert.False(WeequeryException.IsQualifiedSqlName(null));
+        Assert.False(WeequeryException.IsQualifiedSqlName(string.Empty));
+        Assert.False(WeequeryException.IsBindingKey(null));
+    }
+
+    // ---------- a dotted key through every route that takes one ----------
+
+    [Theory]
+    [MemberData(nameof(ValidDottedKeys))]
+    public void ADottedKeyIsAcceptedAndUsable(string key)
+    {
+        var result = Minions()
+            .WithWeequery()
+            .BindProperty(nameof(Minion.Name), key)
+            .ApplyCondition(new OneValueCondition<string>(Operator.Equals, key, "Alice Fox"))
+            .Build()
+            .Count();
+
+        Assert.Equal(1, result);
+    }
+
+    /// <summary>
+    /// The point of the rule: a key is always writable as a bare field name, and a period never was a delimiter
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidDottedKeys))]
+    public void ADottedKeyCanBeReferredToInAQueryStringWithoutQuoting(string key)
+    {
+        var result = Minions()
+            .WithWeequery()
+            .BindProperty(nameof(Minion.Name), key)
+            .ApplyCondition($"{key} = 'Alice Fox'")
+            .Build()
+            .Count();
+
+        Assert.Equal(1, result);
+    }
+
+    [Theory]
+    [MemberData(nameof(ValidDottedKeys))]
+    public void ABindingRequestTakesADottedKey(string key)
+    {
+        Assert.Equal(key, new BindingRequest(nameof(Minion.Name), key).Key);
+    }
+
+    /// <summary>
+    /// The whole reason for the change: a path is a key, so a nested property needs no second name
+    /// </summary>
+    [Fact]
+    public void ADottedPathDerivesItselfAsTheKey()
+    {
+        var request = new BindingRequest("Lair.Capacity", null);
+
+        Assert.Equal("Lair.Capacity", request.PropertyPath);
+        Assert.Equal("Lair.Capacity", request.Key);
+    }
+
+    /// <summary>
+    /// A derived key is held to the same rule as a given one, and now says so where the request is declared
+    /// rather than where it is bound
+    /// </summary>
+    [Fact]
+    public void ADerivedKeyThatIsNotOneIsRefusedAtTheRequest()
+    {
+        Assert.Throws<WeequeryException>(() => new BindingRequest("Lair..Capacity", null));
+        Assert.Throws<WeequeryException>(() => new BindingRequest("Lair.", null));
     }
 }

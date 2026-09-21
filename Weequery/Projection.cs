@@ -38,6 +38,23 @@ public record Projection(IReadOnlyList<string> Fields)
     /// </summary>
     public static readonly Projection None = new([]);
 
+    /// <summary>
+    /// The field that stands for every field a caller may read, and the suffix that stands for every one under a
+    /// prefix: <c>*</c> and <c>Lair.*</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Expanded when the projection is built rather than when it is parsed, because what it expands to is the
+    /// binding set, which a <see cref="Projection"/> knows nothing about. That also means it survives a round
+    /// trip through <see cref="ToQuery"/> as what the caller wrote.
+    /// </para>
+    /// <para>
+    /// Whatever it expands to is still only what grants <see cref="BindingUse.Projection"/>. A wildcard is a way
+    /// of naming the allow-list, not a way around it.
+    /// </para>
+    /// </remarks>
+    public const string Wildcard = "*";
+
     /// <summary>If this names any fields at all</summary>
     public bool IsEmpty { get { return Fields.Count == 0; } }
 

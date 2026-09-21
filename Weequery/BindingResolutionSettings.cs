@@ -1,14 +1,14 @@
 ﻿namespace Weequery;
 
 /// <summary>
-/// What <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings)"/> should leave out when it walks a type.
+/// What <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> should leave out when it walks a type.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Resolution binds everything it can reach, so these are the subtractions. Nothing here is required, and
 /// resolving with no settings takes <see cref="Default"/>, which subtracts only the expansion of a string.
 /// That is rarely enough on a type that reaches anything sensitive: see the warning on
-/// <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings)"/>.
+/// <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings, BindingUse)"/>.
 /// <para>
 /// <see cref="Default"/> is where to start when you want the defaults and one more subtraction, since building
 /// the record by hand silently gives up the string rule:

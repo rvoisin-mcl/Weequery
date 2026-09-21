@@ -18,7 +18,6 @@ namespace Weequery;
 /// Inquiry is Immutable, which means a configured one can be kept and branched, and neither branch can reach the other:
 /// <code>
 /// var bound = query.WithWeequery().BindProperties(MinionBindings);
-///
 /// var active = bound.ApplyCondition("IsActive = true").Build();
 /// var paid   = bound.ApplyCondition("Pay &gt; 10000").Build();    // paid, and only paid
 /// </code>
@@ -44,7 +43,7 @@ public class Inquiry<T> where T : class
     /// All the bindings used together have to share it: a lambda is built from one binding's parameter and a body
     /// assembled from several, so accessors rooted in different parameters would not compose. Sharing it for the
     /// whole type is what lets a binding built once be used by every query after it, see
-    /// <see cref="BindingSetCache{T}"/>, and costs nothing to do — an expression tree is immutable, and a parameter is an
+    /// <see cref="BindingSetCache{T}"/>, and costs nothing to do ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â an expression tree is immutable, and a parameter is an
     /// identity rather than a value, so two lambdas built over the same one are still two independent lambdas.
     /// </para>
     /// </summary>
@@ -124,13 +123,13 @@ public class Inquiry<T> where T : class
     /// We are unlikely to care if it is dropped from the query twice, but we might care if it was dropped from the 
     /// query AND the sort.
     /// </remarks>
-    private void Drop(string field, BindingUse from)
+    private void Drop(string field, BindingUse from, string reason = DroppedField.Unbound)
     {
         field = BindingLookup.SplitIndex(field).Key; // A index would be meaningless here
 
         if (Dropped.Any(entry => (entry.From == from) && BindingLookup.KeyComparer.Equals(entry.Field, field))) { return; }
 
-        Dropped.Add(new DroppedField(field, from));
+        Dropped.Add(new DroppedField(field, from, reason));
     }
 
     /// <summary>
@@ -139,8 +138,8 @@ public class Inquiry<T> where T : class
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A value that exceeds it raises <see cref="RegexMatchTimeoutException"/> from wherever the query is being
-    /// enumerated, rather than a <see cref="WeequeryException"/>: as it is the framework reporting
+    /// A value that exceeds it will raise <see cref="RegexMatchTimeoutException"/> from wherever the query is being
+    /// enumerated, instead of a <see cref="WeequeryException"/>
     /// </para>
     /// <para>
     /// This bounds the match only when it is run in-memory Weequery runs it; via EF the databased limits will apply
@@ -165,10 +164,7 @@ public class Inquiry<T> where T : class
     /// <remarks>
     /// <para>
     /// <b>What is copied is the lists, not what is in them.</b> A binding is immutable once built and is shared
-    /// rather than rebuilt, which is what makes this cheap enough to do on every call: adding a binding to the
-    /// copy leaves the original's set alone, and the bindings both of them already had are the same objects. The
-    /// same goes for the conditions, which are yours and are shared as you handed them over; a condition you go
-    /// on to mutate is mutated for both, as it would be for two queries you built without this.
+    /// rather than rebuilt. Adding a binding or condition to the copy leaves the original's set alone.
     /// </para>
     /// </remarks>
     /// <returns>a clone, sharing nothing mutable</returns>
@@ -257,7 +253,7 @@ public class Inquiry<T> where T : class
     /// <b>The inside is its own allow-list.</b> Properties bound within the collection are not visible outside it
     /// </para>
     /// <para>
-    /// The collection is only bound for the specified tests, it cannot be used for direct compariions unless it
+    /// The collection is only bound for the specified tests, it cannot be used for direct comparisions unless it
     /// is also bound with <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?, BindingUse, ValueConverter)"/> 
     /// under a different key.
     /// </para>
@@ -276,7 +272,7 @@ public class Inquiry<T> where T : class
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
-    /// the key is not one, or is already taken, or the property is not a collection, or nothing was bound inside
+    /// the key is invalid, is already in use, the property is not a collection, or nothing was bound inside
     /// </exception>
     public Inquiry<T> BindCollection<TElement>(
         Expression<Func<T, IEnumerable<TElement>?>> selector,
@@ -332,13 +328,11 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Bind a value under a name, rather than a property. A caller can then compare a property against it by name
-    /// without having to say what it is.
+    /// Bind a constant value rather than a property.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The pairing this exists for is a comparison against a bound property, see
-    /// <see cref="ConditionValue{T}"/>: the caller writes "Pay &gt; [Threshold]" and the application decides what
+    /// The caller writes "Pay &gt; [Threshold]" and the application decides what
     /// Threshold is, per request, per tenant, or per anything else it knows and the caller does not.
     /// <code>
     /// .BindConstant("Threshold", payThreshold)
@@ -352,11 +346,11 @@ public class Inquiry<T> where T : class
     /// <typeparam name="TValue"></typeparam>
     /// <param name="key">the name a caller refers to it by</param>
     /// <param name="value">must not be null: a constant stands for a value, so it needs one</param>
-    /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
     /// <param name="convert">[OPT] a normalisation applied to its value, see <see cref="ValueConverter"/></param>
+    /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
-    public Inquiry<T> BindConstant<TValue>(string key, TValue value, BindingUse use = BindingUse.Condition | BindingUse.Projection, ValueConverter? convert = null)
+    public Inquiry<T> BindConstant<TValue>(string key, TValue value, BindingUse use = BindingUse.Test | BindingUse.Projection, ValueConverter? convert = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
@@ -393,12 +387,19 @@ public class Inquiry<T> where T : class
     /// Bind the properties in the list, if a key for one is not provided, it will be bound as the property path
     /// </summary>
     /// <remarks>
-    /// A set of requests is resolved once for the process and kept, see <see cref="BindingSetCache{T}"/>, so calling this
-    /// per request is merely a copy instead of a full evaluation per request. 
+    /// <para>
+    /// A set of requests can be resolved once for the process and cached, see <see cref="BindingSetCache{T}"/>
+    /// </para>
+    /// <para>
+    /// A request for a key already bound to the <b>same property</b> is merged rather than refused: the uses are
+    /// added together and a converter either side named is kept, so binding the same set twice, or a broad set
+    /// and then a narrow one, adds rather than colliding. A key standing for a <i>different</i> property is a
+    /// conflict and is refused.
+    /// </para>
     /// </remarks>
     /// <param name="bindingRequests"></param>
     /// <returns></returns>
-    /// <exception cref="WeequeryException"></exception>
+    /// <exception cref="WeequeryException">a key points to a different property, or attempts to merge distinct converters</exception>
     public Inquiry<T> BindProperties(IEnumerable<BindingRequest> bindingRequests)
     {
         WeequeryException.ThrowIfNull(bindingRequests);
@@ -410,6 +411,8 @@ public class Inquiry<T> where T : class
             if (next.Bindings.TryGetValue(binding.Key, out var existing))
             {
                 if (!Binding<T>.IsSameBinding(existing, binding.Value)) { throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{binding.Key}'"); }
+
+                next.Bindings[binding.Key] = Binding<T>.Merged(existing, binding.Value, binding.Key);
 
                 continue;
             }
@@ -427,30 +430,29 @@ public class Inquiry<T> where T : class
     /// <para>
     /// An allow-list, where the list is <b>ALL OF IT</b> Every property name on the type, and on every type
     /// it reaches, goes on the wire for a caller to read and filter by. Use
-    /// <see cref="BindingResolutionSettings"/> to subtract, or write the bindings out and know what they are.
+    /// <see cref="BindingResolutionSettings"/> to determine what types or paths should be skipped.
     /// </para>
     /// <para>
     /// Paths are distinct by construction, so nothing here collides with anything else here; but can still
     /// collide with a binding already made by hand, see <see cref="BindResolve"/>.
     /// </para>
     /// <para>
-    /// A property whose path conflicts with an operator is bound with an underscore after it, so a model holding a
+    /// A property whose path conflicts with an query keyword is bound with an underscore after it, so a model holding a
     /// property called Contains resolves it as "Contains_" rather than refusing the whole model, see
     /// <see cref="BindingResolver.KeyFor"/>.
     /// </para>
     /// <para>
-    /// Three things about the walk are worth knowing before you trust the result:
+    /// Things to know:
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// It does not descend into a struct, so DateTime.Year is not reached this way and still has to be bound by
+    /// It will not descend into a struct, so DateTime.Year is not reached this way and must be bound by
     /// hand, see <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string[], string?, BindingUse, ValueConverter)"/>. A
     /// collection is descended as the class it is rather than as its element type, and what you get from one is Count and
     /// Capacity, which a provider may well refuse to translate.
     /// </description></item>
     /// <item><description>
-    /// A type already open on the path is not entered again, Two properties of the same type are both expanded; the same type
-    /// down the chain is not, so "Parent.Parent" is never resolved.
+    /// A type already above it the path will not be revisited, so Parent.Child.Parent will not resolve
     /// </description></item>
     /// <item><description>
     /// The cycle guard bounds depth, not width.
@@ -458,78 +460,100 @@ public class Inquiry<T> where T : class
     /// </list>
     /// </remarks>
     /// <param name="maxDepth">
-    /// how many levels below the entity to reach, so 0 for its own properties and nothing nested, 1 for their
+    /// how many levels below the entity to reach, 0 for immediate properties, 1 for their
     /// properties as well. Defaults to 1; bounded to [0, 16]
     /// </param>
     /// <param name="settings">
-    /// [OPT] what to leave out; null leaves out
-    /// nothing but does not expand a string into its Length
+    /// [OPT] what to leave out; by default only string properties will not not be collected
     /// </param>
+    /// <param name="use">[OPT] what the binding may be used for, everything by default, see <see cref="BindingUse"/></param>
     /// <returns>the requests, in path order, ready for <see cref="BindProperties"/></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key</exception>
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
-    public static IReadOnlyList<BindingRequest> ResolveBindables(int maxDepth = 1, BindingResolutionSettings? settings = null)
+    public static IReadOnlyList<BindingRequest> ResolveBindables(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
         maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
+        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings); // use defaults if nothing provided
 
-        // A caller who named no settings gets the standard ones. Handled here rather than in the copy
-        // constructor, which is for copying something.
-        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings);
+        var resolved = BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
 
-        return BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
+        return (use == BindingUse.All) ? resolved : [.. resolved.Select(request => new BindingRequest(request.PropertyPath, request.Key, use))];
     }
 
     /// <summary>
-    /// Bind every readable property this entity reaches, as <see cref="ResolveBindables(int, BindingResolutionSettings)"/> resolves them.
+    /// Bind every readable property this entity reaches, as <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> resolves them.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Read the warning on <see cref="ResolveBindables(int, BindingResolutionSettings)"/> first.</b> This is the allow-list saying yes to
-    /// everything, which is a decision rather than a shortcut.
+    /// <b>Read the warning on <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> first.</b> With default settings, this will bind everything.
     /// </para>
     /// <para>
-    /// Adds to whatever is already bound rather than replacing it, so a key resolved here that a
-    /// <see cref="BindProperty(string, string?, BindingUse, ValueConverter)"/> call already claimed is a duplicate and is refused, see
-    /// <see cref="BindProperties"/>. Resolve first and <see cref="RemoveBinding"/> what you do not want, or bind
-    /// by hand and do not call this.
+    /// Adds to whatever is already bound rather than replacing it. A key this resolves that a
+    /// <see cref="BindProperty(string, string?, BindingUse, ValueConverter)"/> call already claimed for the
+    /// <b>same property</b> is merged rather than refused: the uses are added, and a converter either
+    /// side named is kept (or both, if the converter is the same instance). Only a key standing for a 
+    /// <i>different</i> property is refused, see <see cref="BindProperties"/>.
     /// </para>
     /// </remarks>
     /// <param name="maxDepth">
-    /// how many levels below the entity to reach. Defaults to 1, and bounded to [0, 16]; a deep model is worth
-    /// resolving once and looking at before you raise it
+    /// how many levels below the entity to reach. Defaults to 1, and bounded to [0, 16]
     /// </param>
     /// <param name="settings">
-    /// [OPT] what to leave out; null leaves nothing out, but does not expand a string into its Length
+    /// [OPT] what to leave out; null leaves nothing out, but will not bind string properties
     /// </param>
+    /// <param name="use">[OPT] what the binding may be used for, everything by default, see <see cref="BindingUse"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key, or two bindings claim one key</exception>
-    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null)
+    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
-        var reqs = ResolveBindables(maxDepth, settings);
+        var reqs = ResolveBindables(maxDepth, settings, use);
 
         return BindProperties(reqs);
     }
 
     /// <summary>
-    /// Take a binding back off this Inquiry, so the key stops being answerable.
+    /// Take a binding back off this Inquiry, or narrow the scope of its use.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The pairing this exists for is <see cref="BindResolve"/>: bind everything, then subtract the handful you
-    /// did not mean, for a model where that is shorter than naming the ones you did. Keys are matched without
-    /// regard to case, as they are everywhere else, and removing one that was never bound is a no-op rather than
-    /// an error, since the state afterwards is the state that was asked for either way.
+    /// do not want.
+    /// </para>
+    /// <para>
+    /// <b>Naming a use removes the use rather than the whole binding</b>, which is the counterweight to a
+    /// binding's use only ever widening, see <see cref="Binding{TClass}.Widened"/>
+    /// <code>
+    /// .BindResolve()
+    /// .RemoveBinding("Pay", BindingUse.Condition | BindingUse.Sort)   // still readable, no longer testable
+    /// .RemoveBinding("PasswordHash")                                  // gone entirely
+    /// </code>
+    /// </para>
+    /// <para>
+    /// Bound collections are only ever testable, so any Remove against one will remove it entirely
+    /// </para>
     /// </remarks>
-    /// <param name="key">the key to stop answering, which must not be null or empty</param>
+    /// <param name="key">the binding name</param>
+    /// <param name="use">
+    /// [OPT] what to stop it being used for, <see cref="BindingUse.All"/> by default
+    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the key is null or empty</exception>
-    public Inquiry<T> RemoveBinding(string key)
+    public Inquiry<T> RemoveBinding(string key, BindingUse use = BindingUse.All)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
 
         var next = Copy();
 
-        next.Bindings.Remove(key);
-        next.Collections.Remove(key);
+        if (next.Bindings.TryGetValue(key, out var existing))
+        {
+            var narrowed = existing.Narrowed(use);
+
+            // Nothing left to answer with, so the binding goes rather than staying as one that refuses everything
+            if (narrowed.Use == BindingUse.None) { next.Bindings.Remove(key); }
+            else { next.Bindings[key] = narrowed; }
+        }
+
+        if (use.HasFlag(BindingUse.Test)) { next.Collections.Remove(key); }
 
         return next;
     }
@@ -618,14 +642,14 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Parse a sort clause and add the sorts it describes, to be applied when built. They apply in the order
-    /// written, each breaking ties in the one before.
+    /// Parse a sort clause and add the sorts it describes, to be applied when built. They will apply in the order
+    /// provided
     /// </summary>
     /// <remarks>
-    /// The clause is a comma separated list of fields, each optionally followed by a direction, and may begin
-    /// with ORDER BY. See <see cref="Sort.Parse"/> for the whole of it.
+    /// The clause is a comma separated list of fields, each optionally followed by a direction.
+    /// See <see cref="Sort.Parse"/> for the format
     /// <para>
-    /// <paramref name="defaultSort"/> is worth supplying wherever the query is paged, since a page of an
+    /// <paramref name="defaultSort"/> should be supplied wherever the query is paged, since a page of an
     /// unordered query holds arbitrary rows, see <see cref="ApplyPagination"/>.
     /// </para>
     /// </remarks>
@@ -677,31 +701,15 @@ public class Inquiry<T> where T : class
     /// Paging without a unique sort applied will yield undefined output
     /// </para>
     /// <para>
-    /// <b>A size that could not hold a page is read as no size at all</b>, so null, zero and a negative all mean
-    /// the same thing here: take <see cref="InquirySettings.DefaultPageSize"/>, and where there is no default,
-    /// take no window. This is the half of the call that is usually caller input, arriving off a query string
-    /// where a field left out and a field left at zero are the same accident, and a library that answered one
-    /// with a page and the other with a refusal would be drawing a line the caller never knew was there.
-    /// </para>
-    /// <para>
-    /// <b>And a page behind the first one is the first one.</b> Nothing sits back there to be asked for, so a
-    /// negative index is clamped rather than refused, for the same reason and from the same direction: it is a
-    /// number off a form, and the answer a person wants for it is the front of the list.
-    /// </para>
-    /// <para>
-    /// Which leaves one thing this still refuses, and it is not a value, it is a pair. A size and a page that
-    /// multiply past <see cref="int.MaxValue"/> name a row that cannot be counted to, and there is no nearby
-    /// answer to fold that into: the first page is not what was asked for, and the last page is not knowable
-    /// without running the query. So it is refused, and it is the only way out of here that is not a query.
+    /// A size and a page that multiply past <see cref="int.MaxValue"/> cannot be resolved, so it is refused.
     /// </para>
     /// </remarks>
     /// <param name="pageSize">
-    /// rows per page. <b>Anything that could not hold a page — null, zero, a negative — is no size at all</b>,
-    /// and <see cref="InquirySettings.DefaultPageSize"/> decides instead; where no default was set either, that
-    /// is no window and the page index is moot. See the remarks
+    /// rows per page. A null, or LEQ 0 will be treated as <see cref="InquirySettings.DefaultPageSize"/>; where
+    /// no default was set, that is no window and the page index is moot.
     /// </param>
     /// <param name="page">
-    /// zero based page index. <b>A negative one is the first page</b>, there being nothing behind it to ask for
+    /// zero based page index. A negative value will be treated as page 0
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
@@ -709,16 +717,11 @@ public class Inquiry<T> where T : class
     /// </exception>
     public Inquiry<T> ApplyPagination(int? pageSize, int page)
     {
-        // Neither is refused, because what arrives here is usually a caller's query string, where a field left
-        // out and a field left at nonsense are the same accident and answering one with a page and the other
-        // with a 400 is a distinction nobody asked for. A size that could not hold a page is no size, and the
-        // default decides; a page behind the first one is the first one
+        // bound page and pageSize
         int size = ((pageSize is int named) && (named > 0)) ? named : UnsetPageSize;
         int index = (page > 0) ? page : 0;
 
-        // The one pair with no nearby answer to fold into. Only checkable here where the size is one the caller
-        // named: where it is coming from the settings the pair is not known until the query is built, so
-        // Windowed makes the same check again on what it resolves
+        // Check if the combined values will overflow an int
         if ((size > 0) && ((long)size * index > int.MaxValue))
         {
             throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} {size} * {nameof(page)} {index} exceeds {int.MaxValue}");
@@ -748,23 +751,16 @@ public class Inquiry<T> where T : class
     /// </code>
     /// <para>
     /// <b>Dropping always widens.</b> A test that is not there does not constrain, so a condition made entirely
-    /// of unbound fields prunes to nothing and the query returns <i>every row</i>. That is the whole hazard, and
-    /// it is why this is opt in: a filter that silently stops filtering is worse than one that refuses out loud,
-    /// unless you already decided otherwise. Where the rows are not all the caller's to see, put the constraint
-    /// that says so on the <see cref="IQueryable"/> before Weequery ever gets it, or bind it as a constant and
-    /// AND it in yourself, rather than trusting a caller's filter to carry it.
+    /// of unbound fields prunes to nothing and the query returns <i>every row</i>. 
     /// </para>
     /// <para>
     /// <b>Only genuinely unbound fields go.</b> A field that is bound but does not grant the use being asked of
     /// it, see <see cref="BindingUse"/>, is a deliberate statement about what a caller may do, and quietly
-    /// ignoring one would undo the point of making it. Those are still refused. So is everything else that is
-    /// wrong with a query: a malformed string, an operator that does not fit the property, a value that will not
-    /// parse, a sort on something with no ordering.
+    /// ignoring one would undo the point of making it. Those are still refused.
     /// </para>
     /// <para>
     /// It reaches all three halves of a query, and the risk is not the same in each. A dropped <b>sort</b> only
-    /// changes the order rows come back in. A dropped <b>projected field</b> only leaves a key out of the row,
-    /// though a projection whose every field went reads back as a row of no columns rather than as all of them.
+    /// changes the order rows come back in. A dropped <b>projected field</b> only leaves a key out of the row.
     /// A dropped <b>condition</b> changes which rows there are, which is the one to think about.
     /// </para>
     /// <para>
@@ -773,7 +769,7 @@ public class Inquiry<T> where T : class
     /// entirely, as does one naming a collection nobody bound.
     /// </para>
     /// </remarks>
-    /// <param name="ignore">false to go back to refusing, for the caller deciding this per request</param>
+    /// <param name="ignore">ignore setting to use for this request</param>
     /// <returns></returns>
     public Inquiry<T> IgnoreUnboundFields(bool ignore = true)
     {
@@ -785,8 +781,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// If a key is one the bindings hold, which is the test for keeping a field rather than dropping it.
-    /// Indexes are split off first, since what has to be bound is the collection.
+    /// If a key maps to a bound property or collection
     /// </summary>
     private bool IsBound(string field)
     {
@@ -811,8 +806,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Read back only the fields named, rather than the whole entity. See <see cref="BuildProjected"/>, which is
-    /// what applies this; <see cref="Build"/> ignores it and hands back entities as it always has.
+    /// Read back only the fields named, rather than the whole entity. See <see cref="BuildProjected"/>
     /// </summary>
     /// <remarks>
     /// <para>
@@ -825,19 +819,13 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// <b>The allow-list is the same one.</b> Anything bound may be projected, under the same keys and the same
-    /// case-insensitive matching, and a field no binding claimed is refused exactly as it is in a condition. So
-    /// this grants nothing filtering did not already, and there is nothing extra to declare.
-    /// </para>
-    /// <para>
-    /// Called more than once, the last call wins, as it does for <see cref="ApplyPagination"/> and unlike
-    /// <see cref="ApplyCondition(ICondition?)"/>. A projection is one list of columns rather than something that
-    /// accumulates, and two calls asking for different columns can only mean the second changed its mind.
+    /// If called multiple times, the last call wins.
     /// </para>
     /// </remarks>
     /// <param name="fields">
-    /// a comma separated list of keys, each written as a condition writes a field and each able to carry an
-    /// index: "Name, Pay, Tallies[apples]". Null, empty or whitespace clears any projection already applied.
+    /// a comma separated list of keys, each written as a binding key and each able to carry an
+    /// index: "Name, Pay, Tallies[apples]". An empty list clears any projection already applied, a key 
+    /// named twice is kept once
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the list is malformed</exception>
@@ -847,9 +835,9 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Read back only the fields named, from keys already in hand rather than from a string.
+    /// Read back only the fields named, rather than the whole entity. See <see cref="BuildProjected"/>
     /// </summary>
-    /// <param name="keys">null or empty clears any projection already applied; a key named twice is kept once</param>
+    /// <param name="keys">An empty list clears any projection already applied; a key named twice is kept once</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a key is null or empty</exception>
     public Inquiry<T> ApplyProjection(IEnumerable<string>? keys)
@@ -858,7 +846,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Read back only the fields named, from a projection already read or built.
+    /// Read back only the fields named from a projection already applied
     /// </summary>
     /// <param name="projection">null or <see cref="Projection.None"/> clears any projection already applied</param>
     /// <returns></returns>
@@ -888,29 +876,17 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// <b>A member the request did not name is a member it is saying nothing about</b>, and what that means is
-    /// whatever it already meant. No condition adds none, and a query that had one keeps it, conditions being
-    /// the one thing here that accumulates. No sorts takes <paramref name="defaultSort"/>. No page size takes
-    /// <see cref="InquirySettings.DefaultPageSize"/>. <b>No fields clears any projection already applied</b>,
-    /// which is the odd one out and is so because a projection is one list rather than something that
-    /// accumulates, see <see cref="ApplyProjection(Projection?)"/>: the request is the caller saying which
-    /// columns they want, and naming none of them means all of the ones they may have.
-    /// </para>
-    /// <para>
-    /// <b>It refuses as its parts refuse.</b> Malformed text throws where the corresponding Apply would have
-    /// thrown, and the first fault wins, so a request with a bad filter and a bad sort reports the filter.
-    /// <see cref="Validate(QueryRequest, IEnumerable{Sort}?, QueryStyle)"/> is the one that reports all of them
-    /// and throws none, and is worth asking first wherever the request came from outside.
+    /// <b>It refuses as its components refuse.</b> Expected errors will be identical to calling the same functions with
+    /// the same data. <see cref="Validate(QueryRequest, IEnumerable{Sort}?, QueryStyle)"/> will report any the errors 
+    /// in the same place and is worth requesting first if the request came from outside.
     /// </para>
     /// </remarks>
     /// <param name="request">the caller's query; null is a NOP</param>
     /// <param name="defaultSort">
-    /// what to sort by where the request named no sorts, which is worth supplying wherever the query is paged,
-    /// since a page of an unordered query holds arbitrary rows. See <see cref="ApplyPagination"/>
+    /// what to sort by where the request named no sorts. See <see cref="ApplyPagination"/>
     /// </param>
     /// <param name="style">
-    /// how strictly to read the text halves. <see cref="QueryStyle.Native"/>, the default, accepts one spelling
-    /// per operator, see <see cref="QueryStyle"/>
+    /// what style to use for the query parser. <see cref="QueryStyle.Native"/> by default
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
@@ -949,7 +925,7 @@ public class Inquiry<T> where T : class
     /// The wrapped IQueryable with every condition applied, and nothing else.
     /// </summary>
     /// <remarks>
-    /// The rows the caller's filter matched, before any ordering is imposed or any window taken of them. This is
+    /// The rows the caller's filter matched, before any ordering is imposed, or any window applied. This is
     /// what <see cref="PagedQuery{T}.Matches"/> hands back to be counted.
     /// </remarks>
     /// <returns></returns>
@@ -964,9 +940,8 @@ public class Inquiry<T> where T : class
     /// Every applied condition as one, pruned where the caller asked for that.
     /// </summary>
     /// <remarks>
-    /// Null both for the query that was never given a condition and for the one whose condition was entirely
-    /// unbound and pruned away, see <see cref="IgnoreUnboundFields"/>. The two arrive at the same place, which is
-    /// a query that filters nothing, and that is exactly the thing to have read the remarks there about.
+    /// Can be null for a query that never had applied coniditons, one if the the conditions were completely pruned
+    /// away, see <see cref="IgnoreUnboundFields"/>. Either represents an unfiltered query.
     /// </remarks>
     /// <returns>null where there is nothing left to filter by</returns>
     private ICondition? Combined()
@@ -974,55 +949,59 @@ public class Inquiry<T> where T : class
         ICondition? combined = Conditions.Count switch
         {
             0 => null,
-
             1 => Conditions.First(),
-
-            // More than one root condition was applied, so they are ANDed, which is what applying a second one means
-            _ => new ConjunctionCondition(Operator.And, Conditions),
+            _ => new ConjunctionCondition(Operator.And, Conditions), // When more than one root condition was applied, they are ANDed
         };
 
         if ((combined is null) || (!DropsUnboundFields)) { return combined; }
 
-        return ConditionPruner.Prune(combined, Bindings, Collections, field => Drop(field, BindingUse.Condition));
+        return ConditionPruner.Prune(combined, Bindings, Collections, field => Drop(field, BindingUse.Test));
     }
 
     /// <summary>
-    /// The query with every sort applied, in the order they were given, each breaking ties in the one before.
+    /// The query with every sort applied, in the order given.
     /// </summary>
     /// <param name="query"></param>
     /// <returns></returns>
+    /// <remarks>
+    /// A sort that cannot be honoured because there is nothing to order by, a constant, or a type with no
+    /// comparison of its own, is dropped rather than refused and recorded in <see cref="DroppedFields"/>.
+    /// A sort on a field bound without <see cref="BindingUse.Sort"/> is a refusal and throws.
+    /// </remarks>
     /// <exception cref="WeequeryException">
-    /// a sort names a field no binding claimed, a constant, or something with no ordering of its own
+    /// a sort requests an unbound field, or one not bound for sorting
     /// </exception>
     private IQueryable<T> Sorted(IQueryable<T> query)
     {
-        // A sort on a field nothing bound is dropped where the caller asked for that: it changes the order rows
-        // come back in and nothing else, which makes it the safest of the three to forget, see IgnoreUnboundFields
+        // If the sort uses an unbound field and dropping is configured, do so, see IgnoreUnboundFields
         var sorts = DropsUnboundFields ? Sorts.Where(sort => Keep(sort.Field, BindingUse.Sort)) : Sorts;
 
-        // Once the query has been sorted once, subsequent sorts must chain with ThenBy rather than restart with OrderBy
+        // If the query has already been ordered, we must use ThenBy instead of OrderBy
         bool alreadySorted = false;
         foreach (var sort in sorts)
         {
             var binding = BindingLookup.Resolve(Bindings, sort.Field);
 
-            // The same for every row, so there is nothing here to put in order. Asked before the use, since being
-            // a constant is the more particular thing to say and both would be true of one.
+            // If ordering was requested on a constant field, just ignore
             if (binding.IsConstant)
             {
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}', it is a constant");
+                Drop(sort.Field, BindingUse.Sort, "it is a constant value, and would not affect ordering");
+
+                continue;
             }
 
-            // Bound, but not for ordering by
+            // If the field has been bound, but not for ordering
             if (!binding.Allows(BindingUse.Sort))
             {
                 throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}': it is bound for {binding.Use}");
             }
 
-            // Refused here rather than left to the comparer
+            // If the binding doesn not represent an orderable type, just ignore
             if (!binding.IsOrderable)
             {
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}', {binding.PropertyType.Name} has no ordering");
+                Drop(sort.Field, BindingUse.Sort, $"{binding.PropertyType.Name} has no ordering");
+
+                continue;
             }
 
             // Sort on the accessor's own type, not the unwrapped one, otherwise a Nullable<> property cannot
@@ -1032,9 +1011,8 @@ public class Inquiry<T> where T : class
 
             if (binding.RequiresLinkCheck)
             {
-                // The path steps through something that may not be there, so reading the key is only safe behind
-                // the same guard a comparison gets. A row with a missing link has no key, which is a null, so a
-                // value typed key has to be widened to hold one. Those rows sort first, as nulls do.
+                // The path steps through something that may not be there, so a null guard is required. A row with a missing link is a null, so a
+                // value typed key must be treated as nullable to hold one. Those rows sort first, as nulls do.
                 keyType = ((keyType.IsValueType) && (!binding.PropertyIsWrappedByNullable)) ? typeof(Nullable<>).MakeGenericType(keyType) : keyType;
 
                 Expression found = (keyType == binding.PropertyType) ? binding.Accessor : Expression.Convert(binding.Accessor, keyType);
@@ -1047,9 +1025,7 @@ public class Inquiry<T> where T : class
             // turn the binding accessor into something usable for the call
             var selector = Expression.Lambda(clause.SelectorType, key, SharedBindingParameter);
 
-            // Add the call to the query's own expression and let the provider make a query of it, which is what
-            // Queryable.OrderBy does with the arguments it is handed. Doing it here rather than calling that
-            // through reflection is the same tree by the time the provider sees it, without the invoke.
+            // Add the call to the query's own expression and let the provider make a query of it
             query = query.Provider.CreateQuery<T>(Expression.Call(null, clause.Method, query.Expression, Expression.Quote(selector)));
 
             alreadySorted = true;
@@ -1059,7 +1035,7 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// How many rows a page holds, which is the size the caller named or, where it named none,
+    /// How many rows a page can hold, which is the size the caller named or, where it named none,
     /// <see cref="InquirySettings.DefaultPageSize"/>.
     /// </summary>
     /// <returns>zero where nothing named a size and no default was set, which is the query that has no window</returns>
@@ -1069,21 +1045,12 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// The query narrowed to the requested page, or as it stands where no paging was asked for.
+    /// The query narrowed to the requested page, or unchanged if no paging was requested
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Where <see cref="InquirySettings.DefaultPageSize"/> was set, a query that named no size is still windowed,
-    /// and a query that named no page is windowed at the first one. That is what having a default means: the
-    /// caller omitting the field gets the default rather than getting everything.
-    /// </para>
-    /// </remarks>
     /// <param name="query"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
     /// the resolved size and the page combine past <see cref="int.MaxValue"/> rows to skip.
-    /// <see cref="ApplyPagination"/> makes the same check on the pair it was handed; this is the one for the pair
-    /// only settled here, where the size came from the settings
     /// </exception>
     private IQueryable<T> Windowed(IQueryable<T> query)
     {
@@ -1102,30 +1069,16 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Find out what is wrong with this query without building it, and without throwing. See
-    /// <see cref="ValidationResult"/>.
+    /// Determine if this query is valid, and if not, what is wrong with it <see cref="ValidationResult"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Everything <see cref="Build"/> would refuse, reported rather than raised, and all of it rather than the
-    /// first of it. For the handler answering a caller who filled in a form and got it wrong:
+    /// Everything <see cref="Build"/> would refuse, reported rather than raised, and all of it rather than only the
+    /// first encountered
     /// <code>
     /// var problems = inquiry.Validate();
     /// if (!problems.IsValid) { return BadRequest(problems.Problems.Select(problem =&gt; problem.ToString())); }
     /// </code>
-    /// </para>
-    /// <para>
-    /// <b>It looks at all three halves</b>, since a query has three ways to be wrong and a caller fixing them one
-    /// round trip at a time is the thing worth avoiding. The condition is resolved against the bindings, then the
-    /// sorts, then the projection where one was applied. Each is looked at whatever the ones before it said.
-    /// </para>
-    /// <para>
-    /// <b>Only what is applied is looked at.</b> A projection nobody asked for validates, being the allow-list's
-    /// own answer to "all of it"; paging was already held to its range by <see cref="ApplyPagination"/>, where a
-    /// bad page is refused as it is written rather than kept to be complained about later. What arrives as text
-    /// is the same: <see cref="ApplyCondition(string, QueryStyle)"/> parses when it is called, so a malformed
-    /// string has thrown long before this. <see cref="Validate(QueryRequest, IEnumerable{Sort}?, QueryStyle)"/>
-    /// is the overload that reads the text too, and is the one for a request straight off the wire.
     /// </para>
     /// <para>
     /// <b>Nothing is executed and nothing is kept.</b> The queries this builds to see whether they can be built
@@ -1135,16 +1088,14 @@ public class Inquiry<T> where T : class
     /// <see cref="IgnoreUnboundFields"/>.
     /// </para>
     /// <para>
-    /// <b>Valid means it will build</b>, which is a narrower claim than it will work. A provider may still refuse
-    /// what it is handed — <see cref="Operator.IsMatch"/> against SQL Server is the standing example — and that
-    /// is between the provider and the query, some way past here.
+    /// <b>Valid means it will build</b>, which doesn't necessarily mean it will work. A provider may still refuse
+    /// what it is handed <see cref="Operator.IsMatch"/> against SQL Server is the standing example.
     /// </para>
     /// </remarks>
-    /// <returns>the problems, in the order the halves are looked at; never null</returns>
+    /// <returns>any problems found, it order of discovery; never null</returns>
     public ValidationResult Validate()
     {
-        // As a build does, and for the same reason: what the last one dropped does not belong to this one
-        Dropped.Clear();
+        Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
 
         List<ValidationProblem> problems = [];
 
@@ -1153,14 +1104,13 @@ public class Inquiry<T> where T : class
             var condition = Combined();
             if (condition is not null) { Predicate(condition); }
         }
-        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Condition, error.Error, error.Message)); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Test, error.Error, error.Message)); }
 
         // Against the unfiltered query, so a condition that refused does not take the sorts down with it
         try { Sorted(Query); }
         catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Sort, error.Error, error.Message)); }
 
-        // Only where one was asked for. With none applied this reads every projectable binding, which cannot
-        // refuse anything the bindings themselves did not already refuse when they were made
+        // Only if a projection was requested
         if (!Projected.IsEmpty)
         {
             try { Projector(); }
@@ -1171,14 +1121,12 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Find out what is wrong with a request before applying it, including the parts of it that have to be read
-    /// before they can be refused. See <see cref="QueryRequest"/>.
+    /// Determine if anything is wrong with a request prior to application. See <see cref="QueryRequest"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The one to reach for where the query came from outside. <see cref="ApplyRequest"/> parses as it applies
-    /// and throws on the first thing it cannot read, which is the right behaviour for code that has already
-    /// decided to run the query and the wrong one for code deciding whether to:
+    /// Should be used on externally sourced rquests prior to <see cref="ApplyRequest"/>, which will only
+    /// return the first issue found.
     /// <code>
     /// var problems = inquiry.Validate(request, DefaultSort);
     /// if (!problems.IsValid) { return BadRequest(problems.Problems.Select(problem =&gt; problem.ToString())); }
@@ -1187,20 +1135,17 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// <b>This Inquiry is not touched.</b> The request is applied to a copy of it, and the copy is what
-    /// gets asked, so asking is free of consequence and the query you go on to build is the one you had. Which
-    /// also means <see cref="DroppedFields"/> is the copy's rather than this one's, and is gone with it — call
-    /// <see cref="Validate()"/> after applying where that list is what you are after.
+    /// <b>Will not modify the Inquiry</b> A copy of the current Inquiry is created to test against, then discarded.
     /// </para>
     /// <para>
-    /// <b>Two passes, so a half can report twice.</b> Reading the text and resolving what it says against the
+    /// <b>Two passes, each portion can report twice.</b> Reading the text and resolving what it says against the
     /// bindings are separate failures: a sort clause that will not parse is one problem, and a sort clause that
-    /// parses and names a field nobody bound is another. Every parse fault is reported first, then everything
+    /// parses and names an unbound field is another. Every parse failure is reported first, then everything
     /// <see cref="Validate()"/> finds in what did parse.
     /// </para>
     /// <para>
-    /// <b>It validates the request on top of what is already applied</b>, since that is what applying it would
-    /// do: a condition this Inquiry already carries is ANDed with the request's, and is validated alongside it.
+    /// <b>It validates the request with current Inquiry settings</b> a condition this Inquiry already carries 
+    /// is ANDed with the request's, and is validated alongside it.
     /// </para>
     /// </remarks>
     /// <param name="request">the caller's query; null asks about this Inquiry as it stands, see <see cref="Validate()"/></param>
@@ -1216,7 +1161,7 @@ public class Inquiry<T> where T : class
 
         ICondition? condition = null;
         try { condition = request.UnpackCondition(style); }
-        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Condition, error.Error, error.Message)); }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Test, error.Error, error.Message)); }
 
         List<Sort>? sorts = null;
         try { sorts = request.UnpackSorts(defaultSort, style); }
@@ -1226,12 +1171,11 @@ public class Inquiry<T> where T : class
         try { projection = request.UnpackProjection(); }
         catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Projection, error.Error, error.Message)); }
 
-        // Not one of the three halves, so it is reported against the request itself
+        // Not one of segments, so it is reported against the request itself
         try { candidate = candidate.ApplyPagination(request.PageSize, request.Page ?? 0); }
         catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.None, error.Error, error.Message)); }
 
-        // Whatever did read, so the rest of the request is still held to the bindings and the caller hears about
-        // all of it at once. A half that did not read is simply not there to ask about
+        // Attempt to apply what made it through the unpack. If it didn't unpack, there is nothing to apply
         candidate = candidate
             .ApplyCondition(condition)
             .ApplySorts(sorts)
@@ -1248,8 +1192,7 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     public IQueryable<T> Build()
     {
-        // Each build describes its own query, so what the last one dropped is not carried into this one
-        Dropped.Clear();
+        Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
 
         return Windowed(Sorted(Filtered()));
     }
@@ -1261,7 +1204,7 @@ public class Inquiry<T> where T : class
     /// <remarks>
     /// <para>
     /// For the caller that has to answer "showing 21 to 40 of 387". The 387 is not something a page can be asked
-    /// for — it is the size of the filtered set the window was taken from — so it is a second query over the same
+    /// for. It is the size of the filtered set the window was taken from, so it is a second query over the same
     /// conditions, and this builds it alongside the first.
     /// <code>
     /// var (page, matches) = query.WithWeequery()
@@ -1278,20 +1221,18 @@ public class Inquiry<T> where T : class
     /// <para>
     /// <b>Neither query has run.</b> Counting is left to the caller rather than done here, for two reasons. It is
     /// a database round trip, and the method that makes it without blocking a thread is
-    /// <c>CountAsync</c>, which belongs to Entity Framework Core and not to this library — Weequery takes no
+    /// <c>CountAsync</c>, which belongs to Entity Framework Core and not to this library. Weequery takes no
     /// dependency on whatever is going to execute the query, and doing the count for you would mean either
     /// taking one or calling the synchronous <c>Count</c> in code that ought to be awaiting. It also stays true
     /// to what <see cref="Build"/> promises, which is a query and no execution, so both halves compose with
-    /// whatever else you had planned.
+    /// whatever was planned.
     /// </para>
     /// <para>
-    /// Count <see cref="PagedQuery{T}.Matches"/> and not <see cref="PagedQuery{T}.Page"/>: the page is windowed,
-    /// so counting it gives the size of the page, which you already know.
+    /// Total row count should come from <see cref="PagedQuery{T}.Matches"/> not <see cref="PagedQuery{T}.Page"/>
     /// </para>
     /// <para>
-    /// Where <see cref="ApplyPagination"/> was never called there is no window, the page is the whole filtered
-    /// result, and the count agrees with its length. That is not an error, but it is a round trip asking a
-    /// question the rows already answer.
+    /// If no pagnation was applied <see cref="ApplyPagination"/> the page is the whole filtered result, and 
+    /// the count agrees with its length. 
     /// </para>
     /// </remarks>
     /// <returns>the page, and the query counting everything the conditions matched; never null, neither half null</returns>
@@ -1301,17 +1242,15 @@ public class Inquiry<T> where T : class
     /// </exception>
     public PagedQuery<T> BuildPaged()
     {
-        // Each build describes its own query, so what the last one dropped is not carried into this one
-        Dropped.Clear();
+        Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
 
-        // Shared, so the count is over exactly the rows the page was taken from and cannot drift from it
-        var matches = Filtered();
+        var matches = Filtered(); // share the unwindowed portion of the query
 
         return new PagedQuery<T>(Windowed(Sorted(matches)), matches);
     }
 
     /// <summary>
-    /// Apply everything as <see cref="Build"/> does, and read back only the projected fields rather than whole
+    /// Build into a projection <see cref="Build"/>, and read back only the projected fields rather than whole
     /// entities. Each row is a dictionary keyed by binding key.
     /// </summary>
     /// <remarks>
@@ -1428,7 +1367,7 @@ public class Inquiry<T> where T : class
     /// <para>
     /// Every predicate built for one entity type is built over the same parameter, which is what lets the bindings
     /// be resolved once and reused. Independent predicates do not care, but a predicate from here nested inside
-    /// another over the same type — a predicate over Minion used inside "minion =&gt; minion.Peers.Any(...)", say —
+    /// another over the same type ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â a predicate over Minion used inside "minion =&gt; minion.Peers.Any(...)", say ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â
     /// would have the inner parameter shadow the outer, so the inner test would read the inner element. Build the
     /// outer lambda by hand around this one, rather than combining two of these.
     /// </para>

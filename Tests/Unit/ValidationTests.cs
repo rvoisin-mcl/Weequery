@@ -62,7 +62,7 @@ public class ValidationTests
     {
         var problem = Only(Bound().ApplyCondition("Gizmo = 3").Validate());
 
-        Assert.Equal(BindingUse.Condition, problem.Part);
+        Assert.Equal(BindingUse.Test, problem.Part);
         Assert.Equal(WeequeryError.UnboundField, problem.Error);
         Assert.Contains("Gizmo", problem.Message);
     }
@@ -93,17 +93,23 @@ public class ValidationTests
     {
         var problem = Only(Bound().ApplyCondition("Pay StartsWith '1'").Validate());
 
-        Assert.Equal(BindingUse.Condition, problem.Part);
+        Assert.Equal(BindingUse.Test, problem.Part);
         Assert.False(problem.Error == WeequeryError.Unspecified);
     }
 
     [Fact]
-    public void ASortOnSomethingWithNoOrderingIsReported()
+    public void ASortOnSomethingWithNoOrderingIsDroppedRatherThanReported()
     {
-        var problem = Only(Bound().BindConstant("Threshold", 10000m).ApplySorts("Threshold").Validate());
+        // No longer a problem because it is no longer refused: a sort with nothing to order by is dropped, and
+        // Validate fills DroppedFields exactly as a build does, so that is where it shows up
+        var inquiry = Bound().BindConstant("Threshold", 10000m).ApplySorts("Threshold");
 
-        Assert.Equal(BindingUse.Sort, problem.Part);
-        Assert.Contains("constant", problem.Message);
+        Assert.True(inquiry.Validate().IsValid);
+
+        var dropped = Assert.Single(inquiry.DroppedFields);
+
+        Assert.Equal("Threshold", dropped.Field);
+        Assert.Equal(BindingUse.Sort, dropped.From);
     }
 
     // ---------- all of it at once, which is the point ----------
@@ -121,7 +127,7 @@ public class ValidationTests
             .Validate();
 
         Assert.False(result.IsValid);
-        Assert.Equal([BindingUse.Condition, BindingUse.Sort, BindingUse.Projection], result.Problems.Select(problem => problem.Part));
+        Assert.Equal([BindingUse.Test, BindingUse.Sort, BindingUse.Projection], result.Problems.Select(problem => problem.Part));
     }
 
     // ---------- and asking costs nothing ----------
@@ -170,7 +176,7 @@ public class ValidationTests
 
         var dropped = Assert.Single(inquiry.DroppedFields);
         Assert.Equal("Gizmo", dropped.Field);
-        Assert.Equal(BindingUse.Condition, dropped.From);
+        Assert.Equal(BindingUse.Test, dropped.From);
     }
 
     /// <summary>
@@ -187,7 +193,7 @@ public class ValidationTests
             .ApplyCondition("Name = 'Alice Fox'")
             .Validate());
 
-        Assert.Equal(BindingUse.Condition, problem.Part);
+        Assert.Equal(BindingUse.Test, problem.Part);
     }
 
     // ---------- the result itself ----------

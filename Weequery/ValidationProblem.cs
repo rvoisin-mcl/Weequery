@@ -14,7 +14,7 @@ namespace Weequery;
 /// </para>
 /// </remarks>
 /// <param name="Part">
-/// which half of the query this is about: <see cref="BindingUse.Condition"/>, <see cref="BindingUse.Sort"/> or
+/// which half of the query this is about: <see cref="BindingUse.Test"/>, <see cref="BindingUse.Sort"/> or
 /// <see cref="BindingUse.Projection"/>, and <see cref="BindingUse.None"/> for the request as a whole rather than
 /// any one of them, which is what a page size and a page index that cannot be combined are. Always exactly one
 /// of them, never a combination

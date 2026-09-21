@@ -40,7 +40,7 @@ internal static class BindingResolver
     /// <param name="settings"></param>
     /// <param name="path">the property's whole path, which is what the ignore rules are matched against</param>
     /// <param name="ancestors">
-    /// the types already gathered on the way here, see <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings)"/>
+    /// the types already gathered on the way here, see <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings, BindingUse)"/>
     /// </param>
     /// <returns></returns>
     internal static bool ShouldExpandType(Type type, BindingResolutionSettings settings, string path, HashSet<Type> ancestors)

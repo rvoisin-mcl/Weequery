@@ -31,28 +31,38 @@ public class SortableFieldTests
     }
 
     [Fact]
-    public void SortingOnAPropertyWithNoOrderingIsRefused()
+    public void SortingOnAPropertyWithNoOrderingIsDropped()
     {
-        Assert.Throws<WeequeryException>(() => Things()
+        var inquiry = Things()
             .WithWeequery()
             .BindProperty(thing => thing.Tags, "Tags")
-            .ApplySort(new Sort("Tags", SortDirection.Ascending))
-            .Build());
+            .ApplySort(new Sort("Tags", SortDirection.Ascending));
+
+        Assert.NotEmpty(inquiry.Build().ToList());
+
+        var dropped = Assert.Single(inquiry.DroppedFields);
+
+        Assert.Equal("Tags", dropped.Field);
+        Assert.Equal(BindingUse.Sort, dropped.From);
+        Assert.Contains("no ordering", dropped.Reason);
     }
 
     /// <summary>
     /// It is refused whatever the data, where before it depended on how many rows had a value
     /// </summary>
     [Fact]
-    public void ItIsRefusedEvenWhenTheDataWouldNotHaveNoticed()
+    public void ItIsDroppedEvenWhenTheDataWouldNotHaveNoticed()
     {
         var single = new List<Thing> { new() { Tags = ["x"] } }.AsQueryable();
 
-        Assert.Throws<WeequeryException>(() => single
+        var inquiry = single
             .WithWeequery()
             .BindProperty(thing => thing.Tags, "Tags")
-            .ApplySort(new Sort("Tags", SortDirection.Ascending))
-            .Build());
+            .ApplySort(new Sort("Tags", SortDirection.Ascending));
+
+        // One row, so no order was ever observable, and the report is still made rather than skipped
+        Assert.Single(inquiry.Build().ToList());
+        Assert.Single(inquiry.DroppedFields);
     }
 
     /// <summary>

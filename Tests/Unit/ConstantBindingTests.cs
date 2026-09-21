@@ -88,14 +88,25 @@ public class ConstantBindingTests
     // ---------- what is refused ----------
 
     [Fact]
-    public void SortingOnAConstantIsRefused()
+    public void SortingOnAConstantIsDropped()
     {
-        Assert.Throws<WeequeryException>(() => MinionTestData.Minions()
+        var inquiry = MinionTestData.Minions()
             .WithWeequery()
             .BindProperties(Minion.Bindings)
             .BindConstant("Threshold", 10000m)
-            .ApplySort(new Sort("Threshold", SortDirection.Ascending))
-            .Build());
+            .ApplySort(new Sort("Threshold", SortDirection.Ascending));
+
+        // Every row holds the same value, so the sort could not have changed the order and its absence does not
+        Assert.Equal(4, inquiry.Build().Count());
+
+        var dropped = Assert.Single(inquiry.DroppedFields);
+
+        Assert.Equal("Threshold", dropped.Field);
+        Assert.Equal(BindingUse.Sort, dropped.From);
+        Assert.Contains("constant", dropped.Reason);
+
+        // Not "does not match a binding", which is what it is not
+        Assert.NotEqual(DroppedField.Unbound, dropped.Reason);
     }
 
     [Fact]

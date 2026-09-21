@@ -8,7 +8,7 @@ namespace Weequery;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Only unbound fields go. A field that is bound but does not grant <see cref="BindingUse.Condition"/>
+/// Only unbound fields go. A field that is bound but does not grant <see cref="BindingUse.Test"/>
 /// is a deliberate choice about what a caller may ask, so those are still refused.
 /// </para>
 /// </remarks>

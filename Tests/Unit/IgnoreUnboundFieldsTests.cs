@@ -303,7 +303,7 @@ public class DroppedFieldsTests
         var dropped = Assert.Single(inquiry.DroppedFields);
 
         Assert.Equal("Gizmo", dropped.Field);
-        Assert.Equal(BindingUse.Condition, dropped.From);
+        Assert.Equal(BindingUse.Test, dropped.From);
     }
 
     [Fact]
@@ -330,7 +330,7 @@ public class DroppedFieldsTests
 
         inquiry.Build().ToList();
 
-        Assert.Equal([BindingUse.Condition, BindingUse.Sort], inquiry.DroppedFields.Select(entry => entry.From));
+        Assert.Equal([BindingUse.Test, BindingUse.Sort], inquiry.DroppedFields.Select(entry => entry.From));
     }
 
     /// <summary>One part of a query losing it twice is one thing, said once</summary>
@@ -438,6 +438,6 @@ public class DroppedFieldsTests
     [Fact]
     public void ItReadsAsWhatHappened()
     {
-        Assert.Equal("'Gizmo' dropped from the condition, it does not match a binding", new DroppedField("Gizmo", BindingUse.Condition).ToString());
+        Assert.Equal("'Gizmo' dropped from the test, it does not match a binding", new DroppedField("Gizmo", BindingUse.Test).ToString());
     }
 }

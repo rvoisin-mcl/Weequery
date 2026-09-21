@@ -623,19 +623,147 @@ public class BindingResolutionTests
     /// converter the resolver knows nothing about, and the resolver must not quietly widen it.
     /// </summary>
     [Fact]
-    public void BindResolveKeepsTheBindingAlreadyMadeByHand()
+    public void BindResolveWidensTheBindingAlreadyMadeByHand()
     {
-        // an Inquiry accumulates its conditions, so the two checks below need one each
         static Inquiry<Minion> Bound() => MinionTestData.Minions()
             .WithWeequery()
             .BindProperty(minion => minion.Pay, use: BindingUse.Projection)
             .BindResolve();
 
-        // the hand bound Pay survived, so it is still projection only and a condition on it is refused
-        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Pay > 1").Build().ToList());
+        // A use is added rather than kept, so the resolve's All reaches the hand bound Pay and a condition on it
+        // now works. This is the direction that costs something: a narrow hand binding does not survive a broad
+        // resolve after it, see BindResolveCanBeNarrowedSoItDoesNotWiden for the way to keep it
+        Assert.NotEmpty(Bound().ApplyCondition("Pay > 1").Build().ToList());
 
         // and the rest of the properties resolved around it
         Assert.NotEmpty(Bound().ApplyCondition("Name != ''").Build().ToList());
+    }
+
+    /// <summary>
+    /// The broad-then-narrow shape this is for: everything readable, then the few that may be asked about.
+    /// </summary>
+    [Fact]
+    public void ResolveBroadlyForProjectionThenGrantTheRest()
+    {
+        static Inquiry<Minion> Bound() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindResolve(use: BindingUse.Projection)
+            .BindProperty(minion => minion.Pay, use: BindingUse.Test | BindingUse.Sort);
+
+        // Pay was granted the other two, so it filters
+        Assert.NotEmpty(Bound().ApplyCondition("Pay > 1").Build().ToList());
+
+        // and kept the projection it was resolved with, which is the half a replace would have lost
+        Assert.Contains("Pay", Bound().ApplyProjection("Pay").BuildProjected().First().Keys);
+
+        // while a property the second call did not name is still readable and still not filterable
+        Assert.Contains("Name", Bound().ApplyProjection("Name").BuildProjected().First().Keys);
+        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Name != ''").Build().ToList());
+    }
+
+    /// <summary>Order does not matter, a use being added either way round</summary>
+    [Fact]
+    public void TheSameTwoCallsInEitherOrderGiveTheSameUse()
+    {
+        static Inquiry<Minion> Narrow() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Pay, use: BindingUse.Test)
+            .BindProperty(minion => minion.Pay, use: BindingUse.Projection);
+
+        static Inquiry<Minion> Broad() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Pay, use: BindingUse.Projection)
+            .BindProperty(minion => minion.Pay, use: BindingUse.Test);
+
+        foreach (var inquiry in new[] { Narrow(), Broad() })
+        {
+            Assert.NotEmpty(inquiry.ApplyCondition("Pay > 1").Build().ToList());
+        }
+
+        Assert.Contains("Pay", Narrow().ApplyProjection("Pay").BuildProjected().First().Keys);
+        Assert.Contains("Pay", Broad().ApplyProjection("Pay").BuildProjected().First().Keys);
+    }
+
+    /// <summary>Narrowing the resolve is how a hand bound field keeps a use the resolve would have added to</summary>
+    [Fact]
+    public void BindResolveCanBeNarrowedSoItDoesNotWiden()
+    {
+        static Inquiry<Minion> Bound() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Pay, use: BindingUse.Projection)
+            .BindResolve(use: BindingUse.Projection);
+
+        // Nothing granted a condition use to anything, so Pay is still projection only
+        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Pay > 1").Build().ToList());
+    }
+
+    /// <summary>
+    /// A converter cannot be merged the way a use can, so the second one is refused rather than dropped.
+    /// </summary>
+    [Fact]
+    public void TwoConvertersForOneKeyAreRefused()
+    {
+        var upper = ValueConverter.For<string>(text => text.ToUpperInvariant());
+        var lower = ValueConverter.For<string>(text => text.ToLowerInvariant());
+
+        var error = Assert.Throws<WeequeryException>(() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Name, convert: upper)
+            .BindProperty(minion => minion.Name, convert: lower));
+
+        Assert.Equal(WeequeryError.KeyTaken, error.Error);
+        Assert.Contains("ValueConverter", error.Message);
+    }
+
+    /// <summary>
+    /// Two converters that do the same thing are still two: a converter wraps a delegate, so there is nothing to
+    /// compare but identity, and guessing they agree would apply one of them to values bound for the other.
+    /// </summary>
+    [Fact]
+    public void TwoEquivalentConvertersAreStillTwo()
+    {
+        var upper = ValueConverter.For<string>(text => text.ToUpperInvariant());
+        var alsoUpper = ValueConverter.For<string>(text => text.ToUpperInvariant());
+
+        Assert.Throws<WeequeryException>(() => MinionTestData.Minions()
+            .WithWeequery()
+            .BindProperty(minion => minion.Name, convert: upper)
+            .BindProperty(minion => minion.Name, convert: alsoUpper));
+    }
+
+    /// <summary>
+    /// A bind that never mentioned a converter is not asking for there to be none, so the one that names it
+    /// wins, and it does so either way round.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AConverterIsGrantedByEitherOrder(bool converterFirst)
+    {
+        var upper = ValueConverter.For<string>(text => text.ToUpperInvariant());
+
+        var inquiry = MinionTestData.Minions().WithWeequery();
+
+        inquiry = converterFirst
+            ? inquiry.BindProperty(minion => minion.Name, convert: upper).BindProperty(minion => minion.Name)
+            : inquiry.BindProperty(minion => minion.Name).BindProperty(minion => minion.Name, convert: upper);
+
+        // The conversion is in force whichever call brought it, so the lower case value still matches
+        Assert.Single(inquiry.ApplyCondition("Name = 'alice fox'").Build().ToList());
+    }
+
+    /// <summary>The whole point of granting it: a resolved set carries no converters, and one can still be added</summary>
+    [Fact]
+    public void AResolvedBindingCanBeGivenAConverterAfterwards()
+    {
+        var upper = ValueConverter.For<string>(text => text.ToUpperInvariant());
+
+        var inquiry = MinionTestData.Minions()
+            .WithWeequery()
+            .BindResolve(use: BindingUse.Projection)
+            .BindProperty(minion => minion.Name, convert: upper, use: BindingUse.Test);
+
+        Assert.Single(inquiry.ApplyCondition("Name = 'alice fox'").Build().ToList());
     }
 
     [Fact]

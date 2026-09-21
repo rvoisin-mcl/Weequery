@@ -44,9 +44,7 @@ internal static class ProjectionBuilder<T> where T : class
         // A projection that names nothing reads everything a caller may read, and one that names fields reads
         // those. The two stay apart even after dropping: a projection whose every field went asked for some
         // columns and can have none of them, which is not the same as having asked for all of them.
-        var fields = projected.IsEmpty
-            ? [.. from entry in bindings where entry.Value.Allows(BindingUse.Projection) select entry.Key]
-            : Projectable(keep, projected.Fields);
+        var fields = projected.IsEmpty ? Everything(bindings) : Expanded(bindings, projected.Fields, keep);
 
         var add = typeof(Dictionary<string, object?>).GetMethod(nameof(Dictionary<string, object?>.Add))
             ?? throw new WeequeryException(WeequeryError.Internal, $"(Should be impossible) {nameof(Dictionary<string, object?>)} has no Add");
@@ -67,9 +65,86 @@ internal static class ProjectionBuilder<T> where T : class
     /// else, see <see cref="Inquiry{T}.IgnoreUnboundFields"/>. A row with no keys left is a possible answer
     /// here, and the honest one for a caller who asked only for columns that are no longer there.
     /// </remarks>
-    private static IReadOnlyList<string> Projectable(Func<string, bool>? keep, IReadOnlyList<string> fields)
+    /// <summary>
+    /// Every key that may be read back, which is what a projection naming nothing means and what
+    /// <see cref="Projection.Wildcard"/> expands to.
+    /// </summary>
+    /// <param name="bindings"></param>
+    /// <returns></returns>
+    private static List<string> Everything(Dictionary<string, Binding<T>> bindings)
     {
-        return (keep is null) ? fields : [.. fields.Where(keep)];
+        return [.. from entry in bindings where entry.Value.Allows(BindingUse.Projection) select entry.Key];
+    }
+
+    /// <summary>
+    /// The fields a caller named, with the wildcards among them replaced by what they stand for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>*</c> stands for every key that may be read, and <c>Lair.*</c> for every one under that prefix. Both
+    /// are filtered by <see cref="BindingUse.Projection"/> exactly as a named field is, so neither is a way of
+    /// reading something the allow-list did not offer.
+    /// </para>
+    /// <para>
+    /// Expansions and named fields compose: <c>Name, Lair.*</c> is one field and a prefix, and a key arriving
+    /// twice is kept once, in the order it was first asked for. Which is why the result is assembled rather than
+    /// filtered, where before it was a list the caller already had.
+    /// </para>
+    /// <para>
+    /// A prefix matching nothing is treated as the unbound field it resembles: dropped where the caller asked
+    /// for that and refused otherwise. The message names the prefix rather than the whole wildcard, since that
+    /// is the part that found nothing.
+    /// </para>
+    /// </remarks>
+    /// <param name="bindings"></param>
+    /// <param name="fields">what the caller named, in order</param>
+    /// <param name="keep">null to refuse an unbound field, otherwise what decides whether it is dropped</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">a prefix matches nothing and dropping was not asked for</exception>
+    private static List<string> Expanded(Dictionary<string, Binding<T>> bindings, IReadOnlyList<string> fields, Func<string, bool>? keep)
+    {
+        List<string> expanded = [];
+        HashSet<string> seen = new(BindingLookup.KeyComparer);
+
+        void Take(IEnumerable<string> keys)
+        {
+            foreach (var key in keys)
+            {
+                if (seen.Add(key)) { expanded.Add(key); }
+            }
+        }
+
+        foreach (var field in fields)
+        {
+            if (ProjectionWildcard.IsEverything(field))
+            {
+                Take(Everything(bindings));
+
+                continue;
+            }
+
+            if (ProjectionWildcard.Prefix(field) is string prefix)
+            {
+                var under = Everything(bindings).Where(key => ProjectionWildcard.Under(key, prefix)).ToList();
+
+                if (under.Count == 0)
+                {
+                    if (keep is not null) { keep(field); continue; }
+
+                    throw new WeequeryException(WeequeryError.UnboundField, $"'{field}' matches nothing: no binding under '{prefix}' can be projected");
+                }
+
+                Take(under);
+
+                continue;
+            }
+
+            if ((keep is not null) && (!keep(field))) { continue; }
+
+            Take([field]);
+        }
+
+        return expanded;
     }
 
     /// <summary>

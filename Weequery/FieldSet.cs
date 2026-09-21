@@ -84,6 +84,70 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
         return Find(key) ?? throw new WeequeryException(WeequeryError.UnboundField, $"Unbound field: '{key}' is not declared in the {GetType().Name}, so it cannot be {what}");
     }
 
+    /// <summary>
+    /// The declared fields a projection names, with <c>*</c> and <c>Prefix.*</c> expanded to what they stand for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same two wildcards <see cref="Inquiry{T}.ApplyProjection(string?)"/> takes, meaning the same things,
+    /// so a projection written once reads the same whether it is answered from the entity or handed to a
+    /// translator. What differs is only what they expand against: here it is the declared set, which has no
+    /// <see cref="BindingUse"/> to filter by, so a declared field is a readable one.
+    /// </para>
+    /// <para>
+    /// A key named twice, or named and also caught by a wildcard, is returned once, in the place it was first
+    /// asked for. A prefix matching nothing is refused rather than quietly reading nothing, there being no
+    /// lenient mode on this side of the wire to drop it into.
+    /// </para>
+    /// </remarks>
+    /// <param name="projection">null or empty gives nothing, which every caller reads as "no projection"</param>
+    /// <param name="what">what the fields are wanted for, for the message when one is not declared</param>
+    /// <returns>the fields, in the order they were asked for</returns>
+    /// <exception cref="WeequeryException">a name is not declared, or a prefix matches nothing declared</exception>
+    public IReadOnlyList<TField> Project(Projection? projection, string what)
+    {
+        if ((projection is null) || projection.IsEmpty) { return []; }
+
+        List<TField> projected = [];
+        HashSet<string> seen = new(BindingLookup.KeyComparer);
+
+        void Take(IEnumerable<TField> found)
+        {
+            foreach (var field in found)
+            {
+                if (seen.Add(field.Key)) { projected.Add(field); }
+            }
+        }
+
+        foreach (var name in projection.Fields)
+        {
+            if (ProjectionWildcard.IsEverything(name))
+            {
+                Take(this);
+
+                continue;
+            }
+
+            if (ProjectionWildcard.Prefix(name) is string prefix)
+            {
+                var under = this.Where(field => ProjectionWildcard.Under(field.Key, prefix)).ToList();
+
+                if (under.Count == 0)
+                {
+                    throw new WeequeryException(WeequeryError.UnboundField, $"'{name}' matches nothing: no field under '{prefix}' is declared to {what}");
+                }
+
+                Take(under);
+
+                continue;
+            }
+
+            Take([Resolve(name, what)]);
+        }
+
+        return projected;
+    }
+
     /// <summary>How many fields are declared</summary>
     public int Count { get { return Fields.Count; } }
 

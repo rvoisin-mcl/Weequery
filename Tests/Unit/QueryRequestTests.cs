@@ -220,7 +220,7 @@ public class QueryRequestTests
         var result = Bound().Validate(new QueryRequest { Filter = "Pay >" });
 
         Assert.False(result.IsValid);
-        Assert.Equal(BindingUse.Condition, Assert.Single(result.Problems).Part);
+        Assert.Equal(BindingUse.Test, Assert.Single(result.Problems).Part);
     }
 
     [Fact]
@@ -230,7 +230,7 @@ public class QueryRequestTests
 
         var parts = Bound().Validate(request).Problems.Select(problem => problem.Part).ToList();
 
-        Assert.Contains(BindingUse.Condition, parts);
+        Assert.Contains(BindingUse.Test, parts);
         Assert.Contains(BindingUse.Sort, parts);
         Assert.Contains(BindingUse.Projection, parts);
         Assert.Contains(BindingUse.None, parts);

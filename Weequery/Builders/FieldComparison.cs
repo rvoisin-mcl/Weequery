@@ -135,7 +135,7 @@ internal static class FieldComparison
 
         // Comparing against a column is a read of it, so this is the back door onto a binding that does not grant
         // Condition: allow it and the value is learnable by bisection, one query at a time
-        if (!property.Allows(BindingUse.Condition))
+        if (!property.Allows(BindingUse.Test))
         {
             throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{value.Value}', compared against on field '{field}', cannot be used in a condition: it is bound for {property.Use}");
         }

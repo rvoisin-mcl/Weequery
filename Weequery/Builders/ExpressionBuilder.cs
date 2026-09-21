@@ -50,7 +50,7 @@ internal static class ExpressionBuilder
     /// test for, and constructing that binding throws.
     /// </para>
     /// <para>
-    /// For <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings)"/>, which walks a type it was not given the chance to vet and
+    /// For <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings, BindingUse)"/>, which walks a type it was not given the chance to vet and
     /// would otherwise refuse a whole model over one property of a struct nobody meant to filter on.
     /// </para>
     /// </remarks>
@@ -189,7 +189,7 @@ internal static class ExpressionBuilder
 
             // Bound, but not for asking questions about. Said plainly rather than reported as unbound, which
             // would send a caller looking for a typo in a name that works perfectly well in a projection.
-            if (!boundProperty.Allows(BindingUse.Condition))
+            if (!boundProperty.Allows(BindingUse.Test))
             {
                 throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{binding.Field}' cannot be used in a condition: it is bound for {boundProperty.Use}");
             }

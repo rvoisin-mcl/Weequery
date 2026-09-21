@@ -32,7 +32,7 @@ public enum BindingUse
     /// <summary>
     /// May be used in a condition
     /// </summary>
-    Condition = 1,
+    Test = 1,
 
     /// <summary>May be sorted on, see <see cref="Inquiry{T}.ApplySorts(IEnumerable{Sort}?)"/></summary>
     Sort = 2,
@@ -43,5 +43,5 @@ public enum BindingUse
     /// <summary>
     /// All three, which is what the default binding granted unless specified otherwise.
     /// </summary>
-    All = Condition | Sort | Projection,
+    All = Test | Sort | Projection,
 }

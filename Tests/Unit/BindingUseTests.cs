@@ -20,8 +20,8 @@ public class BindingUseTests
             .BindProperty(minion => minion.Name)
             .BindProperty(minion => minion.Pay)
             .BindProperty(minion => minion.CauseForDeparture, "Departure", BindingUse.Projection)
-            .BindProperty(minion => minion.IsVetted, "Vetted", BindingUse.Condition)
-            .BindProperty(minion => minion.Morale, "Morale", BindingUse.Condition | BindingUse.Sort);
+            .BindProperty(minion => minion.IsVetted, "Vetted", BindingUse.Test)
+            .BindProperty(minion => minion.Morale, "Morale", BindingUse.Test | BindingUse.Sort);
     }
 
     private static List<string> Names(string query)
@@ -42,7 +42,7 @@ public class BindingUseTests
     [Fact]
     public void AllIsTheThreeFlagsTogether()
     {
-        Assert.Equal(BindingUse.All, BindingUse.Condition | BindingUse.Sort | BindingUse.Projection);
+        Assert.Equal(BindingUse.All, BindingUse.Test | BindingUse.Sort | BindingUse.Projection);
         Assert.Equal(BindingUse.None, default);
     }
 
@@ -120,7 +120,7 @@ public class BindingUseTests
 
         Assert.Contains("Vetted", error.Message);
         Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
-        Assert.Contains(nameof(BindingUse.Condition), error.Message);
+        Assert.Contains(nameof(BindingUse.Test), error.Message);
     }
 
     // ---------- combinations ----------
@@ -228,7 +228,7 @@ public class BindingUseTests
     /// particular one rather than the general one, since being a constant is the more useful thing to be told.
     /// </summary>
     [Fact]
-    public void AConstantIsHonestAboutNotBeingSortable()
+    public void AConstantIsDroppedFromASortRatherThanRefused()
     {
         // An Inquiry is mutable and fluent, so each of these gets its own: a sort applied to one stays on it
         static Inquiry<Minion> WithConstant()
@@ -239,12 +239,12 @@ public class BindingUseTests
                 .BindConstant("Threshold", 10000m);
         }
 
-        var error = Assert.Throws<WeequeryException>(() => WithConstant()
-            .ApplySorts([new Sort("Threshold", SortDirection.Ascending)])
-            .Build()
-            .ToList());
+        // Dropped rather than refused: being a constant is the more particular thing to say about it than the
+        // use it was not granted, and a sort on one could not have changed the order anyway
+        var sorted = WithConstant().ApplySorts([new Sort("Threshold", SortDirection.Ascending)]);
 
-        Assert.Equal(WeequeryError.OperatorUnsupported, error.Error);
+        Assert.Equal(4, sorted.Build().Count());
+        Assert.Equal(BindingUse.Sort, Assert.Single(sorted.DroppedFields).From);
 
         // And the two it does grant still work
         Assert.Equal(2, WithConstant().ApplyCondition("Pay >= [Threshold]").Build().Count());

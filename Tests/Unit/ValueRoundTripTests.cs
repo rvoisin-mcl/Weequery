@@ -3,6 +3,7 @@ using System.Text.Json;
 using Tests.Common;
 using Weequery;
 using Weequery.Interfaces;
+using Weequery.Parsing;
 
 namespace Tests.Unit;
 

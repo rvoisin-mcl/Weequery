@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Weequery.Bindings;
 using Weequery.Interfaces;
 
 namespace Weequery.Builders;

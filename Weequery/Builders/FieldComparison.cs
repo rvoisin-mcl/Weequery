@@ -2,7 +2,9 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using Weequery.Bindings;
 using Weequery.Interfaces;
+using Weequery.Parsing;
 
 namespace Weequery.Builders;
 

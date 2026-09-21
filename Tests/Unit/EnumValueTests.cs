@@ -1,5 +1,6 @@
 using Tests.Common;
 using Weequery;
+using Weequery.Parsing;
 
 namespace Tests.Unit;
 

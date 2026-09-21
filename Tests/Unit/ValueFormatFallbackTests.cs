@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Numerics;
 using Weequery;
+using Weequery.Parsing;
 
 namespace Tests.Unit;
 

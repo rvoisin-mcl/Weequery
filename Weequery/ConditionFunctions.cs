@@ -86,6 +86,17 @@ public static class ConditionFunctions
             case Operator.DoesNotMatch:
                 return "DoesNotMatch";
 
+            // One spelling each, in every style. The quantifiers arrived with Native and were never given a
+            // symbolic or an SQL form to be deprecated out of.
+            case Operator.Any:
+                return "Any";
+
+            case Operator.All:
+                return "All";
+
+            case Operator.None:
+                return "None";
+
             case Operator.And:
                 return symbolic ? "&&" : native ? "AND" : "And";
 
@@ -255,6 +266,9 @@ public static class ConditionFunctions
             case Operator.Or:
             case Operator.And:
             case Operator.Not:
+            case Operator.Any:
+            case Operator.All:
+            case Operator.None:
                 return new(0, 0);
 
             default:
@@ -309,6 +323,10 @@ public static class ConditionFunctions
             case Operator.Or:
             case Operator.And:
             case Operator.Not:
+            // A quantifier holds a condition rather than operands, so it has no comparison shape either
+            case Operator.Any:
+            case Operator.All:
+            case Operator.None:
                 return null;
 
             default:
@@ -325,9 +343,10 @@ public static class ConditionFunctions
     /// <param name="op"></param>
     /// <param name="field"></param>
     /// <param name="operands">checked against the operator before any of them is read</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the operator has no shape, or the count does not suit it</exception>
-    public static IBoundCondition BuildComparison(Operator op, string field, List<ConditionValue<string>> operands)
+    public static IBoundCondition BuildComparison(Operator op, string field, List<ConditionValue<string>> operands, string? index = null)
     {
         WeequeryException.ThrowIfNull(operands);
 
@@ -335,10 +354,10 @@ public static class ConditionFunctions
 
         return GetShapeForOperation(op) switch
         {
-            ConditionShape.NoValue => new NoValueCondition(op, field),
-            ConditionShape.OneValue => new OneValueCondition<string>(op, field, operands[0]),
-            ConditionShape.TwoValue => new TwoValueCondition<string>(op, field, operands[0], operands[1]),
-            ConditionShape.MultipleValue => new MultipleValueCondition<string>(op, field, operands),
+            ConditionShape.NoValue => new NoValueCondition(op, field, index),
+            ConditionShape.OneValue => new OneValueCondition<string>(op, field, operands[0], index),
+            ConditionShape.TwoValue => new TwoValueCondition<string>(op, field, operands[0], operands[1], index),
+            ConditionShape.MultipleValue => new MultipleValueCondition<string>(op, field, operands, index),
 
             _ => throw new WeequeryException($"Cannot determine an appropriate shape for Operator '{op}' on field '{field}'"),
         };

@@ -8,7 +8,7 @@ namespace Weequery;
 internal class Binding<TClass> : IBinding
 {
     public string PropertyPath { get; init; }
-    public MemberExpression Accessor { get; init; }
+    public Expression Accessor { get; init; }
     public Type PropertyType { get; init; }
     public bool AccessorIsNullable { get; init; }
     public bool PropertyIsWrappedByNullable { get; init; }
@@ -62,7 +62,7 @@ internal class Binding<TClass> : IBinding
     /// <param name="wrapped"></param>
     /// <param name="linkChecks"></param>
     /// <returns></returns>
-    private static Expression BuildNotNullCheck(MemberExpression accessor, Type accessorType, bool wrapped, List<Expression> linkChecks)
+    private static Expression BuildNotNullCheck(Expression accessor, Type accessorType, bool wrapped, List<Expression> linkChecks)
     {
         List<Expression> checks = new();
 
@@ -98,7 +98,7 @@ internal class Binding<TClass> : IBinding
     /// <param name="linkChecks">what has to have a value for the accessor to be safe to read</param>
     /// <param name="isConstant"></param>
     /// <exception cref="WeequeryException"></exception>
-    private Binding(ParameterExpression parameter, string name, MemberExpression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant)
+    private Binding(ParameterExpression parameter, string name, Expression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant)
     {
         WeequeryException.ThrowIfNullOrEmpty(name);
 
@@ -123,6 +123,10 @@ internal class Binding<TClass> : IBinding
         NotNullCheck = BuildNotNullCheck(Accessor, PropertyType, PropertyIsWrappedByNullable, LinkChecks);
         LinkNotNullCheck = (LinkChecks.Count == 0) ? Expression.Constant(true) : LinkChecks.Aggregate(Expression.AndAlso);
 
+        // Settled before the builder check below, since a collection has no builder of its own and would
+        // otherwise be flattened to object before anyone could ask what it holds
+        Index = isConstant ? null : IndexingFor(PropertyType);
+
         // If the property type is not something that is supported by a builder type, treat it as an object, which will at least support IsNull
         if (!ExpressionBuilder.HasBuilderForBinding(this))
         {
@@ -132,6 +136,147 @@ internal class Binding<TClass> : IBinding
         }
 
         PropertyPath = name;
+    }
+
+    /// <summary>
+    /// A binding for one element of this collection, which is what a condition naming an index compares against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The element is treated exactly as a <see cref="Nullable{T}"/> is, and for the same reason: it may not be
+    /// there. An index past the end of a list, or a key no dictionary holds, is not an error and not a default
+    /// value, it is the absence of a value. So the presence test joins the link checks the path already carries,
+    /// which makes <see cref="AccessorIsNullable"/> true and hands every operator the same guard a nullable
+    /// property gets: a missing element satisfies nothing except IsNull, and the negative operators do not catch
+    /// it either.
+    /// </para>
+    /// <para>
+    /// Two checks go on, in order, because the second is only safe once the first holds: the collection is
+    /// there, and then it has something at that index. They are ANDed ahead of the read, and both the in-memory
+    /// evaluator and a provider short circuit, so the read never happens against a missing collection.
+    /// </para>
+    /// </remarks>
+    /// <param name="index">the index as text, read against the collection's key type</param>
+    /// <returns>a binding for the element, nullable whatever the element type is</returns>
+    /// <exception cref="WeequeryException">this binding takes no index, or the text is not one</exception>
+    public Binding<TClass> Indexed(string index)
+    {
+        List<Expression> checks = new(LinkChecks);
+
+        var (access, elementType) = IndexInto(Accessor, PropertyType, index, PropertyPath, checks);
+
+        return new Binding<TClass>(Parameter, $"{PropertyPath}[{index}]", access, elementType, checks, isConstant: false);
+    }
+
+    /// <summary>
+    /// True when the collection holds something at this index. ContainsKey for a dictionary; for a list or an
+    /// array, in range and not negative, which is the same question asked of a count.
+    /// </summary>
+    private static Expression PresenceCheck(Expression container, Type containerType, Indexing indexing, object key)
+    {
+        var index = Expression.Constant(key, indexing.KeyType);
+
+        if (indexing.IsDictionary)
+        {
+            var contains = Members(containerType)
+                .Select(candidate => candidate.GetMethod("ContainsKey", [indexing.KeyType]))
+                .FirstOrDefault(method => method is not null)
+                ?? throw new WeequeryException($"(Should be impossible) {containerType.Name} has no ContainsKey");
+
+            return Expression.Call(container, contains, index);
+        }
+
+        var count = containerType.IsArray
+            ? Expression.ArrayLength(container)
+            : (Expression)Expression.Property(container, CountProperty(containerType));
+
+        return Expression.AndAlso(
+            Expression.GreaterThanOrEqual(index, Expression.Constant(0)),
+            Expression.LessThan(index, count));
+    }
+
+    /// <summary>
+    /// Read the element. Safe only behind <see cref="PresenceCheck"/>, which is why the two are added together.
+    /// </summary>
+    private static Expression ElementAccess(Expression container, Type containerType, Indexing indexing, object key)
+    {
+        var index = Expression.Constant(key, indexing.KeyType);
+
+        if (containerType.IsArray) { return Expression.ArrayIndex(container, index); }
+
+        var indexer = Members(containerType)
+            .Select(candidate => candidate.GetProperty("Item", [indexing.KeyType]))
+            .FirstOrDefault(property => property is not null)
+            ?? throw new WeequeryException($"(Should be impossible) {containerType.Name} has no indexer");
+
+        // Called rather than accessed as an index. The two mean the same thing, but only one of them is what a
+        // C# lambda compiles to, and a provider matches the shape it was built to expect: given an
+        // IndexExpression, EF Core stops recognising the collection as one it can reach into and rewrites the
+        // whole thing into a subquery it then cannot translate. See the remarks on Indexed.
+        var getter = indexer.GetGetMethod()
+            ?? throw new WeequeryException($"(Should be impossible) {containerType.Name} has an indexer that cannot be read");
+
+        return Expression.Call(container, getter, index);
+    }
+
+    /// <summary>
+    /// The Count a list is measured by, wherever it is declared
+    /// </summary>
+    private static PropertyInfo CountProperty(Type containerType)
+    {
+        return Members(containerType)
+            .Select(candidate => candidate.GetProperty("Count"))
+            .FirstOrDefault(property => property is not null)
+            ?? throw new WeequeryException($"(Should be impossible) {containerType.Name} has no Count");
+    }
+
+    /// <summary>
+    /// Where to look a member up: the type itself, then its interfaces.
+    /// </summary>
+    /// <remarks>
+    /// The order is not a preference. A provider translates an indexer and a count by recognising the member,
+    /// and it recognises <c>List&lt;T&gt;.Item</c> where it does not recognise <c>IList&lt;T&gt;.Item</c>, so
+    /// taking the interface first builds a tree that runs in memory and refuses to become SQL. The interfaces are
+    /// still searched, for a property whose declared type is one of them.
+    /// </remarks>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    private static IEnumerable<Type> Members(Type type)
+    {
+        return type.GetInterfaces().Prepend(type);
+    }
+
+    /// <summary>
+    /// The element of a collection at an index, and what has to hold for reading it to be safe.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the two ways an index arrives: named by a condition against a bound collection, see
+    /// <see cref="Indexed"/>, and written into a binding path, see <see cref="GetPropertyExpression"/>. Both want
+    /// the same two checks in the same order, and both want the result treated as a nullable.
+    /// </remarks>
+    /// <param name="container">the collection</param>
+    /// <param name="containerType">its declared type</param>
+    /// <param name="index">the index as text, read against the collection's key type</param>
+    /// <param name="name">what to call it if this goes wrong</param>
+    /// <param name="checks">the checks to add to, in order: the collection is there, then it holds this</param>
+    /// <returns>the element access and its type</returns>
+    /// <exception cref="WeequeryException">the type takes no index, or the text is not one</exception>
+    private static (Expression Access, Type ElementType) IndexInto(Expression container, Type containerType, string index, string name, List<Expression> checks)
+    {
+        var indexing = IndexingFor(containerType)
+            ?? throw new WeequeryException($"'{name}' cannot be indexed, {containerType.Name} is not a list, an array or a dictionary");
+
+        var key = ValueFormat.Parse(indexing.KeyType, index);
+
+        // The collection itself has to be there before it can be asked anything
+        if (!containerType.IsValueType)
+        {
+            checks.Add(Expression.NotEqual(container, Expression.Constant(null, containerType)));
+        }
+
+        checks.Add(PresenceCheck(container, containerType, indexing, key));
+
+        return (ElementAccess(container, containerType, indexing, key), indexing.ElementType);
     }
 
     /// <summary>
@@ -168,7 +313,7 @@ internal class Binding<TClass> : IBinding
 
         var useParameter = parameter ?? Expression.Parameter(typeof(TClass));
 
-        return new Binding<TClass>(useParameter, key, (MemberExpression)QueryValue.Of(value), typeof(TValue), [], isConstant: true);
+        return new Binding<TClass>(useParameter, key, QueryValue.Of(value), typeof(TValue), [], isConstant: true);
     }
 
     // FIXME Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, Func<TValue, TValue>? normalizer) // if provided, normalizer will run against both arguments of a comparison
@@ -205,6 +350,60 @@ internal class Binding<TClass> : IBinding
         return type.GetInterfaces().Any(candidate => candidate.IsGenericType && (candidate.GetGenericTypeDefinition() == typeof(IComparable<>)));
     }
 
+    /// <summary>
+    /// What indexing this binding takes, or null where it takes none. See <see cref="Indexed"/>.
+    /// </summary>
+    /// <param name="KeyType">what the index is read as: int for a list or an array, the key type for a dictionary</param>
+    /// <param name="ElementType">what comes back out, which is what the comparison is then against</param>
+    /// <param name="IsDictionary">whether presence is asked with ContainsKey rather than against a count</param>
+    private record Indexing(Type KeyType, Type ElementType, bool IsDictionary);
+
+    /// <summary>
+    /// Whether this binding can be indexed, and how.
+    /// </summary>
+    public bool IsIndexable { get { return Index is not null; } }
+
+    /// <summary>
+    /// The element type an index yields, for a caller that needs to know what it is comparing against
+    /// </summary>
+    public Type? IndexedElementType { get { return Index?.ElementType; } }
+
+    private Indexing? Index { get; init; }
+
+    /// <summary>
+    /// What indexing a type supports: an array or a list by position, a dictionary by key.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the declared type, and of the interfaces it implements rather than of the concrete class, so a
+    /// property typed as <see cref="IList{T}"/> or <see cref="IDictionary{TKey, TValue}"/> indexes the same way
+    /// the concrete one does. A dictionary is checked for first: one is also a collection of pairs, and indexing
+    /// it by position is not what anybody means.
+    /// </remarks>
+    /// <param name="type"></param>
+    /// <returns>null where the type takes no index this understands</returns>
+    private static Indexing? IndexingFor(Type type)
+    {
+        if (type.IsArray && (type.GetArrayRank() == 1))
+        {
+            return new(typeof(int), type.GetElementType()!, false);
+        }
+
+        var interfaces = type.GetInterfaces().Append(type);
+
+        var dictionary = interfaces.FirstOrDefault(candidate => candidate.IsGenericType && (candidate.GetGenericTypeDefinition() == typeof(IDictionary<,>)));
+        if (dictionary is not null)
+        {
+            var arguments = dictionary.GetGenericArguments();
+
+            return new(arguments[0], arguments[1], true);
+        }
+
+        var list = interfaces.FirstOrDefault(candidate => candidate.IsGenericType
+            && ((candidate.GetGenericTypeDefinition() == typeof(IList<>)) || (candidate.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))));
+
+        return (list is null) ? null : new(typeof(int), list.GetGenericArguments()[0], false);
+    }
+
     private static Type GetMemberType(MemberExpression expression)
     {
         switch (expression.Member.MemberType)
@@ -222,7 +421,77 @@ internal class Binding<TClass> : IBinding
         }
     }
 
-    private record GetPropertyExpressionRecord(MemberExpression Expression, Type ExpressionType, List<Expression> LinkChecks);
+    private record GetPropertyExpressionRecord(Expression Expression, Type ExpressionType, List<Expression> LinkChecks);
+
+    /// <summary>
+    /// One step of a binding path: a property name, and the index to read from it if the path named one.
+    /// </summary>
+    /// <param name="Name">the property</param>
+    /// <param name="Index">what to read out of it, or null to take the property itself</param>
+    private record PathStep(string Name, string? Index);
+
+    /// <summary>
+    /// Split a binding path into its steps, respecting brackets.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Lair.Capacity" is two steps and "Assignments[0].LairID" is two as well, the first of them indexed. The
+    /// period inside brackets is not a separator, so a dictionary key may hold one: "Tallies[a.b]" is one step
+    /// keyed by "a.b" rather than two steps and a broken key.
+    /// </para>
+    /// <para>
+    /// A path is code, not caller input, so what is refused here is a mistake in the calling program rather than
+    /// something a stranger typed.
+    /// </para>
+    /// </remarks>
+    /// <param name="propertyPath"></param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the brackets do not close, or a step has no name</exception>
+    private static List<PathStep> PathSteps(string propertyPath)
+    {
+        List<PathStep> steps = new();
+
+        var name = new System.Text.StringBuilder();
+        string? index = null;
+
+        void Finish()
+        {
+            if (name.Length == 0) { throw new WeequeryException($"Property path '{propertyPath}' has a step with no property name"); }
+
+            steps.Add(new(name.ToString(), index));
+            name.Clear();
+            index = null;
+        }
+
+        for (var i = 0; i < propertyPath.Length; i++)
+        {
+            var ch = propertyPath[i];
+
+            if (ch == '[')
+            {
+                var close = propertyPath.IndexOf(']', i);
+                if (close < 0) { throw new WeequeryException($"Property path '{propertyPath}' has a '[' that is never closed"); }
+
+                if (index is not null) { throw new WeequeryException($"Property path '{propertyPath}' indexes one step twice"); }
+
+                index = propertyPath[(i + 1)..close];
+                if (index.Length == 0) { throw new WeequeryException($"Property path '{propertyPath}' has an empty index"); }
+
+                i = close;
+                continue;
+            }
+
+            if (ch == '.') { Finish(); continue; }
+
+            if (index is not null) { throw new WeequeryException($"Property path '{propertyPath}' has text after an index"); }
+
+            name.Append(ch);
+        }
+
+        Finish();
+
+        return steps;
+    }
 
     private static bool IsNullable(Type type)
     {
@@ -287,13 +556,15 @@ internal class Binding<TClass> : IBinding
 
         // Build member expression from the provided path
         Expression exp = parameter;
+        Type expType = typeof(TClass);
         List<Expression> linkChecks = new();
-        foreach (var segment in propertyPath.Split('.'))
+
+        foreach (var step in PathSteps(propertyPath))
         {
             // A Nullable<T> exposes only its own HasValue and Value, so reaching a member of T means stepping
             // through .Value first: "BirthDate.Year" has to be built as "BirthDate.Value.Year". An explicitly
             // written .Value or .HasValue is left alone, since those are members of the Nullable itself.
-            if (IsNullable(exp.Type) && (!HasMember(exp.Type, segment)))
+            if (IsNullable(exp.Type) && (!HasMember(exp.Type, step.Name)))
             {
                 linkChecks.Add(Expression.Property(exp, "HasValue")); // guard the unwrap that follows
                 exp = Expression.Property(exp, "Value");
@@ -305,33 +576,117 @@ internal class Binding<TClass> : IBinding
 
             try
             {
-                exp = StepInto(exp, segment);
+                exp = StepInto(exp, step.Name);
+                expType = exp.Type;
             }
             catch (ArgumentException ex)
             {
-                throw new WeequeryException($"Could not resolve '{segment}' of property path '{propertyPath}' on {exp.Type.Name}", ex);
+                throw new WeequeryException($"Could not resolve '{step.Name}' of property path '{propertyPath}' on {exp.Type.Name}", ex);
+            }
+
+            // An index in the path reads one element and carries on from it. The element behaves as a nullable,
+            // exactly as one named by a condition does: the checks go on the same list every other link uses, so
+            // a path that indexes past the end is a path with no value rather than one that throws.
+            if (step.Index is not null)
+            {
+                var indexed = IndexInto(exp, exp.Type, step.Index, $"{step.Name}", linkChecks);
+
+                exp = indexed.Access;
+                expType = indexed.ElementType;
             }
         }
-        var lamb = Expression.Lambda(exp, parameter);
 
-        if (!(lamb.Body is MemberExpression memberExpression)) { throw new WeequeryException($"Could not extract MemberExpression for property '{propertyPath}'"); }
+        // A MemberExpression for an ordinary path, and an index access for one that ends in brackets. Both are
+        // read the same way from here; only the type has to be taken from the right place.
+        var memberType = (exp is MemberExpression member) ? GetMemberType(member) : expType;
 
-        // Since we built this expression from a path string, we should never encounter this, but retaining it for background since the entire Expression area is a very dark corner
-        // The body of the lambda could be a MemberExpression directly (e.g., x => x.Property) or a UnaryExpression if it involves a cast (e.g., x => (object)x.Property)
-        // if ((lamb.Body is UnaryExpression unaryExpression) && (unaryExpression.Operand is MemberExpression operandMemberExpression))
-        // { member = operandMemberExpression; }
+        return new(exp, memberType, linkChecks);
+    }
 
-        var memberType = GetMemberType(memberExpression);
+    /// <summary>
+    /// An index the compiler wrote into the selector, and what it was taken from.
+    /// </summary>
+    /// <remarks>
+    /// Three shapes reach here, because C# does not settle on one. A list or a dictionary indexes through a call
+    /// to the indexer's getter, <c>get_Item</c>; an array is its own <see cref="ExpressionType.ArrayIndex"/> node;
+    /// and an <see cref="IndexExpression"/> turns up where a tree was built by hand rather than compiled. All
+    /// three mean the element, so all three are read.
+    /// <para>
+    /// The index has to be a constant. <c>x.Slots[i]</c> over a variable would bind whatever i happened to be
+    /// when the binding was made, which reads like it follows the variable and does not, so it is refused.
+    /// </para>
+    /// </remarks>
+    /// <param name="node"></param>
+    /// <returns>what was indexed and the index as text, or null where this is not an index</returns>
+    private static (Expression Source, string Index)? IndexOf(Expression? node)
+    {
+        if (node is MethodCallExpression call
+            && (call.Object is not null)
+            && (call.Arguments.Count == 1)
+            && call.Method.Name.Equals("get_Item", StringComparison.Ordinal))
+        {
+            return (call.Object, ConstantIndex(call.Arguments[0], node));
+        }
 
-        return new(memberExpression, memberType, linkChecks);
+        if ((node is BinaryExpression binary) && (binary.NodeType == ExpressionType.ArrayIndex))
+        {
+            return (binary.Left, ConstantIndex(binary.Right, node));
+        }
+
+        if (node is IndexExpression indexed && (indexed.Object is not null) && (indexed.Arguments.Count == 1))
+        {
+            return (indexed.Object, ConstantIndex(indexed.Arguments[0], node));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The index as the text a path carries, which it can only be if the selector wrote a constant
+    /// </summary>
+    /// <summary>
+    /// A path from the part a selector could reach and the segments named after it.
+    /// </summary>
+    /// <remarks>
+    /// Periods between the segments, except before one that opens with a bracket: an index belongs to the segment
+    /// in front of it, so <c>["Slots", "[0]", "Weight"]</c> is "Slots[0].Weight" rather than "Slots.[0].Weight",
+    /// which is a step with no property name. Writing the index onto the segment itself, <c>["Slots[0]"]</c>,
+    /// works the same way and always did.
+    /// </remarks>
+    /// <param name="head">the path the selector reached</param>
+    /// <param name="segments">the rest, in order</param>
+    /// <returns></returns>
+    private static string JoinSegments(string head, string[] segments)
+    {
+        var path = new System.Text.StringBuilder(head);
+
+        foreach (var segment in segments)
+        {
+            if (!segment.StartsWith('[')) { path.Append('.'); }
+
+            path.Append(segment);
+        }
+
+        return path.ToString();
+    }
+
+    private static string ConstantIndex(Expression argument, Expression node)
+    {
+        if (Unwrap(argument) is not ConstantExpression constant)
+        {
+            throw new WeequeryException($"'{node}' indexes by something other than a constant, and a binding is made once rather than per row; write the index out, or bind the collection and let the condition name the index");
+        }
+
+        return ValueFormat.ToInvariantString(constant.Value);
     }
 
     /// <summary>
     /// The path a selector points at, in the dotted form the rest of this class works in, so that
-    /// <c>(x) =&gt; x.Lair.Capacity</c> gives "Lair.Capacity".
+    /// <c>(x) =&gt; x.Lair.Capacity</c> gives "Lair.Capacity" and <c>(x) =&gt; x.Slots[0].Weight</c> gives
+    /// "Slots[0].Weight".
     /// <para>
-    /// Read off the member chain rather than out of the lambda's text. 
-    /// The text is close enough to be tempting asthe path is in there but it is a debugging aid with no contract behind it, 
+    /// Read off the member chain rather than out of the lambda's text.
+    /// The text is close enough to be tempting asthe path is in there but it is a debugging aid with no contract behind it,
     /// and it carries whatever else the compiler put in the tree: a selector whose property type is not TProperty exactly is wrapped in a
     /// conversion, so <c>(x) =&gt; x.Pay</c> and <c>(x) =&gt; (object)x.Pay</c> print differently while meaning the
     /// same path. Stepping over the wrappers is easier than recognising them in a string.
@@ -346,10 +701,36 @@ internal class Binding<TClass> : IBinding
         List<string> segments = new();
 
         var node = Unwrap(selector.Body);
-        while (node is MemberExpression member)
+
+        // Walked from the property back to the parameter, so the segments come out reversed and an index attaches
+        // to the segment it was read from, which is the one added next
+        string? pendingIndex = null;
+
+        for (; ; )
         {
-            segments.Add(member.Member.Name);
-            node = Unwrap(member.Expression);
+            if (node is MemberExpression member)
+            {
+                segments.Add((pendingIndex is null) ? member.Member.Name : $"{member.Member.Name}[{pendingIndex}]");
+                pendingIndex = null;
+                node = Unwrap(member.Expression);
+
+                continue;
+            }
+
+            // An index the compiler wrote: "x.Slots[0]" is a call to the indexer, "x.Scores[0]" on an array is its
+            // own node, and both mean the element rather than the collection. Held until the property it belongs
+            // to comes round, since the walk arrives at the index first.
+            if (IndexOf(node) is (Expression source, string index))
+            {
+                if (pendingIndex is not null) { throw new WeequeryException($"Could not extract a property path from selector '{selector}': it indexes twice in one step"); }
+
+                pendingIndex = index;
+                node = Unwrap(source);
+
+                continue;
+            }
+
+            break;
         }
 
         // The chain has to arrive at the selector's own parameter. Anything else reaches a value from somewhere
@@ -431,7 +812,7 @@ internal class Binding<TClass> : IBinding
 
         foreach (var segment in segments) { WeequeryException.ThrowIfNullOrEmpty(segment); }
 
-        var binding = FromPath(parameter, string.Join(".", [GetPropertyPath(selector), .. segments]));
+        var binding = FromPath(parameter, JoinSegments(GetPropertyPath(selector), segments));
 
         // The last segment, matching what the segments constructor of a BindingRequest does. The whole path would
         // be a legal key now that a period is one, but this overload has always keyed by the last segment and
@@ -451,8 +832,9 @@ internal class Binding<TClass> : IBinding
     {
         if (bindings is not null)
         {
-            // Covers the derived key as well as an explicit one. Named "key" rather than by the variable it
-            // arrived in, since that is what the caller passed or left out.
+            // Covers the derived key as well as an explicit one, including the one an indexed path would derive,
+            // which is refused by name. Called "key" rather than by the variable it arrived in, since that is
+            // what the caller passed or left out.
             WeequeryException.ThrowIfNotBindingKey(useKey, "key");
             // Keys are matched without regard to case, so two that differ only in case are the same key
             if (bindings.ContainsKey(useKey)) { throw new WeequeryException($"Binding already exists for '{useKey}'"); } // could check if values differ, but that seems failure prone

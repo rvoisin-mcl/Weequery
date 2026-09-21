@@ -20,6 +20,18 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
     public string Field { get; set; } = "";
 
     /// <summary>
+    /// Which element of the bound collection this tests, or null for the binding as it stands, see
+    /// <see cref="IBound.Index"/>.
+    /// </summary>
+    /// <remarks>
+    /// Left out of the JSON where there is none, which is nearly every condition ever sent. So a payload written
+    /// before indexing existed is byte for byte the payload it always was, and one written now is only longer
+    /// where it is saying something.
+    /// </remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Index { get; set; }
+
+    /// <summary>
     /// The operands to test against, in order. Empty for a conjunction, a negation, or an operator that takes no
     /// value.
     /// </summary>
@@ -86,6 +98,7 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
 
         Operator = condition.Operator;
         Field = condition.Field;
+        Index = condition.Index;
         Values = [.. condition.StringifyOperands()]; // copy, don't keep
     }
 
@@ -196,6 +209,14 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
                 WeequeryException.ThrowIfNull(Conditions.FirstOrDefault());
                 return new NotCondition(Operator, Conditions.First().Unpack(ConditionNesting.Descend(depth)));
 
+            case Operator.Any:
+            case Operator.All:
+            case Operator.None:
+                WeequeryException.ThrowIfNull(Conditions);
+                WeequeryException.ThrowIfNull(Conditions.FirstOrDefault());
+                // Field and one child, which is the shape a quantifier already fitted
+                return new QuantifiedCondition(Operator, Field, Conditions.First().Unpack(ConditionNesting.Descend(depth)));
+
             default:
                 return UnpackComparison();
         }
@@ -218,6 +239,6 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
         // Each operand already says whether it is a value or the key of a property, so there is nothing to work
         // out here: the condition this builds compares against whatever the sender said it was comparing against.
         // A missing operand is refused by the condition itself, naming which of them it was.
-        return ConditionFunctions.BuildComparison(Operator, Field, Values);
+        return ConditionFunctions.BuildComparison(Operator, Field, Values, Index);
     }
 }

@@ -1,4 +1,4 @@
-﻿- Dictionary binding
-	- would not be compatible with EF (presumably)
-	- provide path as '<propertyName>[key]', type would be Nullable<Dictionary.GenericType>
-	- Functionality would be basically identical to an accessor property for the given key
+﻿- Indexed bindings against a EF provider
+	- Primitive collections translate on SQLite, PostgreSQL and SQL Server; a Dictionary maps on none of them
+	- A navigation collection can effectively be a subquery with no ORDER BY, so [0] is arbitrary, if the collection does not have implicit ordering
+	- Worth revisiting if EF gains an ordered form, or refusing the navigation case up front

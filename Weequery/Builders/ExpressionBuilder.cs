@@ -142,9 +142,9 @@ internal static class ExpressionBuilder
     /// a field is unbound, an operator does not apply to the property it names, or the tree nests deeper than
     /// <see cref="ConditionNesting.MaxDepth"/>
     /// </exception>
-    internal static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition)
+    internal static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition, Dictionary<string, ICollectionBinding<TClass>>? collections = null)
     {
-        return BuildExpression(bindings, condition, 0);
+        return BuildExpression(bindings, condition, 0, collections);
     }
 
     /// <summary>
@@ -155,13 +155,27 @@ internal static class ExpressionBuilder
     /// <param name="bindings"></param>
     /// <param name="condition"></param>
     /// <param name="depth">levels of nesting already stepped into on the way here</param>
-    private static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition, int depth)
+    private static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition, int depth, Dictionary<string, ICollectionBinding<TClass>>? collections = null)
     {
         WeequeryException.ThrowIfNull(condition);
 
         if (condition is PackedCondition packedCondition)
         {
-            return BuildExpression(bindings, packedCondition.Unpack(), depth);
+            return BuildExpression(bindings, packedCondition.Unpack(), depth, collections);
+        }
+
+        // Bound and a container at once, and the only condition that is: it names a collection and holds a test
+        // for one of its elements. Resolved against the collections rather than the properties, since a
+        // collection is not something the other operators can be asked about.
+        if (condition is QuantifiedCondition quantified)
+        {
+            if ((collections is null) || (!collections.TryGetValue(quantified.Field, out var collection)))
+            {
+                throw new WeequeryException($"Unbound collection: '{quantified.Field}'. A quantifier needs a collection bound with BindCollection, which is also where what may be asked about an element is declared");
+            }
+
+            // Total, so it needs no guard from here: see the remarks on CollectionBinding.Quantify
+            return collection.Quantify(quantified.Operator, quantified.Condition);
         }
 
         if (condition is IBound binding)
@@ -170,6 +184,11 @@ internal static class ExpressionBuilder
             {
                 throw new WeequeryException($"Unbound field: '{binding.Field}'");
             }
+
+            // An index turns the binding for the collection into one for the element, which is nullable whatever
+            // the element type is: an index nothing sits at is an absent value rather than an error, see
+            // Binding.Indexed. Everything below this point is handed an ordinary nullable binding.
+            if (binding.Index is not null) { boundProperty = boundProperty.Indexed(binding.Index); }
 
             if (condition is IBoundCondition valueCondition)
             {
@@ -225,7 +244,7 @@ internal static class ExpressionBuilder
             var nested = ConditionNesting.Descend(depth);
 
             // Materialize, otherwise Count()/First()/the aggregate below each rebuild every subtree from scratch
-            var expressions = (from component in compositionCondition.Conditions select BuildExpression(bindings, component, nested)).ToList();
+            var expressions = (from component in compositionCondition.Conditions select BuildExpression(bindings, component, nested, collections)).ToList();
             switch (expressions.Count)
             {
                 case 0:
@@ -260,7 +279,7 @@ internal static class ExpressionBuilder
             if (notCondition.Conditions.Count == 0) { throw new WeequeryException($"{nameof(INotCondition)} has no condition to negate"); }
 
             // Negate the *body* and carry the operand's parameter through, Expression.Not cannot be applied to the lambda itself
-            var operand = BuildExpression(bindings, notCondition.Conditions.First(), ConditionNesting.Descend(depth));
+            var operand = BuildExpression(bindings, notCondition.Conditions.First(), ConditionNesting.Descend(depth), collections);
             return Expression.Lambda<Func<TClass, bool>>(Expression.Not(operand.Body), operand.Parameters);
         }
 

@@ -28,13 +28,14 @@ public class TwoValueCondition<T> : BoundCondition, ITwoValueCondition<T>
     /// </summary>
     /// <param name="op"><see cref="Operator.IsBetween"/> or <see cref="Operator.IsNotBetween"/></param>
     /// <param name="field">the binding key to test</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <param name="value1">the low end, inclusive</param>
     /// <param name="value2">the high end, inclusive</param>
     /// <exception cref="WeequeryException">
     /// the field is missing, a value is missing, or the operator takes some other number of values
     /// </exception>
-    public TwoValueCondition(Operator op, string field, T value1, T value2)
-        : this(op, field, ConditionValue.Raw(value1), ConditionValue.Raw(value2))
+    public TwoValueCondition(Operator op, string field, T value1, T value2, string? index = null)
+        : this(op, field, ConditionValue.Raw(value1), ConditionValue.Raw(value2), index)
     {
     }
 
@@ -43,14 +44,15 @@ public class TwoValueCondition<T> : BoundCondition, ITwoValueCondition<T>
     /// </summary>
     /// <param name="op"><see cref="Operator.IsBetween"/> or <see cref="Operator.IsNotBetween"/></param>
     /// <param name="field">the binding key on the left of the comparison</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <param name="value1">the low end, inclusive</param>
     /// <param name="value2">the high end, inclusive</param>
     /// <exception cref="WeequeryException">
     /// the field is missing, a value is missing, a named property is not readable as a name or is not carried as
     /// text, or the operator takes some other number of values
     /// </exception>
-    public TwoValueCondition(Operator op, string field, ConditionValue<T> value1, ConditionValue<T> value2)
-        : base(op, field, ConditionShape.TwoValue)
+    public TwoValueCondition(Operator op, string field, ConditionValue<T> value1, ConditionValue<T> value2, string? index = null)
+        : base(op, field, ConditionShape.TwoValue, index)
     {
         Value1 = Validate(op, field, value1, 0, 2);
         Value2 = Validate(op, field, value2, 1, 2);

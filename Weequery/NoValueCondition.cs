@@ -17,9 +17,10 @@ public class NoValueCondition : BoundCondition, INoValueCondition
     /// </summary>
     /// <param name="op"><see cref="Operator.IsNull"/> or <see cref="Operator.IsNotNull"/></param>
     /// <param name="field">the binding key to test</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <exception cref="WeequeryException">the field is missing, or the operator takes a value</exception>
-    public NoValueCondition(Operator op, string field)
-        : base(op, field, ConditionShape.NoValue)
+    public NoValueCondition(Operator op, string field, string? index = null)
+        : base(op, field, ConditionShape.NoValue, index)
     {
     }
 

@@ -131,6 +131,15 @@ public class WeequeryException : Exception
     {
         if (argument is null) { return; }
 
+        // Said properly rather than left to the general rule below, which would report the brackets as stray
+        // punctuation. A key holding them could not be told from a field with an index after it: "Labels[0]" as a
+        // key and "Labels[0]" as element zero of Labels are the same text and different questions, and the parser
+        // has to pick one. So an element of a collection is given a name, which is one the caller sees anyway.
+        if (argument.Contains('['))
+        {
+            throw new WeequeryException($"'{argument}' cannot be a key, since brackets after a name are how a condition asks for one element of a collection. Give the binding a key of its own, as BindProperty(x => x.Labels[0], \"FirstLabel\")");
+        }
+
         if (!IsQualifiedSqlName(argument))
         {
             throw new WeequeryException($"{paramName} must be one or more valid unquoted SQL names separated by periods, each a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");

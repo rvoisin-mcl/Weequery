@@ -155,7 +155,7 @@ internal static class QueryWriter
         var quoteValues = HoldsText(condition);
         var operands = from operand in condition.StringifyOperands() select Operand(operand, quoteValues);
 
-        var field = Field(condition.Field);
+        var field = $"{Field(condition.Field)}{IndexText(condition.Index)}";
         var op = ConditionFunctions.GetOperationString(condition.Operator, style);
 
         switch (ConditionFunctions.GetShapeForOperation(condition.Operator))
@@ -192,7 +192,34 @@ internal static class QueryWriter
     /// </summary>
     internal static string Field(string field)
     {
+        // A field that carries its own index, which is how an operand and a sort hold one, is written as the two
+        // bracket pairs the parser reads back rather than quoted whole: "[Tallies][apples]", not "'Tallies[apples]'"
+        if (field.Contains('['))
+        {
+            var (key, index) = BindingLookup.SplitIndex(field);
+
+            return $"{Field(key)}{IndexText(index)}";
+        }
+
         return QueryTokenizer.IsBareWord(field) ? $"[{field}]" : ValueFormat.Quote(field);
+    }
+
+    /// <summary>
+    /// The brackets that say which element of a collection is being tested, written after the field:
+    /// <c>[Tallies][apples]</c>. Empty where the condition names no index.
+    /// </summary>
+    /// <remarks>
+    /// The index is quoted on the same rule a value is, so a dictionary key with a space or a delimiter in it
+    /// survives the trip and a number stays readable. Read back by
+    /// <see cref="QueryParser"/>, where a bracket straight after a field can only be this.
+    /// </remarks>
+    /// <param name="index"></param>
+    /// <returns></returns>
+    private static string IndexText(string? index)
+    {
+        if (index is null) { return string.Empty; }
+
+        return $"[{(QueryTokenizer.IsBareWord(index) ? index : ValueFormat.Quote(index))}]";
     }
 
     /// <summary>
@@ -204,7 +231,10 @@ internal static class QueryWriter
     /// <returns></returns>
     private static string Operand(ConditionValue<string> operand, bool quote)
     {
-        return operand.NamesProperty ? $"[{operand.Value}]" : Literal(operand.Value, quote);
+        // Written the way a field is, which is the same "[Key]" for an ordinary key and the same "[Key][index]"
+        // for one carrying an index. Writing the index inside the key's brackets, "[Tallies[apples]]", is the
+        // shape that does not read back.
+        return operand.NamesProperty ? Field(operand.Value) : Literal(operand.Value, quote);
     }
 
     /// <summary>

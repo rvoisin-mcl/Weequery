@@ -23,12 +23,13 @@ public class OneValueCondition<T> : BoundCondition, IOneValueCondition<T>
     /// </summary>
     /// <param name="op">one of the operators that take a single value</param>
     /// <param name="field">the binding key to test</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <param name="value"></param>
     /// <exception cref="WeequeryException">
     /// the field is missing, the value is missing, or the operator takes some other number of values
     /// </exception>
-    public OneValueCondition(Operator op, string field, T value)
-        : this(op, field, ConditionValue.Raw(value))
+    public OneValueCondition(Operator op, string field, T value, string? index = null)
+        : this(op, field, ConditionValue.Raw(value), index)
     {
     }
 
@@ -37,13 +38,14 @@ public class OneValueCondition<T> : BoundCondition, IOneValueCondition<T>
     /// </summary>
     /// <param name="op">one of the operators that take a single value</param>
     /// <param name="field">the binding key on the left of the comparison</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <param name="value"></param>
     /// <exception cref="WeequeryException">
     /// the field is missing, the value is missing, a named property is not readable as a name or is not carried as
     /// text, or the operator takes some other number of values
     /// </exception>
-    public OneValueCondition(Operator op, string field, ConditionValue<T> value)
-        : base(op, field, ConditionShape.OneValue)
+    public OneValueCondition(Operator op, string field, ConditionValue<T> value, string? index = null)
+        : base(op, field, ConditionShape.OneValue, index)
     {
         Value = Validate(op, field, value, 0, 1);
     }

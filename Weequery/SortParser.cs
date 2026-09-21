@@ -181,6 +181,16 @@ internal sealed class SortParser
     /// </summary>
     private string ParseField()
     {
+        var field = ParseName();
+        var index = ParseIndex(field);
+
+        // Kept in the field's own text, a Sort having nowhere else to put it, and taken apart again by
+        // BindingLookup.SplitIndex when the binding is looked up
+        return (index is null) ? field : $"{field}[{index}]";
+    }
+
+    private string ParseName()
+    {
         if (Match(QueryTokenKind.BracketOpen))
         {
             var bracketed = Take(QueryTokenKind.Word, "a field name");
@@ -192,6 +202,34 @@ internal sealed class SortParser
         if (Check(QueryTokenKind.Text)) { return Tokens[Index++].Text; }
 
         return Take(QueryTokenKind.Word, "a field name").Text;
+    }
+
+    /// <summary>
+    /// The index a sort field is taken at, where the brackets after it say so: "Tallies[apples] DESC".
+    /// </summary>
+    /// <remarks>
+    /// Unambiguous here. A field has just been read, and what may follow it is a direction, a comma or the end,
+    /// none of which opens a bracket.
+    /// </remarks>
+    /// <param name="field"></param>
+    /// <returns>the index as text, or null where the field carries none</returns>
+    private string? ParseIndex(string field)
+    {
+        if (!Check(QueryTokenKind.BracketOpen)) { return null; }
+
+        var open = Current.Position;
+        Index++;
+
+        if (!(Check(QueryTokenKind.Word) || Check(QueryTokenKind.Text)))
+        {
+            throw new WeequeryException(Describe($"Expected an index for field '{field}'", open));
+        }
+
+        var index = Tokens[Index++].Text;
+
+        Take(QueryTokenKind.BracketClose, "']'");
+
+        return index;
     }
 
     private static bool IsWord(QueryToken token, string text)

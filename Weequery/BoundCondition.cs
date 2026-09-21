@@ -25,15 +25,25 @@ public abstract class BoundCondition : IBoundCondition
     public string Field { get; init; }
 
     /// <summary>
+    /// Which element of the bound collection this tests, or null for the binding as it stands. See
+    /// <see cref="IBound.Index"/>, and note that an element that is not there behaves as a null.
+    /// </summary>
+    public string? Index { get; init; }
+
+    /// <summary>
     /// ctor
     /// </summary>
     /// <param name="op">must be one of the operators the derived type's shape covers</param>
     /// <param name="field"></param>
     /// <param name="shape">what the derived type holds, which decides the operators it can carry</param>
+    /// <param name="index">
+    /// [OPT] which element of the collection to test, as text. Null tests the binding itself
+    /// </param>
     /// <exception cref="WeequeryException">the field is missing, or the operator is not of that shape</exception>
-    protected BoundCondition(Operator op, string field, ConditionShape shape)
+    protected BoundCondition(Operator op, string field, ConditionShape shape, string? index = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(field);
+        WeequeryException.ThrowIfNotNullButEmpty(index);
 
         // Named before the operands are looked at, so the answer is about the operator rather than about a count
         // that could never have been right for it
@@ -44,6 +54,7 @@ public abstract class BoundCondition : IBoundCondition
 
         Operator = op;
         Field = field;
+        Index = index;
     }
 
     /// <summary>
@@ -106,7 +117,12 @@ public abstract class BoundCondition : IBoundCondition
             throw new WeequeryException($"Value {index + 1} of {count} for Operator '{op}' on field '{field}' names a bound property, so cannot be represented by {typeof(T).Name}");
         }
 
-        if (!QueryTokenizer.IsBareWord(key))
+        // An operand may carry an index along with the key, "Tallies[apples]", which is the one thing here that
+        // is written with characters the tokenizer treats as delimiters. The writer emits the two bracket pairs
+        // the parser reads back, so what has to be a bare word is the key; the index is quoted if it needs to be.
+        var (name, _) = BindingLookup.SplitIndex(key);
+
+        if (!QueryTokenizer.IsBareWord(name))
         {
             throw new WeequeryException($"'{key}' is not a legal binding name");
         }

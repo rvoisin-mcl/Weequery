@@ -196,4 +196,40 @@ public enum Operator
     /// </para>
     /// </summary>
     DoesNotMatch,
+
+    /// <summary>
+    /// At least one element of a bound collection satisfies the condition inside it.
+    /// <para>
+    /// The quantifiers are the one family that takes a condition rather than values, so they carry a whole test
+    /// scoped to the element: "Assignments Any (LairID = 5 AND IsPrimary = true)" asks for one assignment that is
+    /// both, which is a different question from two separate tests over the collection. What may be asked about
+    /// inside is its own allow-list, see <see cref="Inquiry{T}.BindCollection"/>.
+    /// </para>
+    /// <para>
+    /// <b>Total rather than nullable.</b> Unlike every operator above, there is no unknown here: either some
+    /// element matches or none does. A collection that is empty, or missing altogether, simply has no element
+    /// that matches, so Any is false for it. That means the three quantifiers partition nothing and need no null
+    /// guard of their own, and a caller does not have to think about a row whose collection was never loaded.
+    /// </para>
+    /// </summary>
+    Any,
+
+    /// <summary>
+    /// Every element of a bound collection satisfies the condition inside it.
+    /// <para>
+    /// True of an empty or missing collection, which is what "every one of none" means and what both LINQ and SQL
+    /// answer. Worth knowing before you use it as a filter: "All (IsActive = true)" keeps the rows with no
+    /// assignments at all. Pair it with <see cref="Any"/> where you meant "has some, and they are all active".
+    /// </para>
+    /// </summary>
+    All,
+
+    /// <summary>
+    /// No element of a bound collection satisfies the condition inside it, so the negation of <see cref="Any"/>.
+    /// <para>
+    /// Spelled as its own operator rather than left to <see cref="Not"/> because it reads better and because it
+    /// puts the answer for an empty collection where you can see it: nothing matches, so None is true.
+    /// </para>
+    /// </summary>
+    None,
 }

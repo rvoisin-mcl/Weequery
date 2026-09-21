@@ -12,7 +12,7 @@ internal interface IBinding
     /// <summary>
     /// Expression to get the property value, given an instance of TClass
     /// </summary>
-    public MemberExpression Accessor { get; }
+    public Expression Accessor { get; }
 
     /// <summary>
     /// Type returned by Accessor

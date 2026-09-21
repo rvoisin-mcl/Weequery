@@ -131,10 +131,7 @@ internal static class FieldComparison
             return new Operand<TClass> { Value = parsed, Expression = QueryValue.OfType(left.UnwrappedPropertyType, parsed) };
         }
 
-        if (!bindings.TryGetValue(value.Value, out var property))
-        {
-            throw new WeequeryException($"Unbound field: '{value.Value}'");
-        }
+        var property = BindingLookup.Resolve(bindings, value.Value);
 
         // The expression api compares like with like, and promoting one side to the other would mean deciding
         // which widens to which for every pair of types, including the pairs C# itself refuses. Same type only.

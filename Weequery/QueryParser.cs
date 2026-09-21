@@ -273,6 +273,7 @@ internal sealed class QueryParser
     private ICondition ParseComparison()
     {
         string field = ParseField();
+        string? index = ParseIndex(field);
         Operator op = ParseOperator(field);
         var required = ConditionFunctions.GetNumberOfValuesRequiredForOperation(op);
 
@@ -283,7 +284,7 @@ internal sealed class QueryParser
             && string.Equals(Current.Text, "null", StringComparison.OrdinalIgnoreCase))
         {
             Index++;
-            return new NoValueCondition((op == Operator.Equals) ? Operator.IsNull : Operator.IsNotNull, field);
+            return new NoValueCondition((op == Operator.Equals) ? Operator.IsNull : Operator.IsNotNull, field, index);
         }
 
         // Brackets among the operands make an operand a comparison against another bound property rather than
@@ -292,7 +293,7 @@ internal sealed class QueryParser
         // comparison types it becomes, see ConditionShape.
         var operands = ParseOperands(field, op, required);
 
-        return ConditionFunctions.BuildComparison(op, field, operands);
+        return ConditionFunctions.BuildComparison(op, field, operands, index);
     }
 
     /// <summary>
@@ -316,6 +317,35 @@ internal sealed class QueryParser
         if (Check(QueryTokenKind.Text)) { return Tokens[Index++].Text; }
 
         return Take(QueryTokenKind.Word, "a field name").Text;
+    }
+
+    /// <summary>
+    /// The index a field is tested at, where the brackets after it say so: "Tallies[apples]", "[Items][0]".
+    /// </summary>
+    /// <remarks>
+    /// Unambiguous in this position. A field has just been read, and the only thing that may follow it is an
+    /// operator, so a bracket here can only open an index; the bracketed form that names a bound property is read
+    /// where a value is expected, which is the other side of the operator.
+    /// </remarks>
+    /// <returns>the index as text, or null where the field carries none</returns>
+    private string? ParseIndex(string field)
+    {
+        if (!Check(QueryTokenKind.BracketOpen)) { return null; }
+
+        var open = Current.Position;
+        Index++;
+
+        // Quoted where the key needs it, bare where it does not, exactly as a value is written
+        if (!(Check(QueryTokenKind.Word) || Check(QueryTokenKind.Text)))
+        {
+            throw new WeequeryException(Describe($"Expected an index for field '{field}'", open));
+        }
+
+        var index = Tokens[Index++].Text;
+
+        Take(QueryTokenKind.BracketClose, "']'");
+
+        return index;
     }
 
     /// <summary>
@@ -533,7 +563,12 @@ internal sealed class QueryParser
 
         Take(QueryTokenKind.BracketClose, "']'");
 
-        return name;
+        // A second pair of brackets indexes the property being compared against: "Pay > [Tallies][apples]". Kept
+        // in the operand's own text, an operand having nowhere else to put it, and taken apart again by
+        // BindingLookup.SplitIndex when the binding is looked up.
+        var index = ParseIndex(name);
+
+        return (index is null) ? name : $"{name}[{index}]";
     }
 
     /// <summary>

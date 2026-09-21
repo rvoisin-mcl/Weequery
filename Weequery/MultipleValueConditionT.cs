@@ -23,13 +23,14 @@ public class MultipleValueCondition<T> : BoundCondition, IMultipleValueCondition
     /// </summary>
     /// <param name="op"><see cref="Operator.IsIn"/> or <see cref="Operator.IsNotIn"/></param>
     /// <param name="field">the binding key to test</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <param name="values">copied, so the condition is not changed by later changes to the list passed in</param>
     /// <exception cref="WeequeryException">
     /// the field is missing, a value is missing, the operator takes some other number of values, or there are more
     /// than <see cref="ConditionFunctions.MaxValuesInList"/> of them
     /// </exception>
-    public MultipleValueCondition(Operator op, string field, List<T> values)
-        : this(op, field, Sourced(values))
+    public MultipleValueCondition(Operator op, string field, List<T> values, string? index = null)
+        : this(op, field, Sourced(values), index)
     {
     }
 
@@ -38,22 +39,23 @@ public class MultipleValueCondition<T> : BoundCondition, IMultipleValueCondition
     /// </summary>
     /// <param name="op"><see cref="Operator.IsIn"/> or <see cref="Operator.IsNotIn"/></param>
     /// <param name="field">the binding key on the left of the comparison</param>
+    /// <param name="index">[OPT] which element of the collection to test, see <see cref="IBound.Index"/></param>
     /// <param name="values">copied, so the condition is not changed by later changes to the list passed in</param>
     /// <exception cref="WeequeryException">
     /// the field is missing, a value is missing, a named property is not readable as a name or is not carried as
     /// text, the operator takes some other number of values, or there are more than
     /// <see cref="ConditionFunctions.MaxValuesInList"/> of them
     /// </exception>
-    public MultipleValueCondition(Operator op, string field, List<ConditionValue<T>> values)
-        : base(op, field, ConditionShape.MultipleValue)
+    public MultipleValueCondition(Operator op, string field, List<ConditionValue<T>> values, string? index = null)
+        : base(op, field, ConditionShape.MultipleValue, index)
     {
         WeequeryException.ThrowIfNull(values);
 
         List<ConditionValue<T>> useValues = [.. values]; // copy, don't keep
 
-        for (var index = 0; index < useValues.Count; index++)
+        for (var position = 0; position < useValues.Count; position++)
         {
-            Validate(op, field, useValues[index], index, useValues.Count);
+            Validate(op, field, useValues[position], position, useValues.Count);
         }
 
         ConditionFunctions.ValidateValueCount(op, field, useValues.Count);

@@ -39,6 +39,16 @@ public class Inquiry<T> where T : class
     private static readonly ParameterExpression SharedBindingParameter = Expression.Parameter(typeof(T));
 
     private Dictionary<string, Binding<T>> Bindings { get; init; } = BindingLookup.Create<T>();
+
+    /// <summary>
+    /// The bound collections, kept apart from the properties because they answer a different kind of question.
+    /// <para>
+    /// A collection is not something the comparison operators can be asked, and a property is not something a
+    /// quantifier can be asked, so one lookup would only mean each of them refusing half its entries. Keyed the
+    /// same way, so a collection and a property still cannot share a name, see <see cref="BindCollection"/>.
+    /// </para>
+    /// </summary>
+    private Dictionary<string, ICollectionBinding<T>> Collections { get; init; } = new(BindingLookup.KeyComparer);
     private List<ICondition> Conditions { get; init; } = new();
     private List<Sort> Sorts { get; init; } = new();
     private int PageSize { get; set; } = -1;
@@ -116,6 +126,89 @@ public class Inquiry<T> where T : class
     public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null)
     {
         Binding<T>.Create(SharedBindingParameter, selector, segments, Bindings, key);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Bind a collection, and declare what may be asked about one of its elements, so a caller can ask whether
+    /// <see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/> of them match.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <code>
+    /// .BindCollection(minion =&gt; minion.Assignments, "Assignments", inner =&gt; inner
+    ///     .BindProperty(assignment =&gt; assignment.LairID)
+    ///     .BindProperty(assignment =&gt; assignment.Lair.Name, "LairName"))
+    ///
+    /// .ApplyCondition("Assignments Any (LairID = 5 AND LairName StartsWith 'V')")
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>The inside is its own allow-list.</b> Binding the collection exposes nothing within it; what a caller
+    /// may name inside the brackets is what the inner configuration bound, and nothing else. That is the same
+    /// rule the outer bindings follow, applied one level down, and it is why this takes a configuration rather
+    /// than reaching into the element type on its own.
+    /// </para>
+    /// <para>
+    /// The condition inside is scoped to <b>one element</b>, which is the whole reason a quantifier holds a
+    /// condition rather than the caller writing two of them: "Any (LairID = 5 AND IsPrimary = true)" asks for one
+    /// assignment that is both, where two separate quantifiers ANDed together ask only that each is true of some
+    /// assignment, possibly different ones.
+    /// </para>
+    /// <para>
+    /// The collection itself is not otherwise answerable: it is not bound as a property, so it takes no
+    /// comparison and no index, and a caller naming it outside a quantifier is refused. Bind it with
+    /// <see cref="BindProperty{TProperty}(Expression{Func{T, TProperty}}, string?)"/> as well if you also want
+    /// it tested for null or indexed, under a different key.
+    /// </para>
+    /// <para>
+    /// <b>Whether this reaches a database is the provider's business.</b> A quantifier becomes Any or All over
+    /// the collection, which EF Core translates to EXISTS against a navigation collection. See the remarks on
+    /// <see cref="Operator.Any"/> for what it means over one that is empty or missing.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TElement">what the collection holds</typeparam>
+    /// <param name="selector">the collection on this entity</param>
+    /// <param name="key">the name a caller refers to it by</param>
+    /// <param name="configure">
+    /// what may be asked about an element. Called once, on an empty set; a collection with nothing bound inside
+    /// is refused, since no condition could ever be written against it
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">
+    /// the key is not one, or is already taken, or the property is not a collection, or nothing was bound inside
+    /// </exception>
+    public Inquiry<T> BindCollection<TElement>(
+        Expression<Func<T, IEnumerable<TElement>?>> selector,
+        string key,
+        Action<CollectionBindingSet<TElement>> configure)
+        where TElement : class
+    {
+        WeequeryException.ThrowIfNull(selector);
+        WeequeryException.ThrowIfNullOrEmpty(key);
+        WeequeryException.ThrowIfNotBindingKey(key);
+        WeequeryException.ThrowIfNull(configure);
+
+        // One name for one thing, whichever of the two lookups it lands in
+        if (Bindings.ContainsKey(key) || Collections.ContainsKey(key))
+        {
+            throw new WeequeryException($"Binding already exists for '{key}'");
+        }
+
+        // Not added to Bindings: a collection answers a quantifier and nothing else, and putting it there would
+        // offer it to every operator that cannot use it
+        var collection = Binding<T>.Create(SharedBindingParameter, selector, bindings: null);
+
+        var inner = new CollectionBindingSet<TElement>();
+        configure(inner);
+
+        if (inner.Count == 0)
+        {
+            throw new WeequeryException($"Nothing was bound inside '{key}', so no condition could be written about one of its elements");
+        }
+
+        Collections[key] = new CollectionBinding<T, TElement>(key, collection, inner.Bindings);
 
         return this;
     }
@@ -664,7 +757,7 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     private Expression<Func<T, bool>> Predicate(ICondition condition)
     {
-        var predicate = ExpressionBuilder.BuildExpression(Bindings, condition);
+        var predicate = ExpressionBuilder.BuildExpression(Bindings, condition, Collections);
 
         // LINQ to Objects, which is what AsQueryable over a list gives. Anything else is a provider that will be
         // handed the expression rather than running it here.
@@ -709,7 +802,7 @@ public class Inquiry<T> where T : class
         bool alreadySorted = false;
         foreach (var sort in Sorts)
         {
-            if (!Bindings.TryGetValue(sort.Field, out var binding)) { throw new WeequeryException($"Unbound field: '{sort.Field}'"); }
+            var binding = BindingLookup.Resolve(Bindings, sort.Field);
 
             // The same for every row, so there is nothing here to put in order
             if (binding.IsConstant)

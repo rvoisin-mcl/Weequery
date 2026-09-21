@@ -201,6 +201,76 @@ public class Inquiry<T> where T : class
         return this;
     }
 
+    public record BindingResolutionSettings(HashSet<string> IgnorePaths, HashSet<Type> IgnoreTypes, bool IgnoreTypeWhenAssignable)
+    {
+        /// <summary>
+        /// copy ctor
+        /// </summary>
+        /// <param name="settings"></param>
+        public BindingResolutionSettings(BindingResolutionSettings settings)
+        {
+            IgnorePaths = (settings.IgnorePaths.Comparer != StringComparer.OrdinalIgnoreCase) ? settings.IgnorePaths.ToHashSet(StringComparer.OrdinalIgnoreCase) : settings.IgnorePaths; // ensure this is string insensitive
+            IgnoreTypes = settings.IgnoreTypes;
+            IgnoreTypeWhenAssignable = settings.IgnoreTypeWhenAssignable;
+        }
+    }
+
+    private static bool ShouldIgnoreType(Type type, BindingResolutionSettings settings)
+    {
+        if (settings.IgnoreTypes.Count == 0) { return false; }
+        if (settings.IgnoreTypes.Contains(type)) { return true; }
+        if (!settings.IgnoreTypeWhenAssignable) { return false; }
+        return settings.IgnoreTypes.Where(ignore => type.IsAssignableTo(ignore)).Any();
+    }
+
+    private static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings)
+    {
+        var properties = type.GetProperties().Where(prop => prop.CanRead).OrderBy(prop => prop.Name);
+        foreach (var property in properties)
+        {
+            var pathName = (string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}");
+
+            if ((!settings.IgnorePaths.Contains(pathName)) && (!ShouldIgnoreType(property.PropertyType, settings)))
+            {
+                bindings.Add(new(pathName, null));
+
+                // if we haven't bottomed out, the property has popential properties of its own, and we haven't been directed to ignore any child properties of this one, resolve
+                if ((depth < maxDepth) && (property.PropertyType.IsClass) && (!settings.IgnorePaths.Contains($"{pathName}.")))
+                {
+                    ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings);
+                }
+            }
+        }
+
+        return bindings;
+    }
+
+    public static IReadOnlyList<BindingRequest> ResolveBindables<T>(int maxDepth = 16, BindingResolutionSettings? settings = null)
+    {
+        maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
+        settings = new(settings);
+
+        return ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings);
+    }
+
+    public Inquiry<T> BindResolve(int maxDepth = 16, BindingResolutionSettings? settings = null)
+    {
+        var reqs = ResolveBindables<T>(maxDepth, settings);
+
+        BindProperties(reqs);
+
+        return this;
+    }
+
+    public Inquiry<T> RemoveBinding(string key)
+    {
+        WeequeryException.ThrowIfNullOrEmpty(key);
+
+        Bindings.Remove(key);
+
+        return this;
+    }
+
     /// <summary>
     /// Add a condition that will be applied to the query when built. Will be AND'ed with any other root conditions
     /// </summary>
@@ -368,28 +438,39 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Apply all conditions, sorts, paging, etc to the wrapped IQueryable and return it
+    /// The wrapped IQueryable with every condition applied, and nothing else.
     /// </summary>
+    /// <remarks>
+    /// The rows the caller's filter matched, before any ordering is imposed or any window taken of them. This is
+    /// what <see cref="PagedQuery{T}.Matches"/> hands back to be counted.
+    /// </remarks>
     /// <returns></returns>
-    public IQueryable<T> Build()
+    private IQueryable<T> Filtered()
     {
-        IQueryable<T> query = Query;
-
         switch (Conditions.Count)
         {
             case 0:
-                break;
+                return Query;
 
             case 1:
-                query = query.Where(Predicate(Conditions.First()));
-                break;
+                return Query.Where(Predicate(Conditions.First()));
 
             default:
                 // If >1 root condition was provided, wrap all root conditions inside an AND condition
-                query = query.Where(Predicate(new ConjunctionCondition(Operator.And, Conditions)));
-                break;
+                return Query.Where(Predicate(new ConjunctionCondition(Operator.And, Conditions)));
         }
+    }
 
+    /// <summary>
+    /// The query with every sort applied, in the order they were given, each breaking ties in the one before.
+    /// </summary>
+    /// <param name="query"></param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">
+    /// a sort names a field no binding claimed, a constant, or something with no ordering of its own
+    /// </exception>
+    private IQueryable<T> Sorted(IQueryable<T> query)
+    {
         // Once the query has been sorted once, subsequent sorts must chain with ThenBy rather than restart with OrderBy
         bool alreadySorted = false;
         foreach (var sort in Sorts)
@@ -438,13 +519,83 @@ public class Inquiry<T> where T : class
             alreadySorted = true;
         }
 
-        if (PageSize > 0)
-        {
-            query = query.Skip(PageSize * Page).Take(PageSize);
-        }
-
         return query;
     }
+
+    /// <summary>
+    /// The query narrowed to the requested page, or as it stands where no paging was asked for.
+    /// </summary>
+    /// <param name="query"></param>
+    /// <returns></returns>
+    private IQueryable<T> Windowed(IQueryable<T> query)
+    {
+        return (PageSize > 0) ? query.Skip(PageSize * Page).Take(PageSize) : query;
+    }
+
+    /// <summary>
+    /// Apply all conditions, sorts, paging, etc to the wrapped IQueryable and return it
+    /// </summary>
+    /// <returns></returns>
+    public IQueryable<T> Build()
+    {
+        return Windowed(Sorted(Filtered()));
+    }
+
+    /// <summary>
+    /// Apply everything as <see cref="Build"/> does, and hand back that query together with the one that counts
+    /// what the page is a page of.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the caller that has to answer "showing 21 to 40 of 387". The 387 is not something a page can be asked
+    /// for — it is the size of the filtered set the window was taken from — so it is a second query over the same
+    /// conditions, and this builds it alongside the first.
+    /// <code>
+    /// var (page, matches) = query.WithWeequery()
+    ///     .BindProperties(MinionBindings)
+    ///     .ApplyCondition(request.Filter)
+    ///     .ApplySorts(request.Sort, DefaultSort)
+    ///     .ApplyPagination(request.PageSize, request.Page)
+    ///     .BuildPaged();
+    ///
+    /// var total = await matches.CountAsync();
+    /// var rows  = await page.ToListAsync();
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>Neither query has run.</b> Counting is left to the caller rather than done here, for two reasons. It is
+    /// a database round trip, and the method that makes it without blocking a thread is
+    /// <c>CountAsync</c>, which belongs to Entity Framework Core and not to this library — Weequery takes no
+    /// dependency on whatever is going to execute the query, and doing the count for you would mean either
+    /// taking one or calling the synchronous <c>Count</c> in code that ought to be awaiting. It also stays true
+    /// to what <see cref="Build"/> promises, which is a query and no execution, so both halves compose with
+    /// whatever else you had planned.
+    /// </para>
+    /// <para>
+    /// Count <see cref="PagedQuery{T}.Matches"/> and not <see cref="PagedQuery{T}.Page"/>: the page is windowed,
+    /// so counting it gives the size of the page, which you already know.
+    /// </para>
+    /// <para>
+    /// Where <see cref="ApplyPagination"/> was never called there is no window, the page is the whole filtered
+    /// result, and the count agrees with its length. That is not an error, but it is a round trip asking a
+    /// question the rows already answer.
+    /// </para>
+    /// </remarks>
+    /// <returns>the page, and the query counting everything the conditions matched; never null, neither half null</returns>
+    /// <exception cref="WeequeryException">
+    /// whatever <see cref="Build"/> would throw, and at the same point: the conditions and sorts are resolved
+    /// against the bindings here, not when either query is enumerated
+    /// </exception>
+    public PagedQuery<T> BuildPaged()
+    {
+        // Shared, so the count is over exactly the rows the page was taken from and cannot drift from it
+        var matches = Filtered();
+
+        return new PagedQuery<T>(Windowed(Sorted(matches)), matches);
+    }
+
+    // FIXME - BuildElasticsearch()  ???
+    // FIXME - BuildOData() ???
 
     /// <summary>
     /// Build the predicate for a condition without needing an IQueryable, for use with Where, Any and friends.

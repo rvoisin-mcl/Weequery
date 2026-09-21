@@ -152,14 +152,9 @@ internal class Binding<TClass> : IBinding
     }
 
     /// <summary>
-    /// A binding for a value the application supplied, which reads the same as a property but is the same for
+    /// A binding for a application supplied constant value, which reads the same as a property but is the same for
     /// every row.
     /// </summary>
-    /// <remarks>
-    /// The value is reached through a box, the way a condition's own values are, so a provider passes it as a
-    /// parameter rather than writing it into the statement see <see cref="QueryValue"/>. That also makes the
-    /// accessor a member access like any other, so everything built from a binding is built the same way.
-    /// </remarks>
     /// <typeparam name="TValue"></typeparam>
     /// <param name="parameter">[OPT] all bindings for the same query should share a common parameter</param>
     /// <param name="key">the name a caller refers to it by</param>
@@ -175,6 +170,8 @@ internal class Binding<TClass> : IBinding
 
         return new Binding<TClass>(useParameter, key, (MemberExpression)QueryValue.Of(value), typeof(TValue), [], isConstant: true);
     }
+
+    // FIXME Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, Func<TValue, TValue>? normalizer) // if provided, normalizer will run against both arguments of a comparison
 
     /// <summary>
     /// Create a binding for a value rather than a property, optionally adding it to the bindings LUT under the key

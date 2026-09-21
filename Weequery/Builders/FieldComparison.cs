@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
@@ -62,6 +63,8 @@ internal static class FieldComparison
     /// <exception cref="WeequeryException">
     /// a named property is unbound, an operand cannot be compared with the field, or the operator does not apply
     /// </exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> left, IBoundCondition condition, List<ConditionValue<string>> values, Dictionary<string, Binding<TClass>> bindings)
     {
         WeequeryException.ThrowIfNull(left);
@@ -124,6 +127,8 @@ internal static class FieldComparison
     /// read from the text.
     /// </summary>
     /// <exception cref="WeequeryException">the property is unbound or of another type, or the text is not a value of the field's type</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Operand<TClass> Resolve<TClass>(Binding<TClass> left, ConditionValue<string> value, string field, Dictionary<string, Binding<TClass>> bindings)
     {
         if (!value.NamesProperty)
@@ -168,6 +173,8 @@ internal static class FieldComparison
     /// A value operand is text, the same as any condition off the wire carries, so it is read against the field's
     /// type here. Parsed once and boxed, so it reaches the provider as a parameter, see <see cref="QueryValue"/>.
     /// </summary>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static object Parse<TClass>(Binding<TClass> left, string text, string field)
     {
         try
@@ -251,6 +258,8 @@ internal static class FieldComparison
     /// <param name="guardEachOperand">
     /// true where this is the whole condition, false where the caller has guarded them in front of it
     /// </param>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression Membership<TClass>(Binding<TClass> left, List<Operand<TClass>> operands, bool guardEachOperand)
     {
         var tests = new List<Expression>();
@@ -280,6 +289,8 @@ internal static class FieldComparison
     /// <summary>
     /// values.Contains(field), on a list of the field's own type
     /// </summary>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static MethodCallExpression Contains<TClass>(Binding<TClass> left, List<object> values)
     {
         var listType = ListTypes.GetOrAdd(left.UnwrappedPropertyType, static forType =>

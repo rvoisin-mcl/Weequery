@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 
@@ -88,6 +89,7 @@ internal static class ValueFormat
     /// <param name="type"></param>
     /// <param name="value">as <see cref="Enum.TryParse(Type, string, bool, out object)"/> produced it</param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     private static bool IsValidEnumValue(Type type, object value)
     {
         if (!type.IsEnum) { return false; }
@@ -144,6 +146,7 @@ internal static class ValueFormat
     /// </summary>
     /// <param name="type"></param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static bool IsParsable(Type type)
     {
         return type.GetInterfaces().Any(candidate =>
@@ -172,6 +175,8 @@ internal static class ValueFormat
     /// <exception cref="WeequeryException">
     /// the text is not a valid value for the type, or the type does not say how it can be read
     /// </exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static object Parse(Type type, string text)
     {
         WeequeryException.ThrowIfNull(type);

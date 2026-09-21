@@ -56,6 +56,19 @@
 		<AnalysisMode>Recommended</AnalysisMode>
 	</PropertyGroup>
 
+	<!--
+	  The trim and AOT analyzers are on, and every package is clean under them. That does not mean Weequery works
+	  in a trimmed or a Native AOT application unannounced: reaching a property by the name a request happens to
+	  carry is what the library is for, and a trimmer deciding what to keep before the request exists cannot know
+	  the answer. Clean means that every API where that matters says so, through RequiresUnreferencedCode or
+	  RequiresDynamicCode, so a caller is told when they build rather than when they run. See Weequery/AotMessages.cs.
+
+	  Tests and Benchmarks turn this off: neither ships, and neither is worth annotating to prove it.
+	-->
+	<PropertyGroup>
+		<IsAotCompatible>true</IsAotCompatible>
+	</PropertyGroup>
+
 	<!-- Every package carried the same licence, and each one said so for itself -->
 	<ItemGroup>
 		<None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" />

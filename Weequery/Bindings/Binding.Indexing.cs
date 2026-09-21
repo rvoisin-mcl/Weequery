@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Parsing;
@@ -19,6 +20,8 @@ internal partial class Binding<TClass>
     /// <param name="index">the index as text, read against the collection's key type</param>
     /// <returns>a binding for the element, nullable whatever the element type is</returns>
     /// <exception cref="WeequeryException">this binding takes no index, or the text is not one</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Binding<TClass> Indexed(string index)
     {
         List<Expression> checks = new(LinkChecks);
@@ -31,6 +34,7 @@ internal partial class Binding<TClass>
     /// <summary>
     /// Evaluate as True when the collection holds something at this index. ContainsKey for a dictionary; in range for for a list or array.
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression PresenceCheck(Expression container, Type containerType, Indexing indexing, object key)
     {
         var index = Expression.Constant(key, indexing.KeyType);
@@ -52,6 +56,7 @@ internal partial class Binding<TClass>
     /// <summary>
     /// Read the element. Must be used in concert with <see cref="PresenceCheck"/>
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression ElementAccess(Expression container, Type containerType, Indexing indexing, object key)
     {
         var index = Expression.Constant(key, indexing.KeyType);
@@ -71,6 +76,7 @@ internal partial class Binding<TClass>
     /// <summary>
     /// The Count a list is measured by, wherever it is declared
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static PropertyInfo CountProperty(Type containerType)
     {
         return Members(containerType)
@@ -89,6 +95,7 @@ internal partial class Binding<TClass>
     /// </remarks>
     /// <param name="type"></param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static IEnumerable<Type> Members(Type type)
     {
         return type.GetInterfaces().Prepend(type);
@@ -111,6 +118,8 @@ internal partial class Binding<TClass>
     /// <param name="checks">the checks to add to, in order: the collection is there, then it holds this</param>
     /// <returns>the element access and its type</returns>
     /// <exception cref="WeequeryException">the type takes no index, or the text is not one</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static IndexIntoRecord IndexInto(Expression container, Type containerType, string index, string name, List<Expression> checks)
     {
         var indexing = IndexingFor(containerType) ?? throw new WeequeryException(WeequeryError.PathInvalid, $"'{name}' cannot be indexed, {containerType.Name} is not a supported collection");
@@ -153,6 +162,7 @@ internal partial class Binding<TClass>
     /// </summary>
     /// <param name="type"></param>
     /// <returns>null if the type is unindexable, or not in a supported fashion</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Indexing? IndexingFor(Type type)
     {
         if (type.IsArray && (type.GetArrayRank() == 1))

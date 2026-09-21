@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Bindings;
@@ -26,6 +27,8 @@ namespace Weequery.Builders;
 internal class StringExpressionBuilder : ExpressionBuilderBase<string>
 {
 
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         WeequeryException.ThrowIfNull(binding);
@@ -112,6 +115,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// <summary>
     /// property.Method(value), on the value with any Nullable already stepped through
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static MethodCallExpression Call<TClass>(Binding<TClass> binding, MethodInfo method, TypedCondition<string> condition)
     {
         return Expression.Call(binding.UnwrappedAccessor, method, QueryValue.Of(condition.Values[0]));
@@ -120,6 +124,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// <summary>
     /// Regex.IsMatch(property, pattern), on the value with any Nullable already stepped through
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static MethodCallExpression Match<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         return Expression.Call(StringMethods.IsMatch, binding.UnwrappedAccessor, QueryValue.Of(condition.Values[0]));
@@ -129,6 +134,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// string.Compare(property, value), which is negative, zero or positive as the property sorts before, with, or
     /// after the value
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static MethodCallExpression Compare<TClass>(Binding<TClass> binding, string value)
     {
         return Expression.Call(StringMethods.Compare, binding.UnwrappedAccessor, QueryValue.Of(value));
@@ -138,6 +144,7 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// value >= low AND value &lt;= high, in the order the comparison gives, inclusive of both ends as the range is
     /// everywhere else
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static BinaryExpression Between<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         return Expression.AndAlso(
@@ -153,6 +160,8 @@ internal class StringExpressionBuilder : ExpressionBuilderBase<string>
     /// <param name="condition"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public override Expression<Func<TClass, bool>> BuildTypedExpressionFromStringifiedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         WeequeryException.ThrowIfNull(binding);

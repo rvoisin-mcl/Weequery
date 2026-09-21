@@ -17,6 +17,8 @@ public partial class Inquiry<T> where T : class
     /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
     /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
         var next = Copy();
@@ -50,6 +52,8 @@ public partial class Inquiry<T> where T : class
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
     /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
         var next = Copy();
@@ -98,6 +102,8 @@ public partial class Inquiry<T> where T : class
     /// <exception cref="WeequeryException">
     /// the key is invalid, is already in use, the property is not a collection, or nothing was bound inside
     /// </exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindCollection<TElement>(
         Expression<Func<T, IEnumerable<TElement>?>> selector,
         string key,
@@ -174,6 +180,7 @@ public partial class Inquiry<T> where T : class
     /// <param name="convert">[OPT] a normalisation applied to its value, see <see cref="ValueConverter"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindConstant<TValue>(string key, TValue value, BindingUse use = BindingUse.Test | BindingUse.Projection, ValueConverter? convert = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
@@ -194,6 +201,8 @@ public partial class Inquiry<T> where T : class
     /// <returns></returns>
     /// <param name="use">[OPT] what the binding may be used for, all three by default, see <see cref="BindingUse"/></param>
     /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindProperty(string path, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(path);
@@ -224,6 +233,8 @@ public partial class Inquiry<T> where T : class
     /// <param name="bindingRequests"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a key points to a different property, or attempts to merge distinct converters</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindProperties(IEnumerable<BindingRequest> bindingRequests)
     {
         WeequeryException.ThrowIfNull(bindingRequests);
@@ -293,6 +304,7 @@ public partial class Inquiry<T> where T : class
     /// <param name="use">[OPT] what the binding may be used for, everything by default, see <see cref="BindingUse"/></param>
     /// <returns>the requests, in path order, ready for <see cref="BindProperties"/></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key</exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static IReadOnlyList<BindingRequest> ResolveBindables(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
@@ -328,6 +340,8 @@ public partial class Inquiry<T> where T : class
     /// <param name="use">[OPT] what the binding may be used for, everything by default, see <see cref="BindingUse"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key, or two bindings claim one key</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
         var reqs = ResolveBindables(maxDepth, settings, use);

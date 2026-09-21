@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 using Weequery.Interfaces;
@@ -22,6 +23,8 @@ internal abstract class ExpressionBuilderBase<T> : IExpressionBuilder<T>
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Expression<Func<TClass, bool>> BuildExpression<TClass>(Binding<TClass> binding, IBoundCondition condition)
     {
         var typed = TypedCondition<T>.From(condition);
@@ -50,6 +53,8 @@ internal abstract class ExpressionBuilderBase<T> : IExpressionBuilder<T>
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Expression<Func<TClass, bool>> BuildTypedExpressionFromTypedCondition<TClass>(Binding<TClass> binding, TypedCondition<T> condition)
     {
         WeequeryException.ThrowIfNull(binding);
@@ -67,6 +72,8 @@ internal abstract class ExpressionBuilderBase<T> : IExpressionBuilder<T>
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     protected abstract Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<T> condition);
 
     /// <summary>
@@ -76,5 +83,7 @@ internal abstract class ExpressionBuilderBase<T> : IExpressionBuilder<T>
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public abstract Expression<Func<TClass, bool>> BuildTypedExpressionFromStringifiedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition);
 }

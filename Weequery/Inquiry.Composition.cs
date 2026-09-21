@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 using Weequery.Builders;
@@ -77,6 +78,8 @@ public partial class Inquiry<T> where T : class
     /// </remarks>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private Expression<Func<T, bool>> Predicate(ICondition condition)
     {
         RefuseUnsupportedOperators(condition);
@@ -96,6 +99,8 @@ public partial class Inquiry<T> where T : class
     /// what <see cref="PagedQuery{T}.Total"/> is a count of.
     /// </remarks>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private IQueryable<T> Filtered()
     {
         var condition = Combined();
@@ -138,6 +143,8 @@ public partial class Inquiry<T> where T : class
     /// <exception cref="WeequeryException">
     /// a sort requests an unbound field, or one not bound for sorting
     /// </exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     private IQueryable<T> Sorted(IQueryable<T> query)
     {
         // If the sort uses an unbound field and dropping is configured, do so, see InquirySettings.IgnoreUnboundFields

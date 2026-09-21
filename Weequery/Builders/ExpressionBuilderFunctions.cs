@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Bindings;
@@ -30,6 +31,7 @@ internal static class ExpressionBuilderFunctions
     /// <param name="binding"></param>
     /// <param name="values">must not be empty, callers short circuit that case</param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static MethodCallExpression BuildContainsCheck<TClass, TProperty>(Binding<TClass> binding, List<TProperty> values)
     {
         // The list itself is parameterized the same way single values are, so it does not land in the SQL as literals
@@ -52,6 +54,7 @@ internal static class ExpressionBuilderFunctions
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns>null if operation is unhandled</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Expression<Func<TClass, bool>>? BuildCommonValueExpression<TClass, TProperty>(Binding<TClass> binding, TypedCondition<TProperty> condition)
     {
         WeequeryException.ThrowIfNull(binding);
@@ -124,6 +127,7 @@ internal static class ExpressionBuilderFunctions
     /// <summary>
     /// value >= low AND value &lt;= high
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static BinaryExpression Between<TClass, TProperty>(Binding<TClass> binding, TypedCondition<TProperty> condition)
     {
         return Expression.AndAlso(
@@ -147,6 +151,7 @@ internal static class ExpressionBuilderFunctions
     /// <param name="value">the value to compare against, which the caller supplied</param>
     /// <param name="comparison">which way round to compare them</param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression Ordered<TClass, TProperty>(Binding<TClass> binding, TProperty value, Func<Expression, Expression, Expression> comparison)
     {
         // The value, with any Nullable<> on the property itself already stepped through

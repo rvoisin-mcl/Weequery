@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Text;
@@ -39,6 +40,8 @@ internal static class BindingSetCache<T> where T : class
     /// <param name="parameter">the shared parameter every binding for this type hangs off</param>
     /// <returns>a lookup that must be treated as read only, since it is shared</returns>
     /// <exception cref="WeequeryException">a request names a property that cannot be bound, or two claim one key</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Dictionary<string, Binding<T>> For(IEnumerable<BindingRequest> bindingRequests, ParameterExpression parameter)
     {
         // Read once: the requests may be a lazy sequence, and the key has to describe the same set that gets built

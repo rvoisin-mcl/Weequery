@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -72,6 +73,9 @@ internal static class StringComparisonRules
         private static readonly MethodInfo ListContains = typeof(List<string>).GetMethod(nameof(List<string>.Contains), [typeof(string)])!;
 
         /// <summary>The Enumerable one, which is the only shape of it that takes a comparer</summary>
+        // Closed over string, a type nothing can trim away and every runtime already has, so this one is safe
+        [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "The type argument is typeof(string), which is always present and needs no code generated for it")]
+        [UnconditionalSuppressMessage("Trimming", "IL2060:MakeGenericMethod", Justification = "The method and its one type argument are both named here, so there is nothing for the trimmer to lose")]
         private static readonly MethodInfo ListContainsRules = typeof(Enumerable)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(candidate => (candidate.Name == nameof(Enumerable.Contains)) && (candidate.GetParameters().Length == 3))

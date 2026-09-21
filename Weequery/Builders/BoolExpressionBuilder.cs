@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 using Weequery.Parsing;
@@ -36,6 +37,8 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
         }
     }
 
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<bool> condition)
     {
         WeequeryException.ThrowIfNull(binding);
@@ -54,6 +57,8 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
         throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}'");
     }
 
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public override Expression<Func<TClass, bool>> BuildTypedExpressionFromStringifiedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         WeequeryException.ThrowIfNull(binding);

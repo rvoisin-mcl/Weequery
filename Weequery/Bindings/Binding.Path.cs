@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Parsing;
@@ -104,6 +105,7 @@ internal partial class Binding<TClass>
     /// <summary>
     /// If this type contains a property by this name. Matches how <see cref="Expression.PropertyOrField"/>
     /// </summary>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static bool HasMember(Type type, string name)
     {
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase | BindingFlags.FlattenHierarchy;
@@ -123,12 +125,16 @@ internal partial class Binding<TClass>
     /// <param name="parameter"></param>
     /// <param name="propertyPath"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static GetPropertyExpressionRecord GetPropertyExpression(ParameterExpression parameter, string propertyPath)
     {
         WeequeryException.ThrowIfNull(parameter);
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
 
         // One step along the path, which is PropertyOrField except when the type is an interface.
+        [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+        [RequiresUnreferencedCode(AotMessages.BoundByName)]
         static Expression StepInto(Expression on, string segment)
         {
             if (on.Type.IsInterface && (on.Type.GetProperty(segment) is null))

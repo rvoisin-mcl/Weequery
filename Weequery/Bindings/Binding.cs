@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Builders;
 using Weequery.Interfaces;
@@ -62,6 +63,7 @@ internal partial class Binding<TClass> : IBinding
     /// <param name="wrapped"></param>
     /// <param name="linkChecks"></param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression BuildNotNullCheck(Expression accessor, Type accessorType, bool wrapped, List<Expression> linkChecks)
     {
         List<Expression> checks = new();
@@ -148,6 +150,7 @@ internal partial class Binding<TClass> : IBinding
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private Binding(ParameterExpression parameter, string name, Expression accessor, Type accessorType, List<Expression> linkChecks, bool isConstant, BindingUse use, ValueConverter? converter)
     {
         WeequeryException.ThrowIfNullOrEmpty(name);
@@ -207,6 +210,7 @@ internal partial class Binding<TClass> : IBinding
     /// </summary>
     /// <param name="type"></param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static bool CanBeOrdered(Type type)
     {
         if (typeof(IComparable).IsAssignableFrom(type)) { return true; }

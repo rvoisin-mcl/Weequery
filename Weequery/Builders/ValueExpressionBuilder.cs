@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 using Weequery.Parsing;
@@ -6,6 +7,8 @@ namespace Weequery.Builders;
 
 internal class ValueExpressionBuilder<T> : ExpressionBuilderBase<T> where T : struct
 {
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     protected override Expression<Func<TClass, bool>> Build<TClass>(Binding<TClass> binding, TypedCondition<T> condition)
     {
         WeequeryException.ThrowIfNull(binding);
@@ -25,6 +28,8 @@ internal class ValueExpressionBuilder<T> : ExpressionBuilderBase<T> where T : st
     /// <param name="condition"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public override Expression<Func<TClass, bool>> BuildTypedExpressionFromStringifiedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition)
     {
         WeequeryException.ThrowIfNull(binding);

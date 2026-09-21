@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 
@@ -39,6 +40,7 @@ internal static class QueryValue
     /// <typeparam name="T"></typeparam>
     /// <param name="value"></param>
     /// <returns>an expression of type T that reads the value</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static Expression Of<T>(T value)
     {
         return Expression.Field(Expression.Constant(new ValueBox<T>(value)), nameof(ValueBox<T>.Value));
@@ -61,6 +63,8 @@ internal static class QueryValue
     /// <param name="type">the type to hold the value as, which is the bound property's</param>
     /// <param name="value">must be an instance of that type</param>
     /// <returns>an expression of the given type that reads the value</returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static Expression OfType(Type type, object value)
     {
         var boxType = BoxTypes.GetOrAdd(type, static forType => typeof(ValueBox<>).MakeGenericType(forType));

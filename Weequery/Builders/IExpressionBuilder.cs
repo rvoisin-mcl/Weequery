@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 using Weequery.Interfaces;
@@ -17,6 +18,8 @@ internal interface IExpressionBuilder
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     Expression<Func<TClass, bool>> BuildExpression<TClass>(Binding<TClass> binding, IBoundCondition condition);
 
     /// <summary>
@@ -26,5 +29,7 @@ internal interface IExpressionBuilder
     /// <param name="binding"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     Expression<Func<TClass, bool>> BuildTypedExpressionFromStringifiedCondition<TClass>(Binding<TClass> binding, TypedCondition<string> condition);
 }

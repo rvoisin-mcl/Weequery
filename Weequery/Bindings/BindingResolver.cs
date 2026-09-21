@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Weequery.Builders;
 using Weequery.Parsing;
@@ -65,6 +66,7 @@ internal static class BindingResolver
     /// </remarks>
     /// <param name="type"></param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static IEnumerable<PropertyInfo> ReadableProperties(Type type)
     {
         IEnumerable<PropertyInfo> properties = type.GetProperties();
@@ -109,6 +111,7 @@ internal static class BindingResolver
     /// <param name="ancestors">the types found on the path to here, used for loop-checking
     /// </param>
     /// <returns>the same list, for the caller that started it</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors)
     {
         ancestors.Add(type); // Opened on the way in and closed on the way out

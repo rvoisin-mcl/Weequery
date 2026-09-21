@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 
@@ -35,6 +36,8 @@ internal static class ProjectionBuilder<T> where T : class
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a field is unbound, names a collection, or does not grant Projection</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Expression<Func<T, Dictionary<string, object?>>> Build(
         Dictionary<string, Binding<T>> bindings,
         Dictionary<string, ICollectionBinding<T>> collections,
@@ -170,6 +173,8 @@ internal static class ProjectionBuilder<T> where T : class
     /// One projected value, boxed, and guarded where the path to it can run through a null
     /// </summary>
     /// <exception cref="WeequeryException">the field is unbound</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression Value(Dictionary<string, Binding<T>> bindings, string field)
     {
         var binding = BindingLookup.Resolve(bindings, field);

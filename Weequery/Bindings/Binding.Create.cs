@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Builders;
 
@@ -16,6 +17,8 @@ internal partial class Binding<TClass>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Binding<TClass> FromPath(ParameterExpression? parameter, string propertyPath, BindingUse use, ValueConverter? converter)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);
@@ -37,6 +40,7 @@ internal partial class Binding<TClass>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Binding<TClass> FromValue<TValue>(ParameterExpression? parameter, string key, TValue value, BindingUse use, ValueConverter? converter)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
@@ -59,6 +63,7 @@ internal partial class Binding<TClass>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static Binding<TClass> CreateConstant<TValue>(ParameterExpression? parameter, string key, TValue value, Dictionary<string, Binding<TClass>>? bindings, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
@@ -79,6 +84,8 @@ internal partial class Binding<TClass>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNull(selector);
@@ -103,6 +110,8 @@ internal partial class Binding<TClass>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static Binding<TClass> Create<TProperty>(ParameterExpression? parameter, Expression<Func<TClass, TProperty>> selector, string[] segments, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNull(selector);
@@ -129,6 +138,8 @@ internal partial class Binding<TClass>
     /// <returns></returns>
     /// <param name="use">what the binding may be used for, see <see cref="BindingUse"/></param>
     /// <param name="converter">[OPT] the normalisation applied to its values, see <see cref="ValueConverter"/></param>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public static Binding<TClass> Create(ParameterExpression? parameter, string propertyPath, Dictionary<string, Binding<TClass>>? bindings, string? key = null, BindingUse use = BindingUse.All, ValueConverter? converter = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(propertyPath);

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -32,6 +33,8 @@ internal sealed class ConditionValueConverter : JsonConverterFactory
     /// <param name="options"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "System.Text.Json declares this requirement at the call that serializes, so a caller has already been told; these three only override its members, and an override cannot say more than the member it overrides")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "System.Text.Json declares this requirement at the call that serializes, so a caller has already been told; these three only override its members, and an override cannot say more than the member it overrides")]
     public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options)
     {
         var converter = typeof(Converter<>).MakeGenericType(typeToConvert.GetGenericArguments()[0]);
@@ -50,6 +53,8 @@ internal sealed class ConditionValueConverter : JsonConverterFactory
             return options.PropertyNamingPolicy?.ConvertName(name) ?? name;
         }
 
+        [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "System.Text.Json declares this requirement at the call that serializes, so a caller has already been told; these three only override its members, and an override cannot say more than the member it overrides")]
+        [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "System.Text.Json declares this requirement at the call that serializes, so a caller has already been told; these three only override its members, and an override cannot say more than the member it overrides")]
         public override ConditionValue<T>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             // The compact form: the value on its own, which is what a value operand is written as
@@ -94,6 +99,8 @@ internal sealed class ConditionValueConverter : JsonConverterFactory
             return new ConditionValue<T>(source, value!);
         }
 
+        [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "System.Text.Json declares this requirement at the call that serializes, so a caller has already been told; these three only override its members, and an override cannot say more than the member it overrides")]
+        [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "System.Text.Json declares this requirement at the call that serializes, so a caller has already been told; these three only override its members, and an override cannot say more than the member it overrides")]
         public override void Write(Utf8JsonWriter writer, ConditionValue<T> value, JsonSerializerOptions options)
         {
             WeequeryException.ThrowIfNull(value);

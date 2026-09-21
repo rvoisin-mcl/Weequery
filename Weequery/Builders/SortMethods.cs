@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Reflection;
 
@@ -7,6 +8,8 @@ namespace Weequery.Builders;
 /// The four ordering methods on <see cref="Queryable"/>, cached once for the process, and closed over the types a
 /// sort clause needs once per pair of them.
 /// </summary>
+[RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+[RequiresUnreferencedCode(AotMessages.BoundByName)]
 internal static class SortMethods
 {
     private static readonly MethodInfo OrderBy = Resolve(nameof(Queryable.OrderBy));
@@ -39,6 +42,8 @@ internal static class SortMethods
     /// <param name="entityType"></param>
     /// <param name="keyType">the type of what is being sorted on, which is the accessor's own type</param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Clause For(SortDirection direction, bool hasAlreadyBeenSorted, Type entityType, Type keyType)
     {
         var ascending = (direction == SortDirection.Ascending);
@@ -54,6 +59,7 @@ internal static class SortMethods
     /// </summary>
     /// <param name="name"></param>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static MethodInfo Resolve(string name)
     {
         return typeof(Queryable).GetMethods().First(method => (method.Name == name) && (method.GetParameters().Length == 2));

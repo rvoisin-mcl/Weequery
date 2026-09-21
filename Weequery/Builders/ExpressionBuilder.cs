@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using Weequery.Bindings;
@@ -84,6 +85,8 @@ internal static class ExpressionBuilder
     /// </summary>
     private static readonly ConcurrentDictionary<Type, IExpressionBuilder> Builders = new();
 
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static IExpressionBuilder? GetBuilderForBinding<TClass>(Binding<TClass> binding)
     {
         var check = HasBuilderForBinding(binding);
@@ -99,6 +102,8 @@ internal static class ExpressionBuilder
     /// <param name="propertyType">an unwrapped property type that <see cref="HasBuilderForBinding"/> accepted</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static IExpressionBuilder CreateBuilder(Type propertyType)
     {
         if (propertyType == typeof(bool))
@@ -144,6 +149,8 @@ internal static class ExpressionBuilder
     /// a field is unbound, an operator does not apply to the property it names, or the tree nests deeper than
     /// <see cref="ConditionNesting.MaxDepth"/>
     /// </exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition, Dictionary<string, ICollectionBinding<TClass>>? collections = null)
     {
         return BuildExpression(bindings, condition, 0, collections);
@@ -158,6 +165,8 @@ internal static class ExpressionBuilder
     /// <param name="condition"></param>
     /// <param name="depth">levels of nesting already stepped into on the way here</param>
     /// <param name="collections">[OPT] the bound collections, carried down so a quantifier at any level can resolve</param>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static Expression<Func<TClass, bool>> BuildExpression<TClass>(Dictionary<string, Binding<TClass>> bindings, ICondition condition, int depth, Dictionary<string, ICollectionBinding<TClass>>? collections = null)
     {
         WeequeryException.ThrowIfNull(condition);

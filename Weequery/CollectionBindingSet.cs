@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 
@@ -47,6 +48,8 @@ public sealed class CollectionBindingSet<TElement>
     /// <param name="key">[OPT] the name a caller uses inside the quantifier</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the key is not one, or is already taken</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public CollectionBindingSet<TElement> BindProperty<TProperty>(Expression<Func<TElement, TProperty>> selector, string? key = null)
     {
         Binding<TElement>.Create(SharedParameter, selector, Bindings, key);
@@ -61,6 +64,8 @@ public sealed class CollectionBindingSet<TElement>
     /// <param name="key">[OPT] the name a caller uses inside the quantifier</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the path does not resolve, or the key is not one, or is already taken</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public CollectionBindingSet<TElement> BindProperty(string path, string? key = null)
     {
         WeequeryException.ThrowIfNullOrEmpty(path);
@@ -82,6 +87,8 @@ public sealed class CollectionBindingSet<TElement>
     /// <param name="key">[OPT] the name a caller uses inside the quantifier</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException"></exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public CollectionBindingSet<TElement> BindProperty<TProperty>(Expression<Func<TElement, TProperty>> selector, string[] segments, string? key = null)
     {
         Binding<TElement>.Create(SharedParameter, selector, segments, Bindings, key);
@@ -96,6 +103,8 @@ public sealed class CollectionBindingSet<TElement>
     /// <param name="bindingRequests"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a request does not resolve, or two claim one key</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public CollectionBindingSet<TElement> BindProperties(IEnumerable<BindingRequest> bindingRequests)
     {
         WeequeryException.ThrowIfNull(bindingRequests);

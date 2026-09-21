@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 namespace Weequery.Bindings;
 
 /// <summary>
@@ -49,6 +50,8 @@ internal static class BindingLookup
     /// <param name="field">a binding key, optionally with an index</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">no binding claimed the key, or it cannot be indexed that way</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     internal static Binding<TClass> Resolve<TClass>(Dictionary<string, Binding<TClass>> bindings, string field)
     {
         var split = SplitIndex(field);

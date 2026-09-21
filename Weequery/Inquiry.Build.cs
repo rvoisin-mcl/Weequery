@@ -14,6 +14,8 @@ public partial class Inquiry<T> where T : class
     /// Apply all conditions, sorts, paging, etc to the wrapped IQueryable and return it
     /// </summary>
     /// <returns></returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     public IQueryable<T> Build()
     {
         Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
@@ -71,6 +73,8 @@ public partial class Inquiry<T> where T : class
     /// whatever <see cref="Build"/> would throw, and at the same point: the conditions and sorts are resolved
     /// against the bindings here, not when either query is enumerated
     /// </exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     public PagedQuery<T> BuildPaged()
     {
         Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
@@ -150,6 +154,8 @@ public partial class Inquiry<T> where T : class
     /// whatever <see cref="Build"/> would throw, plus a projected field that no binding claimed or that names a
     /// bound collection
     /// </exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     public IQueryable<Dictionary<string, object?>> BuildProjected()
     {
         // Build will clear and (maybe) write to Dropped, Projector can append after
@@ -163,6 +169,8 @@ public partial class Inquiry<T> where T : class
     /// The builder is handed the drop test only if the caller asked for one, so it does not have to about
     /// <see cref="InquirySettings.IgnoreUnboundFields"/>, only if a field survives.
     /// </remarks>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private Expression<Func<T, Dictionary<string, object?>>> Projector()
     {
         return ProjectionBuilder<T>.Build(Bindings, Collections, Projected, SharedBindingParameter,
@@ -195,6 +203,8 @@ public partial class Inquiry<T> where T : class
     /// </remarks>
     /// <returns>the projected page, and the query counting everything the conditions matched</returns>
     /// <exception cref="WeequeryException">whatever <see cref="BuildProjected"/> would throw</exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     public PagedQuery<Dictionary<string, object?>> BuildPagedProjected()
     {
         Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
@@ -222,6 +232,8 @@ public partial class Inquiry<T> where T : class
     /// <param name="bindingRequests"></param>
     /// <param name="condition"></param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static Expression<Func<T, bool>> BuildExpression(IEnumerable<BindingRequest> bindingRequests, ICondition condition)
     {
@@ -252,6 +264,8 @@ public partial class Inquiry<T> where T : class
     /// <param name="condition"></param>
     /// <param name="settings">[OPT] the rules to compile in, see <see cref="InquirySettings"/>; the defaults where none are given</param>
     /// <returns></returns>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static Func<T, bool> BuildDelegate(IEnumerable<BindingRequest> bindingRequests, ICondition condition, InquirySettings? settings = null)
     {

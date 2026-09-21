@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Builders;
@@ -48,6 +49,8 @@ internal interface ICollectionBinding<TClass>
     /// <param name="inner">the condition scoped to one element</param>
     /// <returns>a predicate on the entity, total: it is never null and needs no guard of its own</returns>
     /// <exception cref="WeequeryException">the inner condition names something the inner set did not bind</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     Expression<Func<TClass, bool>> Quantify(Operator quantifier, ICondition inner);
 }
 
@@ -90,6 +93,8 @@ internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<T
     }
 
     /// <inheritdoc/>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Expression<Func<TClass, bool>> Quantify(Operator quantifier, ICondition inner)
     {
         WeequeryException.ThrowIfNull(inner);

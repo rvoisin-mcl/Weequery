@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 
 namespace Weequery;
 
@@ -32,6 +33,8 @@ public partial class Inquiry<T> where T : class
     /// </para>
     /// </remarks>
     /// <returns>any problems found, it order of discovery; never null</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     public ValidationResult Validate()
     {
         Dropped.Clear(); // should only represent the last Build() or Validate(), not cumulative
@@ -90,6 +93,8 @@ public partial class Inquiry<T> where T : class
     /// <param name="request">the caller's query; null asks about this Inquiry as it stands, see <see cref="Validate()"/></param>
     /// <param name="defaultSort">what to sort by where the request named no sorts, as <see cref="ApplyRequest"/> takes it</param>
     /// <returns>the problems, parse faults first; never null</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     public ValidationResult Validate(QueryRequest? request, IEnumerable<Sort>? defaultSort = null)
     {
         if (request is null) { return Validate(); }

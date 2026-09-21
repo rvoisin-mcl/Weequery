@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<Description>OData support for Weequery. Turns a Weequery condition tree into an OData $filter expression, so the same filter a caller sends to your database can be sent to an OData service. Emits plain text, so it works with any client or none. No dependencies.</Description>
+		<PackageTags>weequery;odata;filter;query-options;iqueryable;filtering;sorting;paging;dynamic-query;query-language</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Weequery\Weequery.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>

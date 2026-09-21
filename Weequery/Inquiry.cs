@@ -14,25 +14,29 @@ namespace Weequery;
 /// refused. Field names are matched against binding keys without regard to case.
 /// </para>
 /// <para>
-/// <b>An Inquiry is mutable, and it is the one thing about this library that reads like it is not.</b> Every
-/// Apply and every Bind changes the object and returns the same one, so a fluent chain is a sequence of
-/// modifications rather than a pipeline of new values. That is not how <see cref="IQueryable{T}"/> behaves, and
-/// the chain looks enough like a LINQ chain to invite the assumption.
+/// <b>An Inquiry is immutable.</b> Every Apply and every Bind leaves the one it was called on exactly as it was
+/// and hands back a new one carrying the change, so a fluent chain is a pipeline of values rather than a
+/// sequence of modifications. That is how <see cref="IQueryable{T}"/> behaves, and the chain looks enough like a
+/// LINQ chain that it had better.
 /// </para>
 /// <para>
-/// It matters when one is kept and used twice. Conditions <b>accumulate</b>, sorts accumulate, and everything
-/// else is last-call-wins, so a second query built off the same Inquiry carries the first one's filter with it:
+/// Which means a configured one can be kept and branched, and neither branch can reach the other:
 /// <code>
-/// var inquiry = query.WithWeequery().BindProperties(MinionBindings);
+/// var bound = query.WithWeequery().BindProperties(MinionBindings);
 ///
-/// var active = inquiry.ApplyCondition("IsActive = true").Build();
-/// var paid   = inquiry.ApplyCondition("Pay &gt; 10000").Build();    // active AND paid, not paid
+/// var active = bound.ApplyCondition("IsActive = true").Build();
+/// var paid   = bound.ApplyCondition("Pay &gt; 10000").Build();    // paid, and only paid
 /// </code>
-/// Which is an answer rather than an error, and a plausible looking one, so nothing tells you.
+/// Nothing accumulates across the two, because there is nothing they share to accumulate in.
 /// </para>
 /// <para>
-/// Build one per query, which is what the usual shape does anyway, or <see cref="Clone"/> a configured one and
-/// branch off the copy.
+/// <b>What is copied is the lists, not what is in them.</b> A binding is immutable once built and is shared
+/// rather than rebuilt, so a copy costs a dictionary and two lists and no more. A condition is yours and is
+/// shared as you handed it over, so one you go on to mutate is mutated for every query holding it.
+/// </para>
+/// <para>
+/// The one thing written after construction is <see cref="DroppedFields"/>, which reports on the build that
+/// filled it rather than forming part of the configuration, see <see cref="Build"/>.
 /// </para>
 /// </remarks>
 /// <typeparam name="T"></typeparam>
@@ -203,34 +207,24 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// A copy of this Inquiry, so one can be configured once and then branched rather than reused.
+    /// This Inquiry's configuration on a new one, which is what every Apply and every Bind hands back rather
+    /// than changing the one it was called on.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The way out of the one hazard this type has, see the remarks on <see cref="Inquiry{T}"/>: an Inquiry is
-    /// mutable and its conditions accumulate, so a second query built off the same one carries the first one's
-    /// filter. Cloning gives each query its own.
-    /// <code>
-    /// var bound = query.WithWeequery().BindProperties(MinionBindings);
-    ///
-    /// var active = bound.Clone().ApplyCondition("IsActive = true").Build();
-    /// var paid   = bound.Clone().ApplyCondition("Pay &gt; 10000").Build();
-    /// </code>
-    /// </para>
-    /// <para>
     /// <b>What is copied is the lists, not what is in them.</b> A binding is immutable once built and is shared
-    /// rather than rebuilt, which is the whole reason cloning is cheap: adding a binding to the copy leaves the
-    /// original's set alone, and the bindings both of them already had are the same objects. The same goes for
-    /// the conditions, which are yours and are shared as you handed them over; a condition you go on to mutate
-    /// is mutated for both, as it would be for two queries you built without this.
+    /// rather than rebuilt, which is what makes this cheap enough to do on every call: adding a binding to the
+    /// copy leaves the original's set alone, and the bindings both of them already had are the same objects. The
+    /// same goes for the conditions, which are yours and are shared as you handed them over; a condition you go
+    /// on to mutate is mutated for both, as it would be for two queries you built without this.
     /// </para>
     /// <para>
-    /// <see cref="DroppedFields"/> is not copied. It describes a build rather than a configuration, and the copy
-    /// has not built anything.
+    /// <see cref="DroppedFields"/> is not copied. It reports on a build rather than describing a configuration,
+    /// and the copy has not built anything.
     /// </para>
     /// </remarks>
     /// <returns>a new Inquiry over the same query, configured the same way, sharing nothing mutable</returns>
-    public Inquiry<T> Clone()
+    private Inquiry<T> Copy()
     {
         return new Inquiry<T>(Query)
         {
@@ -257,9 +251,11 @@ public class Inquiry<T> where T : class
     /// <param name="convert">[OPT] a normalisation applied to its values, see <see cref="ValueConverter"/></param>
     public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
-        Binding<T>.Create(SharedBindingParameter, selector, Bindings, key, use, convert);
+        var next = Copy();
 
-        return RefuseDuplicateKeys();
+        Binding<T>.Create(SharedBindingParameter, selector, next.Bindings, key, use, convert);
+
+        return next.RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -289,9 +285,11 @@ public class Inquiry<T> where T : class
     /// <exception cref="WeequeryException"></exception>
     public Inquiry<T> BindProperty<TProperty>(Expression<Func<T, TProperty>> selector, string[] segments, string? key = null, BindingUse use = BindingUse.All, ValueConverter? convert = null)
     {
-        Binding<T>.Create(SharedBindingParameter, selector, segments, Bindings, key, use, convert);
+        var next = Copy();
 
-        return RefuseDuplicateKeys();
+        Binding<T>.Create(SharedBindingParameter, selector, segments, next.Bindings, key, use, convert);
+
+        return next.RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -372,9 +370,11 @@ public class Inquiry<T> where T : class
             throw new WeequeryException(WeequeryError.BindingInvalid, $"Nothing was bound inside '{key}', so no condition could be written about one of its elements");
         }
 
-        Collections[key] = new CollectionBinding<T, TElement>(key, collection, inner.Bindings);
+        var next = Copy();
 
-        return this;
+        next.Collections[key] = new CollectionBinding<T, TElement>(key, collection, inner.Bindings);
+
+        return next;
     }
 
     /// <summary>
@@ -392,11 +392,11 @@ public class Inquiry<T> where T : class
     /// <see cref="BindingUse"/>. A key means one thing whatever it is allowed to do with it.
     /// </para>
     /// <para>
-    /// The colliding property binding is taken back off before throwing, so an Inquiry a caller went on to use
-    /// after catching this is in the state it was in before the call rather than half changed.
+    /// Nothing needs putting back when this throws. It runs on the copy the binding call is assembling, so the
+    /// Inquiry the caller still holds was never touched by the call at all, and the half built one goes nowhere.
     /// </para>
     /// </remarks>
-    /// <returns>this, so it can be returned from the binding call</returns>
+    /// <returns>the copy it was called on, so it can be returned from the binding call</returns>
     /// <exception cref="WeequeryException">a key now names both a property and a collection</exception>
     private Inquiry<T> RefuseDuplicateKeys()
     {
@@ -447,9 +447,11 @@ public class Inquiry<T> where T : class
         WeequeryException.ThrowIfNullOrEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        Binding<T>.CreateConstant(SharedBindingParameter, key, value, Bindings, use, convert);
+        var next = Copy();
 
-        return RefuseDuplicateKeys();
+        Binding<T>.CreateConstant(SharedBindingParameter, key, value, next.Bindings, use, convert);
+
+        return next.RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -466,9 +468,11 @@ public class Inquiry<T> where T : class
         WeequeryException.ThrowIfNotNullButEmpty(key);
         WeequeryException.ThrowIfNotBindingKey(key);
 
-        Binding<T>.Create(SharedBindingParameter, path, Bindings, key, use, convert);
+        var next = Copy();
 
-        return RefuseDuplicateKeys();
+        Binding<T>.Create(SharedBindingParameter, path, next.Bindings, key, use, convert);
+
+        return next.RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -489,9 +493,11 @@ public class Inquiry<T> where T : class
 
         // Copied in rather than used as it stands, since this Inquiry's lookup can keep taking bindings after
         // this call and the kept set has to stay as it is
+        var next = Copy();
+
         foreach (var binding in BindingSetCache<T>.For(bindingRequests, SharedBindingParameter))
         {
-            if (Bindings.TryGetValue(binding.Key, out var existing))
+            if (next.Bindings.TryGetValue(binding.Key, out var existing))
             {
                 // The rule AddTo follows, so a duplicate is answered the same way whichever route it arrives by
                 if (!Binding<T>.IsSameBinding(existing, binding.Value)) { throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{binding.Key}'"); }
@@ -499,10 +505,10 @@ public class Inquiry<T> where T : class
                 continue;
             }
 
-            Bindings[binding.Key] = binding.Value;
+            next.Bindings[binding.Key] = binding.Value;
         }
 
-        return RefuseDuplicateKeys();
+        return next.RefuseDuplicateKeys();
     }
 
 
@@ -603,9 +609,7 @@ public class Inquiry<T> where T : class
     {
         var reqs = ResolveBindables(maxDepth, settings);
 
-        BindProperties(reqs);
-
-        return this;
+        return BindProperties(reqs);
     }
 
     /// <summary>
@@ -624,10 +628,12 @@ public class Inquiry<T> where T : class
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
 
-        Bindings.Remove(key);
-        Collections.Remove(key);
+        var next = Copy();
 
-        return this;
+        next.Bindings.Remove(key);
+        next.Collections.Remove(key);
+
+        return next;
     }
 
     /// <summary>
@@ -639,9 +645,11 @@ public class Inquiry<T> where T : class
     {
         if (condition is null) { return this; }
 
-        Conditions.Add(condition);
+        var next = Copy();
 
-        return this;
+        next.Conditions.Add(condition);
+
+        return next;
     }
 
     /// <summary>
@@ -661,9 +669,11 @@ public class Inquiry<T> where T : class
         var condition = ConditionFunctions.ParseQuery(query, style);
         if (condition is null) { return this; }
 
-        Conditions.Add(condition);
+        var next = Copy();
 
-        return this;
+        next.Conditions.Add(condition);
+
+        return next;
     }
 
     /// <summary>
@@ -676,16 +686,18 @@ public class Inquiry<T> where T : class
     {
         if (conditions is null) { return this; }
 
+        var next = Copy();
+
         int index = 0;
         foreach (var condition in conditions)
         {
             if (condition is null) { throw new WeequeryException(WeequeryError.ArgumentMissing, $"{nameof(conditions)}[{index}] is null"); }
 
-            Conditions.Add(condition);
+            next.Conditions.Add(condition);
             index++;
         }
 
-        return this;
+        return next;
     }
 
     /// <summary>
@@ -700,9 +712,11 @@ public class Inquiry<T> where T : class
 
         WeequeryException.ThrowIfNullOrEmpty(sort.Field, $"{nameof(sort)}.{nameof(Sort.Field)}");
 
-        Sorts.Add(sort);
+        var next = Copy();
 
-        return this;
+        next.Sorts.Add(sort);
+
+        return next;
     }
 
     /// <summary>
@@ -741,6 +755,8 @@ public class Inquiry<T> where T : class
     {
         if (sorts is null) { return this; }
 
+        var next = Copy();
+
         int index = 0;
         foreach (var sort in sorts)
         {
@@ -748,11 +764,11 @@ public class Inquiry<T> where T : class
 
             WeequeryException.ThrowIfNullOrEmpty(sort.Field, $"{nameof(sorts)}[{index}].{nameof(Sort.Field)}");
 
-            Sorts.Add(sort);
+            next.Sorts.Add(sort);
             index++;
         }
 
-        return this;
+        return next;
     }
 
     /// <summary>
@@ -810,10 +826,12 @@ public class Inquiry<T> where T : class
             throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(pageSize)} {size} * {nameof(page)} {index} exceeds {int.MaxValue}");
         }
 
-        PageSize = size;
-        Page = index;
+        var next = Copy();
 
-        return this;
+        next.PageSize = size;
+        next.Page = index;
+
+        return next;
     }
 
     /// <summary>
@@ -861,9 +879,11 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     public Inquiry<T> IgnoreUnboundFields(bool ignore = true)
     {
-        DropsUnboundFields = ignore;
+        var next = Copy();
 
-        return this;
+        next.DropsUnboundFields = ignore;
+
+        return next;
     }
 
     /// <summary>
@@ -946,9 +966,11 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     public Inquiry<T> ApplyProjection(Projection? projection)
     {
-        Projected = projection ?? Projection.None;
+        var next = Copy();
 
-        return this;
+        next.Projected = projection ?? Projection.None;
+
+        return next;
     }
 
     /// <summary>
@@ -1000,12 +1022,10 @@ public class Inquiry<T> where T : class
     {
         if (request is null) { return this; }
 
-        ApplyCondition(request.UnpackCondition(style));
-        ApplySorts(request.UnpackSorts(defaultSort, style));
-        ApplyProjection(request.UnpackProjection());
-        ApplyPagination(request.PageSize, request.Page ?? 0);
-
-        return this;
+        return ApplyCondition(request.UnpackCondition(style))
+            .ApplySorts(request.UnpackSorts(defaultSort, style))
+            .ApplyProjection(request.UnpackProjection())
+            .ApplyPagination(request.PageSize, request.Page ?? 0);
     }
 
     /// <summary>
@@ -1269,7 +1289,7 @@ public class Inquiry<T> where T : class
     /// </code>
     /// </para>
     /// <para>
-    /// <b>This Inquiry is not touched.</b> The request is applied to a <see cref="Clone"/> and the copy is what
+    /// <b>This Inquiry is not touched.</b> The request is applied to a copy of it, and the copy is what
     /// gets asked, so asking is free of consequence and the query you go on to build is the one you had. Which
     /// also means <see cref="DroppedFields"/> is the copy's rather than this one's, and is gone with it — call
     /// <see cref="Validate()"/> after applying where that list is what you are after.
@@ -1294,7 +1314,7 @@ public class Inquiry<T> where T : class
         if (request is null) { return Validate(); }
 
         List<ValidationProblem> problems = [];
-        var candidate = Clone();
+        var candidate = Copy();
 
         ICondition? condition = null;
         try { condition = request.UnpackCondition(style); }
@@ -1309,14 +1329,15 @@ public class Inquiry<T> where T : class
         catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Projection, error.Error, error.Message)); }
 
         // Not one of the three halves, so it is reported against the request itself
-        try { candidate.ApplyPagination(request.PageSize, request.Page ?? 0); }
+        try { candidate = candidate.ApplyPagination(request.PageSize, request.Page ?? 0); }
         catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.None, error.Error, error.Message)); }
 
         // Whatever did read, so the rest of the request is still held to the bindings and the caller hears about
         // all of it at once. A half that did not read is simply not there to ask about
-        candidate.ApplyCondition(condition);
-        candidate.ApplySorts(sorts);
-        candidate.ApplyProjection(projection);
+        candidate = candidate
+            .ApplyCondition(condition)
+            .ApplySorts(sorts)
+            .ApplyProjection(projection);
 
         problems.AddRange(candidate.Validate().Problems);
 

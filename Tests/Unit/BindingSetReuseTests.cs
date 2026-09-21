@@ -148,14 +148,9 @@ public class BindingSetReuseTests
 
         var inquiry = MinionTestData.Minions().WithWeequery();
 
-        if (requestsFirst)
-        {
-            inquiry.BindProperties(requests).BindProperty(minion => minion.IsActive);
-        }
-        else
-        {
-            inquiry.BindProperty(minion => minion.IsActive).BindProperties(requests);
-        }
+        inquiry = requestsFirst
+            ? inquiry.BindProperties(requests).BindProperty(minion => minion.IsActive)
+            : inquiry.BindProperty(minion => minion.IsActive).BindProperties(requests);
 
         // One condition over both, so the two bindings have to compose
         var result = inquiry

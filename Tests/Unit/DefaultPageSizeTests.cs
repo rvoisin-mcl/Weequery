@@ -90,12 +90,13 @@ public class DefaultPageSizeTests
     // ---------- carried, as settings are ----------
 
     [Fact]
-    public void ACloneKeepsTheSettingsAndTheSizeAlreadyNamed()
+    public void ACopyKeepsTheSettingsAndTheSizeAlreadyNamed()
     {
-        var clone = Sorted(PagesByTwo).ApplyPagination(3, 0).Clone();
+        // ApplyPagination hands back a new Inquiry, which is the only way a copy is made now
+        var copy = Sorted(PagesByTwo).ApplyPagination(3, 0);
 
-        Assert.Equal(2, clone.Settings.DefaultPageSize);
-        Assert.Equal(["Charlie", "Alice", "David"], Names(clone.Build()));
+        Assert.Equal(2, copy.Settings.DefaultPageSize);
+        Assert.Equal(["Charlie", "Alice", "David"], Names(copy.Build()));
     }
 
     // ---------- what it refuses ----------

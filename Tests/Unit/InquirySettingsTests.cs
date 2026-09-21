@@ -206,12 +206,13 @@ public class InquirySettingsTests
     // ---------- where it reaches ----------
 
     [Fact]
-    public void CloningCarriesTheSettings()
+    public void EveryCopyCarriesTheSettings()
     {
         var inquiry = Named("Acme").WithWeequery(Linguistic).BindProperties(Minion.Bindings);
 
-        Assert.Same(Linguistic, inquiry.Clone().Settings);
-        Assert.Single(inquiry.Clone().ApplyCondition($"Name Contains 'Ac{SoftHyphen}me'").Build().ToList());
+        // Each of these is a new Inquiry, and the settings are part of what it was configured with
+        Assert.Same(Linguistic, inquiry.ApplyPagination(10, 0).Settings);
+        Assert.Single(inquiry.ApplyCondition($"Name Contains 'Ac{SoftHyphen}me'").Build().ToList());
     }
 
     [Fact]

@@ -4,11 +4,13 @@ using Weequery;
 namespace Tests.Unit;
 
 /// <summary>
-/// What happens when one Inquiry is used twice, and the copy that is the way out of it.
+/// What happens when one Inquiry is used twice, which is nothing.
 /// <para>
-/// An Inquiry is mutable and reads like it is not, which is the one place this library invites a wrong
-/// assumption: a fluent chain looks like a LINQ chain, and a LINQ chain composes rather than accumulates. The
-/// behaviour is pinned here so it cannot change quietly, and so the shape of the fix is written down beside it.
+/// An Inquiry is immutable: every Apply and every Bind leaves the one it was called on as it was and hands back
+/// a new one carrying the change. A fluent chain therefore composes rather than accumulates, which is what the
+/// chain already looked like it did. This file pins that, because the failure it replaces was a silent one: a
+/// second query built off a reused Inquiry used to carry the first one's filter and answer a question nobody
+/// asked, plausibly and without complaint.
 /// </para>
 /// </summary>
 public class InquiryReuseTests
@@ -22,70 +24,93 @@ public class InquiryReuseTests
             .BindProperty(minion => minion.IsActive);
     }
 
-    // ---------- the hazard, stated so it cannot change quietly ----------
+    private static List<string> Names(IQueryable<Minion> query)
+    {
+        return query.ToList().Select(minion => minion.Name).ToList();
+    }
+
+    // ---------- reuse, stated so it cannot change quietly ----------
 
     /// <summary>
-    /// The one that bites. Both builds come off the same Inquiry, so the second carries the first's filter and
-    /// answers a question nobody asked, plausibly and without complaint.
+    /// The one that used to bite. Both builds come off the same Inquiry and neither can see the other's filter.
     /// </summary>
     [Fact]
-    public void ConditionsAccumulateAcrossBuilds()
+    public void ConditionsDoNotAccumulateAcrossBuilds()
     {
         var inquiry = Bound();
 
         var active = inquiry.ApplyCondition("IsActive = true").Build().Count();
         var paid = inquiry.ApplyCondition("Pay > 10000").Build().Count();
 
+        // Alice, Bob and David are active
         Assert.Equal(3, active);
 
-        // Alice and Charlie are paid over 10000, and Charlie is not active, so this is the AND of the two rather
-        // than the second on its own
-        Assert.Equal(1, paid);
+        // Alice and Charlie are paid over 10000. Under the old mutable Inquiry this was 1, being the AND of the
+        // two, and nothing said so
+        Assert.Equal(2, paid);
+
+        // And the one both came off still filters on nothing at all
+        Assert.Equal(4, inquiry.Build().Count());
     }
 
+    /// <summary>
+    /// The same, by the routes that take a condition already built rather than a string to parse. Each overload
+    /// adds to the list in its own way, so each is asked separately.
+    /// </summary>
     [Fact]
-    public void SortsAccumulateToo()
+    public void ConditionsBuiltRatherThanParsedDoNotAccumulateEither()
     {
-        var inquiry = Bound().ApplySorts([new Sort("IsActive", SortDirection.Ascending)]);
+        var inquiry = Bound();
 
-        var names = inquiry.ApplySorts([new Sort("Name", SortDirection.Descending)])
-            .Build()
-            .ToList()
-            .Select(minion => minion.Name);
+        var active = new OneValueCondition<bool>(Operator.Equals, nameof(Minion.IsActive), true);
+        var paid = new OneValueCondition<decimal>(Operator.GreaterThan, nameof(Minion.Pay), 10000m);
 
-        // Charlie first because he is the only inactive one, which is the first sort still applying
-        Assert.Equal(["Charlie Smith", "David Edgars", "Bob Samuelson", "Alice Fox"], names);
+        Assert.Equal(3, inquiry.ApplyCondition(active).Build().Count());
+        Assert.Equal(2, inquiry.ApplyCondition(paid).Build().Count());
+
+        // And the plural, which walks a list rather than taking one
+        Assert.Equal(3, inquiry.ApplyConditions([active]).Build().Count());
+        Assert.Equal(2, inquiry.ApplyConditions([paid]).Build().Count());
+
+        Assert.Equal(4, inquiry.Build().Count());
     }
 
-    /// <summary>Everything that is not a list is last-call-wins instead, which is its own thing to know</summary>
+    /// <summary>
+    /// Within one chain the sorts still compose, each breaking ties in the one before. What changed is that the
+    /// Inquiry the chain started from keeps only its own.
+    /// </summary>
     [Fact]
-    public void EverythingElseIsLastCallWins()
+    public void SortsComposeAlongAChainAndNowhereElse()
+    {
+        var byActive = Bound().ApplySorts([new Sort("IsActive", SortDirection.Ascending)]);
+
+        var byActiveThenName = byActive.ApplySorts([new Sort("Name", SortDirection.Descending)]);
+
+        // Charlie first because he is the only inactive one, then the rest by name descending
+        Assert.Equal(["Charlie Smith", "David Edgars", "Bob Samuelson", "Alice Fox"], Names(byActiveThenName.Build()));
+
+        // The one it was built from never heard about the second sort, so the active three stay in source order
+        Assert.Equal(["Charlie Smith", "Alice Fox", "Bob Samuelson", "David Edgars"], Names(byActive.Build()));
+    }
+
+    /// <summary>Everything that is not a list was last-call-wins, and is now nobody's business but the copy's</summary>
+    [Fact]
+    public void ReplacingAValueLeavesTheOriginalHoldingTheOldOne()
     {
         var inquiry = Bound().ApplyProjection("Name, Pay").ApplyPagination(pageSize: 3, page: 0);
 
         Assert.Equal(["Pay"], inquiry.ApplyProjection("Pay").BuildProjected().First().Keys);
         Assert.Equal(2, inquiry.ApplyPagination(pageSize: 2, page: 0).Build().Count());
+
+        // Both of those made a copy and changed it, so this one still projects two fields and pages by three
+        Assert.Equal(["Name", "Pay"], inquiry.BuildProjected().First().Keys);
+        Assert.Equal(3, inquiry.Build().Count());
     }
 
-    // ---------- the way out ----------
+    // ---------- what a copy carries ----------
 
     [Fact]
-    public void ACloneCarriesTheConfigurationAndNotTheLaterChanges()
-    {
-        var bound = Bound();
-
-        var active = bound.Clone().ApplyCondition("IsActive = true").Build().Count();
-        var paid = bound.Clone().ApplyCondition("Pay > 10000").Build().Count();
-
-        Assert.Equal(3, active);
-        Assert.Equal(2, paid);
-
-        // And the original was left alone by both of them
-        Assert.Equal(4, bound.Build().Count());
-    }
-
-    [Fact]
-    public void ACloneKeepsWhatWasAlreadyApplied()
+    public void ACopyKeepsWhatWasAlreadyApplied()
     {
         var configured = Bound()
             .ApplyCondition("IsActive = true")
@@ -93,25 +118,27 @@ public class InquiryReuseTests
             .ApplyPagination(pageSize: 2, page: 0)
             .ApplyProjection("Name");
 
-        var rows = configured.Clone().BuildProjected().ToList();
+        var rows = configured.BuildProjected().ToList();
 
         Assert.Equal(["David Edgars", "Bob Samuelson"], rows.Select(row => (string)row["Name"]!));
         Assert.Equal(["Name"], rows[0].Keys);
     }
 
     [Fact]
-    public void ACloneCanBeBoundToWithoutTouchingTheOriginal()
+    public void BindingReachesTheCopyAndNotTheOriginal()
     {
         var bound = Bound();
 
-        var clone = bound.Clone().BindProperty(minion => minion.Alias);
+        var withAlias = bound.BindProperty(minion => minion.Alias);
 
-        Assert.Single(clone.ApplyCondition("Alias = 'Ghost'").Build().ToList());
+        Assert.Single(withAlias.ApplyCondition("Alias = 'Ghost'").Build().ToList());
+
+        // Nothing bound Alias on the one it came off, so the key is still refused there
         Assert.Throws<WeequeryException>(() => bound.ApplyCondition("Alias = 'Ghost'").Build().ToList());
     }
 
     [Fact]
-    public void ACloneCarriesCollectionsAndTheirInnerAllowList()
+    public void ACopyCarriesCollectionsAndTheirInnerAllowList()
     {
         var crews = new List<Crew>
         {
@@ -124,48 +151,74 @@ public class InquiryReuseTests
             .BindProperty(crew => crew.Name)
             .BindCollection(crew => crew.Heists, "Heists", inner => inner.BindProperty(heist => heist.Take));
 
-        Assert.Equal([1], bound.Clone().ApplyCondition("Heists Any (Take > 100)").Build().ToList().Select(crew => crew.Id));
+        Assert.Equal([1], bound.ApplyCondition("Heists Any (Take > 100)").Build().ToList().Select(crew => crew.Id));
     }
 
     [Fact]
-    public void ACloneCarriesTheLenientSetting()
+    public void ACopyCarriesTheLenientSetting()
     {
         var lenient = Bound().IgnoreUnboundFields();
 
         // Dropped rather than refused, which is the setting having come along
-        Assert.Equal(4, lenient.Clone().ApplyCondition("Gizmo = 3").Build().Count());
+        Assert.Equal(4, lenient.ApplyCondition("Gizmo = 3").Build().Count());
 
-        Assert.Throws<WeequeryException>(() => Bound().Clone().ApplyCondition("Gizmo = 3").Build().ToList());
+        Assert.Throws<WeequeryException>(() => Bound().ApplyCondition("Gizmo = 3").Build().ToList());
     }
 
     /// <summary>A build's record of what it dropped describes a build, and the copy has not built anything</summary>
     [Fact]
-    public void ACloneDoesNotCarryWhatTheOriginalDropped()
+    public void ACopyDoesNotCarryWhatTheOriginalDropped()
     {
         var inquiry = Bound().IgnoreUnboundFields().ApplyCondition("Gizmo = 3");
 
         inquiry.Build().ToList();
 
         Assert.Single(inquiry.DroppedFields);
-        Assert.Empty(inquiry.Clone().DroppedFields);
+        Assert.Empty(inquiry.ApplyPagination(10, 0).DroppedFields);
     }
 
     /// <summary>
-    /// The lists are copied and what is in them is not, which is what makes this cheap: a binding is immutable
-    /// once built, so both sets hold the same objects and neither can change the other's
+    /// The lists are copied and what is in them is not, which is what makes a copy on every call affordable: a
+    /// binding is immutable once built, so both sets hold the same objects and neither can change the other's
     /// </summary>
     [Fact]
-    public void CloningCopiesTheListsRatherThanRebuildingTheBindings()
+    public void CopyingCopiesTheListsRatherThanRebuildingTheBindings()
     {
         var bound = Bound().ApplyCondition("IsActive = true");
-        var clone = bound.Clone();
+        var copy = bound.ApplyPagination(10, 0);
 
-        // Same query, same answers, and adding to one changes nothing about the other
-        Assert.Equal(bound.Build().Count(), clone.Build().Count());
+        // Same query, same answers
+        Assert.Equal(bound.Build().Count(), copy.Build().Count());
 
-        clone.ApplyCondition("Pay > 10000");
+        var narrowed = copy.ApplyCondition("Pay > 10000");
 
         Assert.Equal(3, bound.Build().Count());
-        Assert.Equal(1, clone.Build().Count());
+        Assert.Equal(3, copy.Build().Count());
+        Assert.Equal(1, narrowed.Build().Count());
+    }
+
+    /// <summary>
+    /// A binding call that refuses leaves nothing behind, because what it was assembling was never the Inquiry
+    /// the caller is holding.
+    /// </summary>
+    [Fact]
+    public void ARefusedBindingDoesNotTouchTheOriginal()
+    {
+        var crews = new List<Crew>
+        {
+            new() { Id = 1, Name = "Alpha", Heists = [new() { Target = "Bank", Take = 500 }] },
+            new() { Id = 2, Name = "Beta", Heists = [] },
+        }.AsQueryable();
+
+        var bound = crews
+            .WithWeequery()
+            .BindProperty(crew => crew.Name)
+            .BindCollection(crew => crew.Heists, "Heists", inner => inner.BindProperty(heist => heist.Take));
+
+        // "Heists" is a collection, so a property binding cannot claim the same key
+        Assert.Throws<WeequeryException>(() => bound.BindProperty(crew => crew.Name, "Heists"));
+
+        // The collection is still bound and still answers, the failed call having changed nothing here
+        Assert.Equal([1], bound.ApplyCondition("Heists Any (Take > 100)").Build().ToList().Select(crew => crew.Id));
     }
 }

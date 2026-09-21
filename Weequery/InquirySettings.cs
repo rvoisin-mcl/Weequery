@@ -2,7 +2,7 @@ namespace Weequery;
 
 /// <summary>
 /// What one query decides for itself, rather than taking from the library. Held on the
-/// <see cref="Inquiry{T}"/> it was given to and carried by <see cref="Inquiry{T}.Clone"/>.
+/// <see cref="Inquiry{T}"/> it was given to and carried by every copy an Apply or a Bind makes of it.
 /// </summary>
 /// <remarks>
 /// <para>

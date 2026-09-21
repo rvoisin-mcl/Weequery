@@ -14,9 +14,16 @@ namespace Tests.Unit;
 /// </summary>
 public class ValidationTests
 {
-    private static Inquiry<Minion> Bound()
+    /// <summary>
+    /// Whether unbound fields are dropped is a setting, so it is decided here where the query starts rather
+    /// than anywhere further down the chain
+    /// </summary>
+    /// <param name="ignoreUnbound">see InquirySettings.IgnoreUnboundFields</param>
+    private static Inquiry<Minion> Bound(bool ignoreUnbound = false)
     {
-        return MinionTestData.Minions().WithWeequery().BindProperties(Minion.Bindings);
+        return MinionTestData.Minions()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = ignoreUnbound })
+            .BindProperties(Minion.Bindings);
     }
 
     private static ValidationProblem Only(ValidationResult result)
@@ -170,7 +177,7 @@ public class ValidationTests
     [Fact]
     public void ValidateFillsDroppedFieldsAsABuildWould()
     {
-        var inquiry = Bound().IgnoreUnboundFields().ApplyCondition("IsActive = true AND Gizmo = 3");
+        var inquiry = Bound(ignoreUnbound: true).ApplyCondition("IsActive = true AND Gizmo = 3");
 
         Assert.True(inquiry.Validate().IsValid);
 
@@ -187,9 +194,8 @@ public class ValidationTests
     public void ABindingThatDoesNotGrantTheUseIsStillReportedWhenUnboundFieldsAreIgnored()
     {
         var problem = Only(MinionTestData.Minions()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
             .BindProperty(minion => minion.Name, "Name", BindingUse.Projection)
-            .IgnoreUnboundFields()
             .ApplyCondition("Name = 'Alice Fox'")
             .Validate());
 

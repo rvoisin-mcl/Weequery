@@ -13,20 +13,79 @@ namespace Tests.Unit;
 /// </summary>
 public class IgnoreUnboundFieldsTests
 {
+    /// <summary>
+    /// Whether unbound fields are dropped is a setting, so it is decided here where the query starts rather than
+    /// anywhere further down the chain
+    /// </summary>
+    /// <param name="ignore">see InquirySettings.IgnoreUnboundFields</param>
     private static Inquiry<Minion> Bound(bool ignore)
     {
         return MinionTestData.Minions()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = ignore })
             .BindProperty(minion => minion.Name)
             .BindProperty(minion => minion.Pay)
             .BindProperty(minion => minion.IsActive)
-            .BindProperty(minion => minion.CauseForDeparture, "Departure", BindingUse.Projection)
-            .IgnoreUnboundFields(ignore);
+            .BindProperty(minion => minion.CauseForDeparture, "Departure", BindingUse.Projection);
     }
 
     private static string[] Names(string query, bool ignore = true)
     {
         return [.. Bound(ignore).ApplyCondition(query).Build().ToList().Select(minion => minion.Name).Order()];
+    }
+
+    // ---------- where the answer lives ----------
+
+    /// <summary>
+    /// It is a setting, so it can be decided where the rest of them are and never mentioned again
+    /// </summary>
+    [Fact]
+    public void ItCanBeSetWithTheOtherSettings()
+    {
+        var lenient = MinionTestData.Minions()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
+            .BindProperty(minion => minion.Name)
+            .ApplyCondition("Gizmo = 3");
+
+        Assert.Equal(4, lenient.Build().ToList().Count);
+        Assert.Single(lenient.DroppedFields);
+    }
+
+    /// <summary>
+    /// It travels with the Inquiry, so every copy an apply makes carries it and no apply has to know about it
+    /// </summary>
+    [Fact]
+    public void ItSurvivesEveryApply()
+    {
+        var inquiry = MinionTestData.Minions()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
+            .BindProperty(minion => minion.Name)
+            .ApplyCondition("Name StartsWith 'A'")
+            .ApplySorts("Name")
+            .ApplyPagination(pageSize: 2, page: 0);
+
+        Assert.True(inquiry.Settings.IgnoreUnboundFields);
+    }
+
+    /// <summary>
+    /// Every setting stands on its own, so asking for this one says nothing about the rest
+    /// </summary>
+    [Fact]
+    public void ItSitsBesideTheOtherSettings()
+    {
+        var settings = InquirySettings.Default with
+        {
+            StringComparison = StringComparison.OrdinalIgnoreCase,
+            DefaultPageSize = 25,
+            Operators = OperatorSupport.Without(Operator.IsMatch),
+            IgnoreUnboundFields = true,
+        };
+
+        var inquiry = MinionTestData.Minions().WithWeequery(settings).BindProperty(minion => minion.Name);
+
+        Assert.True(inquiry.Settings.IgnoreUnboundFields);
+        Assert.Equal(StringComparison.OrdinalIgnoreCase, inquiry.Settings.StringComparison);
+        Assert.Equal(25, inquiry.Settings.DefaultPageSize);
+        Assert.False(inquiry.Settings.Operators.Allows(Operator.IsMatch));
     }
 
     // ---------- off by default ----------
@@ -213,10 +272,9 @@ public class IgnoreUnboundFieldsTests
     private static Inquiry<Crew> BoundCrews()
     {
         return Crews()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
             .BindProperty(crew => crew.Name)
-            .BindCollection(crew => crew.Heists, "Heists", inner => inner.BindProperty(heist => heist.Take))
-            .IgnoreUnboundFields();
+            .BindCollection(crew => crew.Heists, "Heists", inner => inner.BindProperty(heist => heist.Take));
     }
 
     /// <summary>The inside is its own allow-list, so it is that one deciding what survives in there</summary>
@@ -263,11 +321,10 @@ public class DroppedFieldsTests
     private static Inquiry<Minion> Bound()
     {
         return MinionTestData.Minions()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
             .BindProperty(minion => minion.Name)
             .BindProperty(minion => minion.Pay)
-            .BindProperty(minion => minion.IsActive)
-            .IgnoreUnboundFields();
+            .BindProperty(minion => minion.IsActive);
     }
 
     [Fact]
@@ -399,10 +456,9 @@ public class DroppedFieldsTests
         {
             new() { Id = 1, Name = "Alpha", Heists = [new() { Target = "Bank", Take = 500 }] },
         }.AsQueryable()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
             .BindProperty(crew => crew.Name)
             .BindCollection(crew => crew.Heists, "Heists", inner => inner.BindProperty(heist => heist.Take))
-            .IgnoreUnboundFields()
             .ApplyCondition("Heists Any (Take > 1 AND Loot = 3)");
 
         inquiry.Build().ToList();
@@ -414,9 +470,8 @@ public class DroppedFieldsTests
     public void AnUnboundCollectionIsReportedByItsOwnKey()
     {
         var inquiry = new List<Crew>().AsQueryable()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
             .BindProperty(crew => crew.Name)
-            .IgnoreUnboundFields()
             .ApplyCondition("Jobs Any (Take > 1)");
 
         inquiry.Build().ToList();

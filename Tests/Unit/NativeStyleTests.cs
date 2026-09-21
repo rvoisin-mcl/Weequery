@@ -19,11 +19,25 @@ namespace Tests.Unit;
 /// </summary>
 public class NativeStyleTests
 {
+#pragma warning disable CS0618 // a deprecated style is how you ask for the permissive grammar, which is the point
     /// <summary>Read permissively, which now has to be asked for: the default is the strict grammar</summary>
     private static ICondition Parse(string query)
     {
         return ConditionFunctions.ParseQuery(query, QueryStyle.CSharp)!;
     }
+
+    /// <summary>Read a sort clause permissively, which the default no longer does either</summary>
+    private static List<Sort> ParseSorts(string clause)
+    {
+        return Sort.Parse(clause, null, QueryStyle.CSharp);
+    }
+
+    /// <summary>Read a combined string permissively, separator and condition both</summary>
+    private static ParsedQuery ParseCombined(string query)
+    {
+        return ParsedQuery.Parse(query, null, QueryStyle.CSharp);
+    }
+#pragma warning restore CS0618
 
     /// <summary>Read under the strict grammar</summary>
     private static ICondition Strict(string query)
@@ -248,7 +262,7 @@ public class NativeStyleTests
     [InlineData("order by Pay DESC")]
     public void TheTwoWordSortPrefixIsRefused(string clause)
     {
-        Assert.NotEmpty(Sort.Parse(clause, null));
+        Assert.NotEmpty(ParseSorts(clause));
 
         var error = Assert.Throws<WeequeryException>(() => Sort.Parse(clause, null, QueryStyle.Native));
 
@@ -282,7 +296,7 @@ public class NativeStyleTests
     [Fact]
     public void ACombinedStringIsRefusedForItsSeparatorToo()
     {
-        Assert.NotNull(ParsedQuery.Parse("Pay > 1 ORDER BY Pay"));
+        Assert.NotNull(ParseCombined("Pay > 1 ORDER BY Pay"));
 
         var error = Assert.Throws<WeequeryException>(() => ParsedQuery.Parse("Pay > 1 ORDER BY Pay", null, QueryStyle.Native));
 
@@ -468,7 +482,7 @@ public class NativeStyleTests
     [Fact]
     public void ACombinedStringWritesTheOneWordSeparator()
     {
-        var parsed = ParsedQuery.Parse("Pay > 10000 ORDER BY Pay DESC");
+        var parsed = ParseCombined("Pay > 10000 ORDER BY Pay DESC");
 
         Assert.Equal("([Pay] > '10000') OrderBy [Pay] DESC", parsed.ToQuery(QueryStyle.Native));
 

@@ -38,6 +38,9 @@ public class ReservedKeyTests
             // the one word spelling of the sort prefix, which a sort clause reads as the prefix rather than as a
             // field. ORDER and BY are not reserved, being read only together, so a field named Order still sorts.
             "OrderBy",
+            // and the projection prefix, for the same reason: a combined string reads it as the separator
+            // wherever a part could begin, see ParsedQuery
+            "Select",
             // and every operator's own name
             "IsNull", "IsNotNull", "IsIn", "IsNotIn", "IsBetween", "IsNotBetween",
             "StartsWith", "DoesNotStartWith", "EndsWith", "DoesNotEndWith", "Contains", "DoesNotContain",
@@ -118,6 +121,8 @@ public class ReservedKeyTests
     [InlineData("By")]
     [InlineData("Ordering")]
     [InlineData("OrderByDate")]
+    [InlineData("Selected")]
+    [InlineData("Selection")]
     public void AKeyThatMerelyStartsLikeOneIsFine(string key)
     {
         var matched = Things()

@@ -30,7 +30,7 @@ internal static class ProjectionBuilder<T> where T : class
     /// <param name="parameter">the shared parameter every accessor hangs off</param>
     /// <param name="keep">
     /// [OPT] if to keep a field that nothing bound, called only where the caller asked for unbound fields
-    /// to be dropped rather than refused, see <see cref="Inquiry{T}.IgnoreUnboundFields"/>. Null refuses them.
+    /// to be dropped rather than refused, see <see cref="InquirySettings.IgnoreUnboundFields"/>. Null refuses them.
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a field is unbound, names a collection, or does not grant Projection</exception>
@@ -62,7 +62,7 @@ internal static class ProjectionBuilder<T> where T : class
     /// </summary>
     /// <remarks>
     /// The mildest of the three droppings: a field that goes leaves a key out of the row and changes nothing
-    /// else, see <see cref="Inquiry{T}.IgnoreUnboundFields"/>. A row with no keys left is a possible answer
+    /// else, see <see cref="InquirySettings.IgnoreUnboundFields"/>. A row with no keys left is a possible answer
     /// here, and the honest one for a caller who asked only for columns that are no longer there.
     /// </remarks>
     /// <summary>
@@ -173,8 +173,7 @@ internal static class ProjectionBuilder<T> where T : class
     {
         var binding = BindingLookup.Resolve(bindings, field);
 
-        // Bound, but not for this. Said plainly rather than reported as unbound, which would send a caller
-        // looking for a typo in a name that works perfectly well in a condition.
+        // Bound, but not for this
         if (!binding.Allows(BindingUse.Projection))
         {
             throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field}' cannot be projected: it is bound for {binding.Use}");
@@ -182,8 +181,7 @@ internal static class ProjectionBuilder<T> where T : class
 
         Expression value = Expression.Convert(binding.Accessor, typeof(object));
 
-        // LinkNotNullCheck guards the read rather than the value: an int reached through a null navigation has
-        // nothing to box, where an int that is simply zero has
+        // LinkNotNullCheck guards the read rather than the value
         if (!binding.RequiresLinkCheck) { return value; }
 
         return Expression.Condition(binding.LinkNotNullCheck, value, Expression.Constant(null, typeof(object)));

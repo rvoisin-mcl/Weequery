@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using Weequery.Interfaces;
 
 namespace Weequery;
@@ -87,10 +87,7 @@ public class TransportCondition
     /// Attempt to unpack into to a condition, if both .Condition and .Query are present, it will prefer .Condition
     /// </summary>
     /// <param name="style">
-    /// how strictly to read the query half, where that is the half that arrived. <see cref="QueryStyle.Native"/>
-    /// accepts one spelling per operator; null, the default, accepts every spelling. It has no bearing on the
-    /// packed half, which carries operators as values rather than as text. See
-    /// <see cref="ConditionFunctions.ParseQuery"/>
+    /// How to read the query. See <see cref="ConditionFunctions.ParseQuery"/>
     /// </param>
     /// <returns></returns>
     public ICondition? Unpack(QueryStyle style = QueryStyle.Native)
@@ -102,14 +99,13 @@ public class TransportCondition
     /// Read the projection half, where the payload carried one.
     /// </summary>
     /// <remarks>
-    /// Takes no style: a projection is a list of field names and holds no operators, so there is no spelling to
-    /// be strict about. Safe to hand to <see cref="Inquiry{T}.ApplyProjection(Projection?)"/> whatever arrived,
+    /// Safe to hand to <see cref="Inquiry{T}.ApplyProjection(Projection?)"/> whatever arrived,
     /// since nothing named gives <see cref="Projection.None"/> and that is a no-op.
     /// </remarks>
     /// <returns><see cref="Projection.None"/> where nothing was asked; never null</returns>
     /// <exception cref="WeequeryException">the list is malformed</exception>
-    public Projection UnpackProjection()
+    public Projection UnpackProjection(QueryStyle style = QueryStyle.Native)
     {
-        return Weequery.Projection.Parse(Projection);
+        return Weequery.Projection.Parse(Projection, style);
     }
 }

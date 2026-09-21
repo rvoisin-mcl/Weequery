@@ -1,20 +1,13 @@
 namespace Weequery;
 
 /// <summary>
-/// The words the query language gives its own meaning, which is what a binding key may not be.
+/// The words reserved for the sole use of the query language, cannot be used as a binding key
 /// </summary>
 /// <remarks>
 /// <para>
-/// A key is written as a bare field name, so a key that spells an operator makes a query that reads two ways.
-/// Some of those the parser settles by position, since a field comes before an operator, but the conjunctions do
-/// not survive that far: the tokenizer promotes AND, OR and NOT wherever they appear, so a field named "And"
-/// cannot be written at all, bracketed or not. Rather than have some collisions work and others fail, none are
-/// allowed, and they are refused when the binding is made rather than when a query using it will not parse.
-/// </para>
-/// <para>
 /// The operator names are read from <see cref="Operator"/> rather than listed, so an operator added later is
-/// reserved by having been added. The symbolic spellings need no entry: '==' and '&gt;' are not valid names, so a
-/// key could never be one.
+/// reserved by having been added. The symbolic spellings need no entry: '==' and '&gt;' are not valid binding names,
+/// and so do not need to be tested
 /// </para>
 /// </remarks>
 internal static class QueryKeywords
@@ -71,11 +64,12 @@ internal static class QueryKeywords
             "IS",
             "IN",
             "BETWEEN",
+            // What a query string will be split on, see ParsedQuery
             "OrderBy",
+            "Select",
         };
 
-        // And the canonical name of every operator. The ones spelled with symbols are skipped by the same rule
-        // that decides a key: they are not names.
+        // And the canonical name of every operator. The symbolic ones are skipped as they are invalid as binding names
         foreach (var op in Enum.GetValues<Operator>())
         {
             var spelling = ConditionFunctions.GetOperationString(op);

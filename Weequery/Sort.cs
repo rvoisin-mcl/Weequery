@@ -45,7 +45,7 @@ public record Sort(string Field, SortDirection Direction)
     /// </param>
     /// <returns>never null; empty when there was nothing to read and no default was given</returns>
     /// <exception cref="WeequeryException">the clause is malformed, or spells the prefix a way the style refuses</exception>
-    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort = null, QueryStyle? style = null)
+    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort = null, QueryStyle style = QueryStyle.Native)
     {
         return SortParser.Parse(sortString, defaultSort, style);
     }

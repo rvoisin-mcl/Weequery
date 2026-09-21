@@ -64,26 +64,67 @@ internal sealed class SortParser
     /// </param>
     /// <returns>never null; empty when there was nothing to read and no default</returns>
     /// <exception cref="WeequeryException">the clause is malformed, or spells the prefix a way the style refuses</exception>
-    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort, QueryStyle? style = null)
+    public static List<Sort> Parse(string? sortString, IEnumerable<Sort>? defaultSort, QueryStyle style = QueryStyle.Native)
     {
         var tokens = QueryTokenizer.Tokenize(sortString ?? string.Empty, style);
 
         // Nothing asked for, return the default
         if (tokens.Count == 0) { return [.. defaultSort ?? []]; }
 
-        var parser = new SortParser(tokens, sortString!);
-
-        parser.SkipOrderBy(style);
-
-        var sorts = parser.ParseSorts();
+        var sorts = ParseLeading(tokens, sortString!, defaultSort, out var stopped, style);
 
         // Anything left over means the clause was not a well formed list (eg. "Pay Name")
-        if (!parser.AtEnd)
+        if (stopped < tokens.Count)
         {
-            throw new WeequeryException(WeequeryError.QuerySyntax, parser.Describe($"Unexpected '{parser.Current.Text}'", parser.Current.Position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, QueryText.Describe(sortString!, $"Unexpected '{tokens[stopped].Text}'", tokens[stopped].Position));
         }
 
         return sorts;
+    }
+
+    /// <summary>
+    /// Read as much of a sort clause as there is, and say where it stopped rather than refusing what follows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same split <see cref="QueryParser.ParseLeading"/> performs, for the same reason: a combined string
+    /// puts a projection after the sorts, so something has to read the sorts and hand back where they ended
+    /// instead of treating the next word as a malformed field. See <see cref="ParsedQuery"/>.
+    /// </para>
+    /// <para>
+    /// Where the clause ends is found by reading it, not by searching the text, so a field genuinely spelled
+    /// like what follows is still a field.
+    /// </para>
+    /// </remarks>
+    /// <param name="tokens">the clause, already tokenized</param>
+    /// <param name="sorts">the text those tokens came from, for the error messages</param>
+    /// <param name="defaultSort">what to sort by where there was nothing to read, copied rather than kept</param>
+    /// <param name="stopped">the token the clause stopped at, or the count where it ran to the end</param>
+    /// <param name="style">
+    /// <see cref="QueryStyle.Native"/> to take only the one word prefix, see <see cref="PrefixLength"/>
+    /// </param>
+    /// <returns>never null</returns>
+    /// <exception cref="WeequeryException">the clause is malformed, or spells the prefix a way the style refuses</exception>
+    internal static List<Sort> ParseLeading(List<QueryToken> tokens, string sorts, IEnumerable<Sort>? defaultSort, out int stopped, QueryStyle style = QueryStyle.Native)
+    {
+        WeequeryException.ThrowIfNull(tokens);
+
+        if (tokens.Count == 0)
+        {
+            stopped = 0;
+
+            return [.. defaultSort ?? []];
+        }
+
+        var parser = new SortParser(tokens, sorts);
+
+        parser.SkipOrderBy(style);
+
+        var read = parser.ParseSorts();
+
+        stopped = parser.Index;
+
+        return read;
     }
 
     /// <summary>
@@ -95,7 +136,7 @@ internal sealed class SortParser
     /// direction. OrderBy is one word with nothing after it to check, so at the front of a clause it is always
     /// the prefix. No binding may be named OrderBy for exactly that reason, so nothing legal collides with it.
     /// </remarks>
-    private void SkipOrderBy(QueryStyle? style)
+    private void SkipOrderBy(QueryStyle style = QueryStyle.Native)
     {
         Index += PrefixLength(Tokens, 0, style);
     }
@@ -122,7 +163,7 @@ internal sealed class SortParser
     /// </param>
     /// <returns>2 for ORDER BY, 1 for OrderBy, 0 for neither</returns>
     /// <exception cref="WeequeryException">the style refuses the spelling that is there</exception>
-    internal static int PrefixLength(List<QueryToken> tokens, int index, QueryStyle? style = null)
+    internal static int PrefixLength(List<QueryToken> tokens, int index, QueryStyle style = QueryStyle.Native)
     {
         // Two words, and only together
         if (((index + 1) < tokens.Count) && IsWord(tokens[index], "ORDER") && IsWord(tokens[index + 1], "BY"))

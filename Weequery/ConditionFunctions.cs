@@ -1,4 +1,4 @@
-﻿using Weequery.Interfaces;
+using Weequery.Interfaces;
 
 namespace Weequery;
 
@@ -825,10 +825,7 @@ public static class ConditionFunctions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The counterpart of <see cref="FieldsUsed"/>, and it differs from it in exactly one way that matters: a
-    /// quantifier's children are a different <i>allow-list</i>, which is why fields stop at the boundary, but
-    /// they are not a different <i>backend</i>, so operators do not. An <see cref="Operator.IsMatch"/> inside
-    /// <c>Assignments Any (...)</c> still has to be run by whatever runs the query.
+    /// The counterpart of <see cref="FieldsUsed"/>
     /// </para>
     /// <para>
     /// Structural operators count too, <see cref="Operator.And"/>, <see cref="Operator.Or"/> and
@@ -840,11 +837,11 @@ public static class ConditionFunctions
     /// <returns>each operator once, in the order it was first met; never null</returns>
     public static List<Operator> OperatorsUsed(this ICondition? condition)
     {
-        List<Operator> seen = [];
+        List<Operator> seen = []; // return in order discovered
 
-        foreach (var (op, _) in Used(condition, 0))
+        foreach (var used in Used(condition, 0))
         {
-            if (!seen.Contains(op)) { seen.Add(op); }
+            if (!seen.Contains(used.Operator)) { seen.Add(used.Operator); }
         }
 
         return seen;
@@ -862,7 +859,7 @@ public static class ConditionFunctions
     /// <param name="condition"></param>
     /// <param name="support"></param>
     /// <returns>null where every operator used is allowed, which includes the condition that is null</returns>
-    internal static (Operator Operator, string? Field)? FirstUnsupported(ICondition? condition, OperatorSupport support)
+    internal static UsedOperator? FirstUnsupported(ICondition? condition, OperatorSupport support)
     {
         foreach (var used in Used(condition, 0))
         {
@@ -882,11 +879,11 @@ public static class ConditionFunctions
     /// <param name="condition"></param>
     /// <param name="depth">levels entered to get to this condition</param>
     /// <returns>one entry per condition met, in the order met, with duplicates left in</returns>
-    private static IEnumerable<(Operator Operator, string? Field)> Used(ICondition? condition, int depth)
+    private static IEnumerable<UsedOperator> Used(ICondition? condition, int depth)
     {
         if ((condition is null) || ConditionNesting.IsTooDeep(depth)) { yield break; }
 
-        yield return (condition.Operator, (condition as IBound)?.Field);
+        yield return new UsedOperator(condition.Operator, (condition as IBound)?.Field);
 
         // Two shapes of container, since a packed tree holds packed children, see IConditionContainer
         IEnumerable<ICondition> children = condition switch

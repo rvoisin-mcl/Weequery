@@ -27,15 +27,37 @@ namespace Weequery;
 /// <see cref="Inquiry{T}.ApplyPagination"/>. Must be greater than 0
 /// </param>
 /// <param name="Operators">
-/// Which operators whatever is going to run this query can actually run. Null is
-/// <see cref="OperatorSupport.Everything"/>, which is how this library has always behaved.
+/// Which operators whatever is going to run this query can actually run. Null will be treated as
+/// <see cref="OperatorSupport.Everything"/>
 /// <para>
 /// A condition using one that is not in the set is refused where every other refusal happens: thrown by
 /// <see cref="Inquiry{T}.Build"/> and reported by <see cref="Inquiry{T}.Validate()"/>. Set it where the
 /// backend is chosen, which is where what it cannot do is known.
 /// </para>
 /// </param>
-public record InquirySettings(StringComparison StringComparison = StringComparison.Ordinal, int? DefaultPageSize = null, OperatorSupport? Operators = null)
+/// <param name="IgnoreUnboundFields">
+/// If references to unbound fields should be silently dropped instead of refusing the query.
+/// <para>
+/// <b>Off by default</b> Intended to cover cases where the publically exposed surface varies and stored queries
+/// against older versions exist.
+/// <code>
+/// query.WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = true })
+///     .ApplyCondition("IsActive = true AND Gizmo = 3")   // Gizmo is unbound, so this filters on IsActive alone
+/// </code>
+/// </para>
+/// <para>
+/// <b>Dropping always widens.</b> Dropped filters will never return less rows than the original, if everything
+/// is dropped, the query will return <b>every</b> row.
+/// </para>
+/// <para>
+/// <b>Only genuinely unbound fields go.</b> A field that is bound but not for the requested use,
+/// see <see cref="BindingUse"/>, is a deliberate choice. Those are still refused.
+/// </para>
+/// <para>
+/// Any removed fields are reported in <see cref="Inquiry{T}.DroppedFields"/>
+/// </para>
+/// </param>
+public record InquirySettings(StringComparison StringComparison = StringComparison.Ordinal, int? DefaultPageSize = null, OperatorSupport? Operators = null, bool IgnoreUnboundFields = false)
 {
     /// <summary>
     /// Default query settings if none were provided
@@ -67,8 +89,7 @@ public record InquirySettings(StringComparison StringComparison = StringComparis
     /// <inheritdoc cref="InquirySettings" path="/param[@name='Operators']/node()"/>
     /// </summary>
     /// <remarks>
-    /// Null is allowed in and never comes out: a caller saying nothing about their backend means everything,
-    /// and reading it back should not be a null check for that.
+    /// Null can be set (evaluated as .Everything), but will never be returned
     /// </remarks>
     [AllowNull]
     public OperatorSupport Operators

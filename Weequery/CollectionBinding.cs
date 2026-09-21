@@ -34,7 +34,7 @@ internal interface ICollectionBinding<TClass>
     /// </summary>
     /// <remarks>
     /// Asked rather than resolved, by the one thing that has to know a field is missing without wanting it to
-    /// fail: pruning an unbound field out of a query, see <see cref="Inquiry{TClass}.IgnoreUnboundFields"/>. The
+    /// fail: pruning an unbound field out of a query, see <see cref="InquirySettings.IgnoreUnboundFields"/>. The
     /// inner set is the collection's own, so nothing outside it can answer this.
     /// </remarks>
     /// <param name="key">a key, which may carry an index</param>

@@ -6,7 +6,7 @@ namespace Weequery;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Only produced where a caller asked for <see cref="Inquiry{T}.IgnoreUnboundFields"/>
+/// Only produced where a caller asked for <see cref="InquirySettings.IgnoreUnboundFields"/>
 /// </para>
 /// <para>
 /// The name is the key, shorn of any index

@@ -60,14 +60,14 @@ public class Inquiry<T> where T : class
     private List<Sort> Sorts { get; init; } = new();
 
     /// <summary>
-    /// Which fields <see cref="BuildProjected"/> reads back, see <see cref="ApplyProjection(string?)"/>. Default empty will return
+    /// Which fields <see cref="BuildProjected"/> reads back, see <see cref="ApplyProjection(string?, QueryStyle)"/>. Default empty will return
     /// every bound field.
     /// </summary>
     private Projection Projected { get; set; } = Projection.None;
 
     /// <summary>
     /// The projection a caller applied, or <see cref="Projection.None"/> where none was, see
-    /// <see cref="ApplyProjection(string?)"/>.
+    /// <see cref="ApplyProjection(string?, QueryStyle)"/>.
     /// </summary>
     /// <remarks>
     /// A projection builder will need to query this to determine what to retain.
@@ -84,15 +84,10 @@ public class Inquiry<T> where T : class
     private int PageSize { get; set; } = UnsetPageSize;
     private int Page { get; set; } = -1;
 
-    /// <summary>
-    /// If a field referenced but not bound is dropped rather than refused, see <see cref="IgnoreUnboundFields"/>.
-    /// </summary>
-    private bool DropsUnboundFields { get; set; }
-
     private List<DroppedField> Dropped { get; init; } = new();
 
     /// <summary>
-    /// What the last build dropped from the query, see <see cref="IgnoreUnboundFields"/>.
+    /// What the last build dropped from the query, see <see cref="InquirySettings.IgnoreUnboundFields"/>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -151,7 +146,7 @@ public class Inquiry<T> where T : class
     /// <summary>
     /// Any evaluation tuning knobs for this query <see cref="InquirySettings"/>. 
     /// </summary>
-    public InquirySettings Settings { get; init; } = InquirySettings.Default;
+    public InquirySettings Settings { get; internal set; } = InquirySettings.Default;
 
     internal Inquiry(IQueryable<T> query)
     {
@@ -179,7 +174,6 @@ public class Inquiry<T> where T : class
             Projected = Projected,
             PageSize = PageSize,
             Page = Page,
-            DropsUnboundFields = DropsUnboundFields,
             Settings = Settings,
         };
     }
@@ -578,7 +572,7 @@ public class Inquiry<T> where T : class
     /// Parse a query string and add the condition it describes, to be applied when built. Will be AND'ed with any
     /// other root conditions
     /// </summary>
-    /// <param name="query">eg. "(Pay &gt; 10000) AND NOT (Name StartsWith 'Temp')"</param>
+    /// <param name="filterString">eg. "(Pay &gt; 10000) AND NOT (Name StartsWith 'Temp')"</param>
     /// <param name="style">
     /// <see cref="QueryStyle.Native"/> to accept only the one spelling of each operator, so a caller sending
     /// <c>&amp;&amp;</c> or <c>IS NULL</c> is refused and told what to write. Null, the default, accepts every
@@ -586,9 +580,9 @@ public class Inquiry<T> where T : class
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the query is malformed, see <see cref="ConditionFunctions.ParseQuery"/></exception>
-    public Inquiry<T> ApplyCondition(string query, QueryStyle style = QueryStyle.Native)
+    public Inquiry<T> ApplyCondition(string filterString, QueryStyle style = QueryStyle.Native)
     {
-        var condition = ConditionFunctions.ParseQuery(query, style);
+        var condition = ConditionFunctions.ParseQuery(filterString, style);
         if (condition is null) { return this; }
 
         var next = Copy();
@@ -661,7 +655,7 @@ public class Inquiry<T> where T : class
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the clause is malformed, see <see cref="Sort.Parse"/></exception>
-    public Inquiry<T> ApplySorts(string? sortString, IEnumerable<Sort>? defaultSort = null, QueryStyle? style = null)
+    public Inquiry<T> ApplySorts(string? sortString, IEnumerable<Sort>? defaultSort = null, QueryStyle style = QueryStyle.Native)
     {
         return ApplySorts(Sort.Parse(sortString, defaultSort, style));
     }
@@ -736,51 +730,6 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Drop the parts of a query that name a field nothing bound, rather than refusing the whole query.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Off by default, and worth leaving off unless you have the problem it solves.</b> That problem is the
-    /// stale saved filter: a caller stored a query months ago, a binding has since been renamed or taken away,
-    /// and refusing the whole thing means they cannot open their own saved view to fix it. This lets the parts
-    /// that still resolve run, and quietly forgets the rest.
-    /// </para>
-    /// <code>
-    /// .IgnoreUnboundFields()
-    /// .ApplyCondition("IsActive = true AND Gizmo = 3")   // Gizmo is unbound, so will filter on IsActive alone
-    /// </code>
-    /// <para>
-    /// <b>Dropping always widens.</b> A test that is not there does not constrain, so a condition made entirely
-    /// of unbound fields prunes to nothing and the query returns <i>every row</i>. 
-    /// </para>
-    /// <para>
-    /// <b>Only genuinely unbound fields go.</b> A field that is bound but does not grant the use being asked of
-    /// it, see <see cref="BindingUse"/>, is a deliberate statement about what a caller may do, and quietly
-    /// ignoring one would undo the point of making it. Those are still refused.
-    /// </para>
-    /// <para>
-    /// It reaches all three halves of a query, and the risk is not the same in each. A dropped <b>sort</b> only
-    /// changes the order rows come back in. A dropped <b>projected field</b> only leaves a key out of the row.
-    /// A dropped <b>condition</b> changes which rows there are, which is the one to think about.
-    /// </para>
-    /// <para>
-    /// Inside a quantifier the collection's own allow-list decides, see <see cref="BindCollection"/>: an unbound
-    /// field inside the brackets drops from the inner condition, and a quantifier left with no test at all drops
-    /// entirely, as does one naming a collection nobody bound.
-    /// </para>
-    /// </remarks>
-    /// <param name="ignore">ignore setting to use for this request</param>
-    /// <returns></returns>
-    public Inquiry<T> IgnoreUnboundFields(bool ignore = true)
-    {
-        var next = Copy();
-
-        next.DropsUnboundFields = ignore;
-
-        return next;
-    }
-
-    /// <summary>
     /// If a key maps to a bound property or collection
     /// </summary>
     private bool IsBound(string field)
@@ -822,16 +771,17 @@ public class Inquiry<T> where T : class
     /// If called multiple times, the last call wins.
     /// </para>
     /// </remarks>
-    /// <param name="fields">
+    /// <param name="projectionString">
     /// a comma separated list of keys, each written as a binding key and each able to carry an
     /// index: "Name, Pay, Tallies[apples]". An empty list clears any projection already applied, a key 
     /// named twice is kept once
     /// </param>
+    /// <param name="style"></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the list is malformed</exception>
-    public Inquiry<T> ApplyProjection(string? fields)
+    public Inquiry<T> ApplyProjection(string? projectionString, QueryStyle style = QueryStyle.Native)
     {
-        return ApplyProjection(Projection.Parse(fields));
+        return ApplyProjection(Projection.Parse(projectionString, style));
     }
 
     /// <summary>
@@ -877,7 +827,7 @@ public class Inquiry<T> where T : class
     /// </para>
     /// <para>
     /// <b>It refuses as its components refuse.</b> Expected errors will be identical to calling the same functions with
-    /// the same data. <see cref="Validate(QueryRequest, IEnumerable{Sort}?, QueryStyle)"/> will report any the errors 
+    /// the same data. <see cref="Validate(QueryRequest, IEnumerable{Sort}?)"/> will report any the errors 
     /// in the same place and is worth requesting first if the request came from outside.
     /// </para>
     /// </remarks>
@@ -885,32 +835,31 @@ public class Inquiry<T> where T : class
     /// <param name="defaultSort">
     /// what to sort by where the request named no sorts. See <see cref="ApplyPagination"/>
     /// </param>
-    /// <param name="style">
-    /// what style to use for the query parser. <see cref="QueryStyle.Native"/> by default
-    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">
-    /// any half of the request is malformed, or its paging is out of range
+    /// any part of the request is malformed, spells something a way <see cref="QueryStyle.Native"/> refuses,
+    /// or its paging is out of range
     /// </exception>
-    public Inquiry<T> ApplyRequest(QueryRequest? request, IEnumerable<Sort>? defaultSort = null, QueryStyle style = QueryStyle.Native)
+    public Inquiry<T> ApplyRequest(QueryRequest? request, IEnumerable<Sort>? defaultSort = null)
     {
         if (request is null) { return this; }
 
-        return ApplyCondition(request.UnpackCondition(style))
-            .ApplySorts(request.UnpackSorts(defaultSort, style))
-            .ApplyProjection(request.UnpackProjection())
+        // Read once rather than a part at a time, so the one string is parsed once, see QueryRequest.Unpack
+        var unpacked = request.Unpack(defaultSort);
+
+        return ApplyCondition(unpacked.Condition)
+            .ApplySorts(unpacked.Sorts)
+            .ApplyProjection(unpacked.Projection)
             .ApplyPagination(request.PageSize, request.Page ?? 0);
     }
 
     /// <summary>
-    /// Refuse a condition using an operator whatever runs this query cannot run, see
+    /// Refuse a condition using an operator that has been excluded, see
     /// <see cref="InquirySettings.Operators"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Checked here rather than in <see cref="ApplyCondition(ICondition)"/> because this is where
-    /// <see cref="Build"/> and <see cref="Validate()"/> meet: one throws what the other reports, and putting it
-    /// anywhere else would part them. Applying a condition has never been where anything about it is decided.
+    /// Check here because this is where <see cref="Build"/> and <see cref="Validate()"/> meet
     /// </para>
     /// <para>
     /// Every operator counts, including the conjunctions and the ones inside a quantifier, see
@@ -918,8 +867,7 @@ public class Inquiry<T> where T : class
     /// else, see <see cref="ValidationResult"/>.
     /// </para>
     /// <para>
-    /// The default set is everything, so a caller who has not said what their backend cannot do pays one
-    /// comparison and no walk at all.
+    /// The default set allows everything
     /// </para>
     /// </remarks>
     /// <param name="condition"></param>
@@ -928,16 +876,13 @@ public class Inquiry<T> where T : class
     {
         if (Settings.Operators.IsEverything) { return; }
 
-        var unsupported = ConditionFunctions.FirstUnsupported(condition, Settings.Operators);
-        if (unsupported is null) { return; }
-
-        var (op, field) = unsupported.Value;
+        if (ConditionFunctions.FirstUnsupported(condition, Settings.Operators) is not { } unsupported) { return; }
 
         throw new WeequeryException(
             WeequeryError.NotTranslatable,
-            string.IsNullOrEmpty(field)
-                ? $"{op} is not supported by this data source"
-                : $"'{field}' is tested with {op}, which this data source does not support");
+            string.IsNullOrEmpty(unsupported.Field)
+                ? $"{unsupported.Operator} is not supported by this data source"
+                : $"'{unsupported.Field}' is tested with {unsupported.Operator}, which this data source does not support");
     }
 
     /// <summary>
@@ -981,7 +926,7 @@ public class Inquiry<T> where T : class
     /// </summary>
     /// <remarks>
     /// Can be null for a query that never had applied coniditons, one if the the conditions were completely pruned
-    /// away, see <see cref="IgnoreUnboundFields"/>. Either represents an unfiltered query.
+    /// away, see <see cref="InquirySettings.IgnoreUnboundFields"/>. Either represents an unfiltered query.
     /// </remarks>
     /// <returns>null where there is nothing left to filter by</returns>
     private ICondition? Combined()
@@ -993,7 +938,7 @@ public class Inquiry<T> where T : class
             _ => new ConjunctionCondition(Operator.And, Conditions), // When more than one root condition was applied, they are ANDed
         };
 
-        if ((combined is null) || (!DropsUnboundFields)) { return combined; }
+        if ((combined is null) || (!Settings.IgnoreUnboundFields)) { return combined; }
 
         return ConditionPruner.Prune(combined, Bindings, Collections, field => Drop(field, BindingUse.Test));
     }
@@ -1013,8 +958,8 @@ public class Inquiry<T> where T : class
     /// </exception>
     private IQueryable<T> Sorted(IQueryable<T> query)
     {
-        // If the sort uses an unbound field and dropping is configured, do so, see IgnoreUnboundFields
-        var sorts = DropsUnboundFields ? Sorts.Where(sort => Keep(sort.Field, BindingUse.Sort)) : Sorts;
+        // If the sort uses an unbound field and dropping is configured, do so, see InquirySettings.IgnoreUnboundFields
+        var sorts = Settings.IgnoreUnboundFields ? Sorts.Where(sort => Keep(sort.Field, BindingUse.Sort)) : Sorts;
 
         // If the query has already been ordered, we must use ThenBy instead of OrderBy
         bool alreadySorted = false;
@@ -1125,7 +1070,7 @@ public class Inquiry<T> where T : class
     /// are thrown away, so this costs what a build costs and changes nothing about what a later build does. The
     /// one thing it does leave behind is <see cref="DroppedFields"/>, which it fills exactly as a build fills it,
     /// since what a query quietly drops is worth knowing at the same time as what it refuses outright, see
-    /// <see cref="IgnoreUnboundFields"/>.
+    /// <see cref="InquirySettings.IgnoreUnboundFields"/>.
     /// </para>
     /// <para>
     /// <b>Valid means it will build</b>, which doesn't necessarily mean it will work. A provider may still refuse
@@ -1192,26 +1137,21 @@ public class Inquiry<T> where T : class
     /// </remarks>
     /// <param name="request">the caller's query; null asks about this Inquiry as it stands, see <see cref="Validate()"/></param>
     /// <param name="defaultSort">what to sort by where the request named no sorts, as <see cref="ApplyRequest"/> takes it</param>
-    /// <param name="style">how strictly to read the text halves, as <see cref="ApplyRequest"/> takes it</param>
     /// <returns>the problems, parse faults first; never null</returns>
-    public ValidationResult Validate(QueryRequest? request, IEnumerable<Sort>? defaultSort = null, QueryStyle style = QueryStyle.Native)
+    public ValidationResult Validate(QueryRequest? request, IEnumerable<Sort>? defaultSort = null)
     {
         if (request is null) { return Validate(); }
 
         List<ValidationProblem> problems = [];
         var candidate = Copy();
 
-        ICondition? condition = null;
-        try { condition = request.UnpackCondition(style); }
-        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Test, error.Error, error.Message)); }
+        ParsedQuery? unpacked = null;
 
-        List<Sort>? sorts = null;
-        try { sorts = request.UnpackSorts(defaultSort, style); }
-        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Sort, error.Error, error.Message)); }
-
-        Projection? projection = null;
-        try { projection = request.UnpackProjection(); }
-        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.Projection, error.Error, error.Message)); }
+        try
+        {
+            unpacked = request.Unpack(defaultSort);
+        }
+        catch (WeequeryException error) { problems.Add(new ValidationProblem(BindingUse.None, error.Error, error.Message)); }
 
         // Not one of segments, so it is reported against the request itself
         try { candidate = candidate.ApplyPagination(request.PageSize, request.Page ?? 0); }
@@ -1219,9 +1159,9 @@ public class Inquiry<T> where T : class
 
         // Attempt to apply what made it through the unpack. If it didn't unpack, there is nothing to apply
         candidate = candidate
-            .ApplyCondition(condition)
-            .ApplySorts(sorts)
-            .ApplyProjection(projection);
+            .ApplyCondition(unpacked?.Condition)
+            .ApplySorts(unpacked?.Sorts)
+            .ApplyProjection(unpacked?.Projection);
 
         problems.AddRange(candidate.Validate().Problems);
 
@@ -1379,12 +1319,12 @@ public class Inquiry<T> where T : class
     /// </summary>
     /// <remarks>
     /// The builder is handed the drop test only if the caller asked for one, so it does not have to about
-    /// <see cref="IgnoreUnboundFields"/>, only if a field survives.
+    /// <see cref="InquirySettings.IgnoreUnboundFields"/>, only if a field survives.
     /// </remarks>
     private Expression<Func<T, Dictionary<string, object?>>> Projector()
     {
         return ProjectionBuilder<T>.Build(Bindings, Collections, Projected, SharedBindingParameter,
-            DropsUnboundFields ? (field => Keep(field, BindingUse.Projection)) : null);
+            Settings.IgnoreUnboundFields ? (field => Keep(field, BindingUse.Projection)) : null);
     }
 
     /// <summary>

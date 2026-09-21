@@ -4,7 +4,7 @@ namespace Weequery;
 
 /// <summary>
 /// Remove the parts of a condition that name use an unbound field out of it. For callers that would prefer to return
-/// a superset of the filtered data, instead of refusing. See <see cref="Inquiry{T}.IgnoreUnboundFields"/>
+/// a superset of the filtered data, instead of refusing. See <see cref="InquirySettings.IgnoreUnboundFields"/>
 /// </summary>
 /// <remarks>
 /// <para>

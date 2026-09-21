@@ -45,18 +45,32 @@ public class SortParserTests
     }
 
     /// <summary>
-    /// The prefix is optional, spelled either as two words or as one, and means the same thing every way
+    /// The prefix is optional, and matched without regard to case like everything else in the clause
     /// </summary>
     [Theory]
-    [InlineData("ORDER BY Pay DESC, Name")]
-    [InlineData("order by Pay DESC, Name")]
-    [InlineData("Order By Pay DESC, Name")]
     [InlineData("OrderBy Pay DESC, Name")]
     [InlineData("orderby Pay DESC, Name")]
     [InlineData("ORDERBY Pay DESC, Name")]
     public void TheOrderByPrefixIsOptionalAndCaseInsensitive(string clause)
     {
         Assert.Equal(Describe(Sort.Parse("Pay DESC, Name", null)), Describe(Sort.Parse(clause, null)));
+    }
+
+    /// <summary>
+    /// The two word spelling means the same thing again, and is now read only where a deprecated style asks for
+    /// it: the rule that a name is one word is not one the separator gets to be exempt from for being a
+    /// separator, see <see cref="NativeStyleTests.TheTwoWordSortPrefixIsRefused"/>. Deprecated is not gone.
+    /// </summary>
+    [Theory]
+    [InlineData("ORDER BY Pay DESC, Name")]
+    [InlineData("order by Pay DESC, Name")]
+    [InlineData("Order By Pay DESC, Name")]
+    public void TheTwoWordPrefixStillReadsUnderTheDeprecatedStyles(string clause)
+    {
+        var expected = Describe(Sort.Parse("Pay DESC, Name", null));
+
+        Assert.Equal(expected, Describe(Sort.Parse(clause, null, QueryStyle.Sql)));
+        Assert.Equal(expected, Describe(Sort.Parse(clause, null, QueryStyle.CSharp)));
     }
 
     /// <summary>
@@ -163,7 +177,7 @@ public class SortParserTests
     [InlineData("Order", "Order Ascending")]
     [InlineData("Order DESC", "Order Descending")]
     [InlineData("Order, Pay", "Order Ascending, Pay Ascending")]
-    [InlineData("ORDER BY Order DESC", "Order Descending")]
+    [InlineData("OrderBy Order DESC", "Order Descending")]
     [InlineData("By", "By Ascending")]
     public void AFieldNamedForThePrefixStillReads(string clause, string expected)
     {
@@ -195,7 +209,7 @@ public class SortParserTests
         Assert.Throws<WeequeryException>(() => Sort.Parse("OrderBy", null));
 
         // Which is the same answer the two word spelling gives
-        Assert.Throws<WeequeryException>(() => Sort.Parse("ORDER BY", null));
+        Assert.Throws<WeequeryException>(() => Sort.Parse("ORDER BY", null, QueryStyle.Sql));
     }
 
     /// <summary>
@@ -242,7 +256,7 @@ public class SortParserTests
     [InlineData(",")]                   // nothing but a separator
     [InlineData(", Pay")]               // leading separator
     [InlineData("Pay,, Name")]          // a gap in the list
-    [InlineData("ORDER BY")]            // a prefix and nothing to sort by
+    [InlineData("OrderBy")]             // a prefix and nothing to sort by
     [InlineData("Pay DESC,")]
     [InlineData("[Pay")]                // an unclosed bracket
     [InlineData("[] DESC")]             // an empty bracket
@@ -272,7 +286,7 @@ public class SortParserTests
     [Theory]
     [InlineData("Pay DESC", new[] { "Charlie", "Alice", "David", "Bob" })]
     [InlineData("Pay", new[] { "Bob", "David", "Alice", "Charlie" })]
-    [InlineData("ORDER BY IsActive, Pay DESC", new[] { "Charlie", "Alice", "David", "Bob" })]
+    [InlineData("OrderBy IsActive, Pay DESC", new[] { "Charlie", "Alice", "David", "Bob" })]
     public void ParsedSortsOrderTheRows(string clause, string[] expected)
     {
         var ordered = MinionTestData.Minions()
@@ -296,7 +310,7 @@ public class SortParserTests
     [InlineData("Pay", "[Pay] ASC")]
     [InlineData("Pay DESC", "[Pay] DESC")]
     [InlineData("Pay Descending, Name", "[Pay] DESC, [Name] ASC")]
-    [InlineData("ORDER BY Pay descending, name ascending", "[Pay] DESC, [name] ASC")]
+    [InlineData("OrderBy Pay descending, name ascending", "[Pay] DESC, [name] ASC")]
     [InlineData("'Hire Date' DESC", "'Hire Date' DESC")]
     [InlineData("Lair.Name", "[Lair.Name] ASC")]
     public void ItWritesOneCanonicalForm(string clause, string expected)
@@ -323,7 +337,7 @@ public class SortParserTests
     [InlineData("Pay")]
     [InlineData("Pay DESC")]
     [InlineData("Pay DESC, Name")]
-    [InlineData("ORDER BY Pay Descending, Name Ascending, Alias DESC")]
+    [InlineData("OrderBy Pay Descending, Name Ascending, Alias DESC")]
     [InlineData("OrderBy Pay DESC")]
     [InlineData("[Lair.Name] DESC, [Pay]")]
     [InlineData("'Hire Date' DESC")]
@@ -351,7 +365,7 @@ public class SortParserTests
     {
         var sorts = Sort.Parse("Pay DESC, Name, Alias Descending", null);
 
-        Assert.Equal(sorts, Sort.Parse(sorts.ToQuery(style), null));
+        Assert.Equal(sorts, Sort.Parse(sorts.ToQuery(style), null, style));
     }
 
     /// <summary>

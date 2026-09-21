@@ -55,13 +55,12 @@ internal sealed class QueryParser
         { "IsBetween", Operator.IsBetween },
         { "IsNotBetween", Operator.IsNotBetween },
 
-        // The quantifiers. In this position they read as operators, and what follows them is a parenthesised
-        // condition rather than a value, see ParseQuantified.
+        // quantifiers, see ParseQuantified.
         { "Any", Operator.Any },
         { "All", Operator.All },
         { "None", Operator.None },
 
-        // SQL spellings. The multi-word ones (IS NULL, IS NOT NULL, NOT IN, NOT BETWEEN) cannot live in a lookup
+        // SQL style spellings. The multi-word ones (IS NULL, IS NOT NULL, NOT IN, NOT BETWEEN) cannot live in a lookup
         // keyed on a single token, so ParseSqlPhrase handles those.
         { "In", Operator.IsIn },
         { "Between", Operator.IsBetween },
@@ -114,7 +113,7 @@ internal sealed class QueryParser
     /// the query is malformed, spells an operator a way the style refuses, or the condition it describes nests
     /// deeper than <see cref="ConditionNesting.MaxDepth"/>
     /// </exception>
-    public static ICondition? Parse(string query, QueryStyle? style = null)
+    public static ICondition? Parse(string query, QueryStyle style = QueryStyle.Native)
     {
         var tokens = QueryTokenizer.Tokenize(query, style);
         if (tokens.Count == 0) { return null; }
@@ -150,7 +149,7 @@ internal sealed class QueryParser
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the condition is malformed, spells an operator a refused way, or nests too deep</exception>
-    internal static ICondition? ParseLeading(List<QueryToken> tokens, string query, out int stopped, QueryStyle? style = null)
+    internal static ICondition? ParseLeading(List<QueryToken> tokens, string query, out int stopped, QueryStyle style = QueryStyle.Native)
     {
         var parser = new QueryParser(tokens, query, style == QueryStyle.Native);
 

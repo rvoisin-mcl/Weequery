@@ -60,7 +60,7 @@ internal static class QueryTokenizer
     /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">the query is malformed, or spells an operator a way the style refuses</exception>
-    public static List<QueryToken> Tokenize(string query, QueryStyle? style = null)
+    public static List<QueryToken> Tokenize(string query, QueryStyle style = QueryStyle.Native)
     {
         List<QueryToken> tokens = new();
 

@@ -8,7 +8,7 @@ namespace Weequery;
 /// <para>
 /// Carries what a <see cref="WeequeryException"/> carries, because it is one: the reason to branch on and the
 /// message to read, taken off the exception the build would have thrown. What it adds is
-/// <see cref="Part"/>, since a validation looks at all three halves of a query rather than stopping at the
+/// <see cref="Part"/>, since a validation looks at all parts of a query rather than stopping at the
 /// first, and knowing which half a complaint came from is what lets it be shown beside the input box that
 /// caused it.
 /// </para>

@@ -211,7 +211,7 @@ public class OperatorSupportTests
     [Fact]
     public void ARequestIsValidatedTheSameWay()
     {
-        var request = new QueryRequest { Filter = "Name IsMatch '^A'" };
+        var request = new QueryRequest { Query = "Name IsMatch '^A'" };
 
         var problem = Assert.Single(Bound(NoRegex).Validate(request).Problems);
 

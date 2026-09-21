@@ -1,7 +1,7 @@
 namespace Weequery;
 
 /// <summary>
-/// Reads a projection. The grammar is:
+/// Reads a projection string. The grammar is:
 /// <code>
 /// projection := field (',' field)*
 /// field      := (WORD | QUOTED | '[' WORD ']') ('[' (WORD | QUOTED) ']')?
@@ -26,18 +26,48 @@ internal sealed class ProjectionParser
     }
 
     /// <summary>
+    /// The word that introduces a projection inside a combined string, see <see cref="ParsedQuery"/>.
+    /// </summary>
+    /// <remarks>
+    /// One word in every style, unlike the sort separator, so there is nothing for
+    /// <see cref="QueryStyle.Native"/> to be strict about and nothing to spell two ways.
+    /// </remarks>
+    internal const string Prefix = "Select";
+
+    /// <summary>
+    /// How many tokens the prefix takes at a given point, or zero where there is none.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart of <see cref="SortParser.PrefixLength"/>, and simpler for the reason above: one word,
+    /// one spelling, so it is either there or it is not. A binding may not be named for it, see
+    /// <see cref="QueryKeywords"/>, which is what keeps a field from being mistaken for it.
+    /// </remarks>
+    /// <param name="tokens"></param>
+    /// <param name="index">where to look</param>
+    /// <returns>1 for Select, 0 for anything else</returns>
+    internal static int PrefixLength(List<QueryToken> tokens, int index)
+    {
+        WeequeryException.ThrowIfNull(tokens);
+
+        if (index >= tokens.Count) { return 0; }
+
+        var token = tokens[index];
+
+        return ((token.Kind == QueryTokenKind.Word) && string.Equals(token.Text, Prefix, StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
+    }
+
+    /// <summary>
     /// Read a comma separated list of field names, see <see cref="Projection.Parse"/>
     /// </summary>
     /// <param name="fields">null, empty or whitespace gives <see cref="Projection.None"/></param>
+    /// <param name="style"></param>
     /// <returns>never null</returns>
     /// <exception cref="WeequeryException">the list is malformed</exception>
-    internal static Projection Parse(string? fields)
+    internal static Projection Parse(string? fields, QueryStyle style = QueryStyle.Native)
     {
         if (string.IsNullOrWhiteSpace(fields)) { return Projection.None; }
 
-        // Tokenized without a style, since a projection holds no operators and so has no spelling to be strict
-        // about. What that decides for the tokenizer is which symbols it will refuse, and there are none here.
-        var tokens = QueryTokenizer.Tokenize(fields, null);
+        var tokens = QueryTokenizer.Tokenize(fields, style);
 
         if (tokens.Count == 0) { return Projection.None; }
 
@@ -73,8 +103,7 @@ internal sealed class ProjectionParser
         var field = ParseName();
         var index = ParseIndex(field);
 
-        // Kept in the field's own text, a projection having nowhere else to put it, and taken apart again by
-        // BindingLookup.SplitIndex when the binding is looked up
+        // field name kept as written, and taken apart again by BindingLookup.SplitIndex when the evaluated
         return (index is null) ? field : $"{field}[{index}]";
     }
 

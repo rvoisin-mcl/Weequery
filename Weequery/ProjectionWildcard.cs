@@ -1,7 +1,7 @@
 namespace Weequery;
 
 /// <summary>
-/// What <c>*</c> and <c>Prefix.*</c> mean in a projection, in one place.
+/// What <c>*</c> and <c>Prefix.*</c> mean in a projection
 /// </summary>
 /// <remarks>
 /// Three predicates rather than one expansion, because the two things that expand a projection do not expand it
@@ -13,7 +13,7 @@ namespace Weequery;
 internal static class ProjectionWildcard
 {
     /// <summary>
-    /// Whether the field stands for everything the caller may read.
+    /// If the field stands for all bound fields
     /// </summary>
     /// <param name="field"></param>
     /// <returns></returns>
@@ -42,7 +42,7 @@ internal static class ProjectionWildcard
     /// Whether a key is one of the ones a prefix stands for.
     /// </summary>
     /// <remarks>
-    /// Case-insensitively, as every other comparison of a key is, see <see cref="BindingLookup.KeyComparer"/>.
+    /// Case-insensitive
     /// </remarks>
     /// <param name="key"></param>
     /// <param name="prefix">as <see cref="Prefix"/> returned it, with its dot still on</param>

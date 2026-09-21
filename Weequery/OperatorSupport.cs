@@ -1,13 +1,11 @@
 namespace Weequery;
 
 /// <summary>
-/// Which operators the thing that will run this query can actually run. Set on
-/// <see cref="InquirySettings.Operators"/>.
+/// What operators are supported by the query. Set on <see cref="InquirySettings.Operators"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The allow-list says which <i>fields</i> a caller may name. This says which <i>operators</i> they may use on
-/// them, and it exists because those are two different questions and only the first one used to be asked.
+/// This says which <i>operators</i> callers may use, as support may vary based on different backends.
 /// <see cref="Operator.IsMatch"/> against SQL Server is the standing example: the field is bound, the condition
 /// parses, the expression builds, and the provider refuses it when the query finally runs, a long way from the
 /// request that named it.
@@ -19,38 +17,30 @@ namespace Weequery;
 /// })
 /// </code>
 /// <para>
-/// <b>It is checked where every other refusal is checked</b>, so <see cref="Inquiry{T}.Build"/> throws
-/// <see cref="WeequeryError.NotTranslatable"/> and <see cref="Inquiry{T}.Validate()"/> reports the same thing
-/// rather than raising it. A caller filling in a filter box is told which operator they cannot have, beside the
-/// box they typed it in, instead of meeting a provider exception later.
+/// <b>Everything is supported by default</b>
 /// </para>
 /// <para>
-/// <b>Everything is supported by default</b>, which is the behaviour this library has always had. A query is
-/// only ever refused here by a model that said what its backend cannot do.
-/// </para>
-/// <para>
-/// <b>It counts every operator a condition uses</b>, not only the comparisons: <see cref="Operator.And"/>,
+/// <b>Every potential operator is checked</b>, not only the tests: <see cref="Operator.And"/>,
 /// <see cref="Operator.Or"/> and <see cref="Operator.Not"/> are operators, the quantifiers are operators, and
 /// the ones inside a quantifier count as much as the ones outside it, because whatever runs the query has to
 /// run all of them. So <see cref="Supporting(Operator[])"/> is a literal list, and has to name the
-/// conjunctions it wants. <see cref="Without(Operator[])"/> is usually what was meant: a backend is almost
-/// always everything, minus the two or three things it cannot do.
+/// conjunctions it wants. <see cref="Without(Operator[])"/> is usually what was desired, everything except.
 /// </para>
 /// </remarks>
 public sealed class OperatorSupport : IEquatable<OperatorSupport>
 {
     /// <summary>
-    /// Every operator there is, which is the set to compare a partial one against
+    /// Every operator
     /// </summary>
     private static readonly Operator[] All = Enum.GetValues<Operator>();
 
     /// <summary>
-    /// Everything is supported, which is what an Inquiry has unless it is told otherwise
+    /// Everything is supported, the default case
     /// </summary>
     public static OperatorSupport Everything { get; } = new(All);
 
     /// <summary>
-    /// What may be used, which is what <see cref="Allows"/> answers from
+    /// What may be used
     /// </summary>
     public IReadOnlySet<Operator> Supported { get; }
 
@@ -60,14 +50,8 @@ public sealed class OperatorSupport : IEquatable<OperatorSupport>
     }
 
     /// <summary>
-    /// Support exactly these and nothing else.
+    /// Support only these and nothing else.
     /// </summary>
-    /// <remarks>
-    /// A literal list, so it has to name <see cref="Operator.And"/>, <see cref="Operator.Or"/> and
-    /// <see cref="Operator.Not"/> where conditions will be combined or negated, and the quantifiers where they
-    /// will be quantified. Reach for <see cref="Without(Operator[])"/> where the backend does nearly
-    /// everything, which is the usual case.
-    /// </remarks>
     /// <param name="operators">the complete set; order and duplicates do not matter, and an empty set supports nothing</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">null</exception>
@@ -79,9 +63,6 @@ public sealed class OperatorSupport : IEquatable<OperatorSupport>
     /// <summary>
     /// <inheritdoc cref="Supporting(Operator[])" path="/summary"/>
     /// </summary>
-    /// <remarks>
-    /// <inheritdoc cref="Supporting(Operator[])" path="/remarks"/>
-    /// </remarks>
     /// <param name="operators"><inheritdoc cref="Supporting(Operator[])" path="/param[@name='operators']"/></param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">null</exception>
@@ -96,10 +77,9 @@ public sealed class OperatorSupport : IEquatable<OperatorSupport>
     /// Support everything except these.
     /// </summary>
     /// <remarks>
-    /// The one to reach for. A backend is a backend, so it is almost always everything minus the two or three
-    /// things it cannot do, and naming those is both shorter and honest about what is being said.
+    /// The common case, support everything except X/Y/Z
     /// </remarks>
-    /// <param name="operators">what to refuse; duplicates are fine and an empty set refuses nothing</param>
+    /// <param name="operators">what to refuse; duplicates are ignored, and an empty set refuses nothing</param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">null</exception>
     public static OperatorSupport Without(params Operator[] operators)

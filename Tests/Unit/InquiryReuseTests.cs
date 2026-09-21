@@ -15,10 +15,15 @@ namespace Tests.Unit;
 /// </summary>
 public class InquiryReuseTests
 {
-    private static Inquiry<Minion> Bound()
+    /// <summary>
+    /// Whether unbound fields are dropped is a setting, so it is decided here where the query starts rather
+    /// than anywhere further down the chain
+    /// </summary>
+    /// <param name="ignoreUnbound">see InquirySettings.IgnoreUnboundFields</param>
+    private static Inquiry<Minion> Bound(bool ignoreUnbound = false)
     {
         return MinionTestData.Minions()
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = ignoreUnbound })
             .BindProperty(minion => minion.Name)
             .BindProperty(minion => minion.Pay)
             .BindProperty(minion => minion.IsActive);
@@ -157,7 +162,7 @@ public class InquiryReuseTests
     [Fact]
     public void ACopyCarriesTheLenientSetting()
     {
-        var lenient = Bound().IgnoreUnboundFields();
+        var lenient = Bound(ignoreUnbound: true);
 
         // Dropped rather than refused, which is the setting having come along
         Assert.Equal(4, lenient.ApplyCondition("Gizmo = 3").Build().Count());
@@ -169,7 +174,7 @@ public class InquiryReuseTests
     [Fact]
     public void ACopyDoesNotCarryWhatTheOriginalDropped()
     {
-        var inquiry = Bound().IgnoreUnboundFields().ApplyCondition("Gizmo = 3");
+        var inquiry = Bound(ignoreUnbound: true).ApplyCondition("Gizmo = 3");
 
         inquiry.Build().ToList();
 

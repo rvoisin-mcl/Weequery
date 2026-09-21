@@ -12,7 +12,12 @@ namespace Tests.Unit;
 /// </summary>
 public class ProjectionWildcardTests
 {
-    private static Inquiry<LairAssignment> Bound()
+    /// <summary>
+    /// Whether unbound fields are dropped is a setting, so it is decided here where the query starts rather
+    /// than anywhere further down the chain
+    /// </summary>
+    /// <param name="ignoreUnbound">see InquirySettings.IgnoreUnboundFields</param>
+    private static Inquiry<LairAssignment> Bound(bool ignoreUnbound = false)
     {
         var rows = new List<LairAssignment>
         {
@@ -25,7 +30,7 @@ public class ProjectionWildcardTests
         }.AsQueryable();
 
         return rows
-            .WithWeequery()
+            .WithWeequery(InquirySettings.Default with { IgnoreUnboundFields = ignoreUnbound })
             .BindProperty(assignment => assignment.LairID)
             .BindProperty(assignment => assignment.Lair!.Name, "Lair.Name")
             .BindProperty(assignment => assignment.Lair!.Capacity, "Lair.Capacity");
@@ -137,7 +142,7 @@ public class ProjectionWildcardTests
     [Fact]
     public void APrefixMatchingNothingIsDroppedWhereThatWasAskedFor()
     {
-        var inquiry = Bound().IgnoreUnboundFields().ApplyProjection("LairID, Gizmo.*");
+        var inquiry = Bound(ignoreUnbound: true).ApplyProjection("LairID, Gizmo.*");
 
         Assert.Equal(["LairID"], Keys(inquiry));
         Assert.Equal("Gizmo.*", Assert.Single(inquiry.DroppedFields).Field);

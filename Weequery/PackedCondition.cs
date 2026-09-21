@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using Weequery.Interfaces;
 
 namespace Weequery;
@@ -76,13 +76,13 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
     /// <summary>
     /// ctor, taking every member. Whichever the operator does not use should be empty rather than null.
     /// </summary>
-    /// <param name="operator"></param>
+    /// <param name="op"></param>
     /// <param name="field"></param>
     /// <param name="values"></param>
     /// <param name="conditions"></param>
-    public PackedCondition(Operator @operator, string field, List<ConditionValue<string>> values, List<PackedCondition> conditions)
+    public PackedCondition(Operator op, string field, List<ConditionValue<string>> values, List<PackedCondition> conditions)
     {
-        Operator = @operator;
+        Operator = op;
         Field = field;
         Values = values;
         Conditions = conditions;
@@ -214,7 +214,7 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
             case Operator.None:
                 WeequeryException.ThrowIfNull(Conditions);
                 WeequeryException.ThrowIfNull(Conditions.FirstOrDefault());
-                // Field and one child, which is the shape a quantifier already fitted
+                // Field and one child
                 return new QuantifiedCondition(Operator, Field, Conditions.First().Unpack(ConditionNesting.Descend(depth)));
 
             default:
@@ -236,9 +236,6 @@ public class PackedCondition : ICondition, IBound, IValueContainer<ConditionValu
         WeequeryException.ThrowIfNull(Field);
         WeequeryException.ThrowIfNull(Values);
 
-        // Each operand already says if it is a value or the key of a property, so there is nothing to work
-        // out here: the condition this builds compares against whatever the sender said it was comparing against.
-        // A missing operand is refused by the condition itself, naming which of them it was.
         return ConditionFunctions.BuildComparison(Operator, Field, Values, Index);
     }
 }

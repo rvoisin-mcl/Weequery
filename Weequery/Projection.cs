@@ -1,7 +1,7 @@
 namespace Weequery;
 
 /// <summary>
-/// Which bound fields a query reads back, for the caller that wants three columns rather than the whole row.
+/// Which bound fields a query reads back, for the caller only wants a subset of the found row.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,9 +17,8 @@ namespace Weequery;
 ///     .BuildProjected();          // IQueryable&lt;Dictionary&lt;string, object?&gt;&gt;
 /// </code>
 /// <para>
-/// A field may carry an index, as it may anywhere else: <c>Tallies[apples]</c> projects that one element. What it
-/// may not be is a bound collection, which has no single value to read, see
-/// <see cref="Inquiry{T}.BindCollection"/>.
+/// A field may carry an index, as it may anywhere else: <c>Tallies[apples]</c> projects that one element. It may not be 
+/// a bound collection, which has no single value to read, see <see cref="Inquiry{T}.BindCollection"/>.
 /// </para>
 /// </remarks>
 /// <param name="Fields">
@@ -29,11 +28,9 @@ namespace Weequery;
 public record Projection(IReadOnlyList<string> Fields)
 {
     /// <summary>
-    /// The projection that names nothing, which is what a null or empty string reads as.
+    /// An empty projection set
     /// <para>
-    /// Not the same as "read nothing": a query with no projection applied reads the whole entity, and
-    /// <see cref="Inquiry{T}.BuildProjected"/> with none applied reads every bound field. There is no way to ask
-    /// for a row of no columns, and no reason to want one.
+    /// Will not read nothing, but will RETURN nothing, the query must still execute, but will distill to nothing.
     /// </para>
     /// </summary>
     public static readonly Projection None = new([]);
@@ -72,17 +69,16 @@ public record Projection(IReadOnlyList<string> Fields)
     /// [Name], 'Total Pay', Tallies[apples]
     /// </code>
     /// <para>
-    /// A field named twice is kept once, in the position it first appeared. A projection is a set of columns and
-    /// a dictionary holds each key once, so there is nothing a duplicate could mean; refusing one would only make
-    /// a caller assembling a list from checkboxes deduplicate it first.
+    /// Since the return type cannot contain duplicates, a field named more than once is only kept once.
     /// </para>
     /// </remarks>
     /// <param name="fields">null, empty or whitespace gives <see cref="None"/></param>
+    /// <param name="style"></param>
     /// <returns>never null</returns>
     /// <exception cref="WeequeryException">the list is malformed</exception>
-    public static Projection Parse(string? fields)
+    public static Projection Parse(string? fields, QueryStyle style = QueryStyle.Native)
     {
-        return ProjectionParser.Parse(fields);
+        return ProjectionParser.Parse(fields, style);
     }
 
     /// <summary>

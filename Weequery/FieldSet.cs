@@ -89,7 +89,7 @@ public abstract class FieldSet<TField> : IEnumerable<TField> where TField : IFie
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The same two wildcards <see cref="Inquiry{T}.ApplyProjection(string?)"/> takes, meaning the same things,
+    /// The same two wildcards <see cref="Inquiry{T}.ApplyProjection(string?, QueryStyle)"/> takes, meaning the same things,
     /// so a projection written once reads the same whether it is answered from the entity or handed to a
     /// translator. What differs is only what they expand against: here it is the declared set, which has no
     /// <see cref="BindingUse"/> to filter by, so a declared field is a readable one.

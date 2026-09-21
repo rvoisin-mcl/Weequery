@@ -30,6 +30,18 @@ internal interface ICollectionBinding<TClass>
     Type ElementType { get; }
 
     /// <summary>
+    /// Whether the inner allow-list bound this key, so whether a condition inside the quantifier can name it.
+    /// </summary>
+    /// <remarks>
+    /// Asked rather than resolved, by the one thing that has to know a field is missing without wanting it to
+    /// fail: pruning an unbound field out of a query, see <see cref="Inquiry{TClass}.IgnoreUnboundFields"/>. The
+    /// inner set is the collection's own, so nothing outside it can answer this.
+    /// </remarks>
+    /// <param name="key">a key, which may carry an index</param>
+    /// <returns></returns>
+    bool Binds(string key);
+
+    /// <summary>
     /// The test for a quantifier over this collection, as an expression on the entity's own parameter.
     /// </summary>
     /// <param name="quantifier"><see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/></param>
@@ -69,6 +81,12 @@ internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<T
         Key = key;
         Collection = collection;
         Inner = inner;
+    }
+
+    /// <inheritdoc/>
+    public bool Binds(string key)
+    {
+        return Inner.ContainsKey(BindingLookup.SplitIndex(key).Key);
     }
 
     /// <inheritdoc/>

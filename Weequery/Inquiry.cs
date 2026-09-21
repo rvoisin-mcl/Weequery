@@ -63,6 +63,65 @@ public class Inquiry<T> where T : class
     private int Page { get; set; } = -1;
 
     /// <summary>
+    /// Whether a field nothing bound is dropped rather than refused, see <see cref="IgnoreUnboundFields"/>. Off,
+    /// which is the answer that never surprises anyone.
+    /// </summary>
+    private bool DropsUnboundFields { get; set; }
+
+    private List<DroppedField> Dropped { get; init; } = new();
+
+    /// <summary>
+    /// What the last build took out of the query for naming a field nothing bound, see
+    /// <see cref="IgnoreUnboundFields"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Empty unless dropping was asked for, since nothing is dropped otherwise. Filled in by whichever of
+    /// <see cref="Build"/>, <see cref="BuildPaged"/>, <see cref="BuildProjected"/> and
+    /// <see cref="BuildPagedProjected"/> was called, and <b>reset by each of them</b>, so it describes the query
+    /// you have rather than accumulating across builds.
+    /// </para>
+    /// <para>
+    /// Populated while the query is being built rather than when it is enumerated, which is the same point
+    /// everything else is resolved at, so it is ready as soon as the build returns and before a single row has
+    /// been read.
+    /// </para>
+    /// <code>
+    /// var rows = inquiry.Build().ToList();
+    ///
+    /// if (inquiry.DroppedFields.Count > 0)
+    /// {
+    ///     // "Filter on 'Gizmo' no longer applies and has been removed from your saved view"
+    ///     Warn(inquiry.DroppedFields);
+    /// }
+    /// </code>
+    /// <para>
+    /// A field named in two places is reported once for each, so a query filtering and sorting on the same
+    /// missing key gives two entries. One named twice in the same place is reported once.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<DroppedField> DroppedFields { get { return Dropped; } }
+
+    /// <summary>
+    /// Note a field as dropped, unless that part of the query has already lost it.
+    /// </summary>
+    /// <remarks>
+    /// The same key can genuinely be dropped from two parts of a query, and both are worth saying. What is not
+    /// worth saying twice is one part losing it twice, which is what a projected field read by two of the build
+    /// methods, or a key written twice in one condition, would otherwise produce.
+    /// </remarks>
+    private void Drop(string field, BindingUse from)
+    {
+        // The index goes: an unbound "Tallies[apples]" is one missing binding called Tallies rather than a missing
+        // element, and naming it that way is what lets two indexes into the same absent collection say it once
+        (field, _) = BindingLookup.SplitIndex(field);
+
+        if (Dropped.Any(entry => (entry.From == from) && BindingLookup.KeyComparer.Equals(entry.Field, field))) { return; }
+
+        Dropped.Add(new DroppedField(field, from));
+    }
+
+    /// <summary>
     /// How long <see cref="Operator.IsMatch"/> may spend on one value before giving up, when the match runs in
     /// this process. One second by default; assign to change it, or
     /// <see cref="Regex.InfiniteMatchTimeout"/> to remove the bound.
@@ -795,6 +854,82 @@ public class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Drop the parts of a query that name a field nothing bound, rather than refusing the whole query.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Off by default, and worth leaving off unless you have the problem it solves.</b> That problem is the
+    /// stale saved filter: a caller stored a query months ago, a binding has since been renamed or taken away,
+    /// and refusing the whole thing means they cannot open their own saved view to fix it. This lets the parts
+    /// that still resolve run, and quietly forgets the rest.
+    /// </para>
+    /// <code>
+    /// .IgnoreUnboundFields()
+    /// .ApplyCondition("IsActive = true AND Gizmo = 3")   // Gizmo went away, so this filters on IsActive alone
+    /// </code>
+    /// <para>
+    /// <b>Dropping always widens.</b> A test that is not there does not constrain, so a condition made entirely
+    /// of unbound fields prunes to nothing and the query returns <i>every row</i>. That is the whole hazard, and
+    /// it is why this is opt in: a filter that silently stops filtering is worse than one that refuses out loud,
+    /// unless you already decided otherwise. Where the rows are not all the caller's to see, put the constraint
+    /// that says so on the <see cref="IQueryable"/> before Weequery ever gets it, or bind it as a constant and
+    /// AND it in yourself, rather than trusting a caller's filter to carry it.
+    /// </para>
+    /// <para>
+    /// <b>Only genuinely unbound fields go.</b> A field that is bound but does not grant the use being asked of
+    /// it, see <see cref="BindingUse"/>, is a deliberate statement about what a caller may do, and quietly
+    /// ignoring one would undo the point of making it. Those are still refused. So is everything else that is
+    /// wrong with a query: a malformed string, an operator that does not fit the property, a value that will not
+    /// parse, a sort on something with no ordering.
+    /// </para>
+    /// <para>
+    /// It reaches all three halves of a query, and the risk is not the same in each. A dropped <b>sort</b> only
+    /// changes the order rows come back in. A dropped <b>projected field</b> only leaves a key out of the row,
+    /// though a projection whose every field went reads back as a row of no columns rather than as all of them.
+    /// A dropped <b>condition</b> changes which rows there are, which is the one to think about.
+    /// </para>
+    /// <para>
+    /// Inside a quantifier the collection's own allow-list decides, see <see cref="BindCollection"/>: an unbound
+    /// field inside the brackets drops from the inner condition, and a quantifier left with no test at all drops
+    /// entirely, as does one naming a collection nobody bound.
+    /// </para>
+    /// </remarks>
+    /// <param name="ignore">false to go back to refusing, for the caller deciding this per request</param>
+    /// <returns></returns>
+    public Inquiry<T> IgnoreUnboundFields(bool ignore = true)
+    {
+        DropsUnboundFields = ignore;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Whether a key is one the bindings hold, which is the test for keeping a field rather than dropping it.
+    /// Indexes are split off first, since what has to be bound is the collection.
+    /// </summary>
+    private bool IsBound(string field)
+    {
+        var (key, _) = BindingLookup.SplitIndex(field);
+
+        return Bindings.ContainsKey(key) || Collections.ContainsKey(key);
+    }
+
+    /// <summary>
+    /// Whether a field survives, noting it as dropped where it does not. For the two halves that filter a flat
+    /// list rather than rewriting a tree, see <see cref="DroppedFields"/>.
+    /// </summary>
+    /// <param name="field">the key as the query named it</param>
+    /// <param name="from">which part of the query is asking</param>
+    private bool Keep(string field, BindingUse from)
+    {
+        if (IsBound(field)) { return true; }
+
+        Drop(field, from);
+
+        return false;
+    }
+
+    /// <summary>
     /// Read back only the fields named, rather than the whole entity. See <see cref="BuildProjected"/>, which is
     /// what applies this; <see cref="Build"/> ignores it and hands back entities as it always has.
     /// </summary>
@@ -882,18 +1017,35 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     private IQueryable<T> Filtered()
     {
-        switch (Conditions.Count)
+        var condition = Combined();
+
+        return (condition is null) ? Query : Query.Where(Predicate(condition));
+    }
+
+    /// <summary>
+    /// Every applied condition as one, pruned where the caller asked for that.
+    /// </summary>
+    /// <remarks>
+    /// Null both for the query that was never given a condition and for the one whose condition was entirely
+    /// unbound and pruned away, see <see cref="IgnoreUnboundFields"/>. The two arrive at the same place, which is
+    /// a query that filters nothing, and that is exactly the thing to have read the remarks there about.
+    /// </remarks>
+    /// <returns>null where there is nothing left to filter by</returns>
+    private ICondition? Combined()
+    {
+        ICondition? combined = Conditions.Count switch
         {
-            case 0:
-                return Query;
+            0 => null,
 
-            case 1:
-                return Query.Where(Predicate(Conditions.First()));
+            1 => Conditions.First(),
 
-            default:
-                // If >1 root condition was provided, wrap all root conditions inside an AND condition
-                return Query.Where(Predicate(new ConjunctionCondition(Operator.And, Conditions)));
-        }
+            // More than one root condition was applied, so they are ANDed, which is what applying a second one means
+            _ => new ConjunctionCondition(Operator.And, Conditions),
+        };
+
+        if ((combined is null) || (!DropsUnboundFields)) { return combined; }
+
+        return ConditionPruner.Prune(combined, Bindings, Collections, field => Drop(field, BindingUse.Condition));
     }
 
     /// <summary>
@@ -906,9 +1058,13 @@ public class Inquiry<T> where T : class
     /// </exception>
     private IQueryable<T> Sorted(IQueryable<T> query)
     {
+        // A sort on a field nothing bound is dropped where the caller asked for that: it changes the order rows
+        // come back in and nothing else, which makes it the safest of the three to forget, see IgnoreUnboundFields
+        var sorts = DropsUnboundFields ? Sorts.Where(sort => Keep(sort.Field, BindingUse.Sort)) : Sorts;
+
         // Once the query has been sorted once, subsequent sorts must chain with ThenBy rather than restart with OrderBy
         bool alreadySorted = false;
-        foreach (var sort in Sorts)
+        foreach (var sort in sorts)
         {
             var binding = BindingLookup.Resolve(Bindings, sort.Field);
 
@@ -980,6 +1136,9 @@ public class Inquiry<T> where T : class
     /// <returns></returns>
     public IQueryable<T> Build()
     {
+        // Each build describes its own query, so what the last one dropped is not carried into this one
+        Dropped.Clear();
+
         return Windowed(Sorted(Filtered()));
     }
 
@@ -1030,6 +1189,9 @@ public class Inquiry<T> where T : class
     /// </exception>
     public PagedQuery<T> BuildPaged()
     {
+        // Each build describes its own query, so what the last one dropped is not carried into this one
+        Dropped.Clear();
+
         // Shared, so the count is over exactly the rows the page was taken from and cannot drift from it
         var matches = Filtered();
 
@@ -1082,6 +1244,8 @@ public class Inquiry<T> where T : class
     /// </exception>
     public IQueryable<Dictionary<string, object?>> BuildProjected()
     {
+        // Build resets what was dropped and records the condition's and the sort's share of it, and the
+        // projector adds its own after, so there is nothing to clear here and clearing would lose the first half
         return Build().Select(Projector());
     }
 
@@ -1115,6 +1279,9 @@ public class Inquiry<T> where T : class
     /// <exception cref="WeequeryException">whatever <see cref="BuildProjected"/> would throw</exception>
     public PagedQuery<Dictionary<string, object?>> BuildPagedProjected()
     {
+        // Each build describes its own query, so what the last one dropped is not carried into this one
+        Dropped.Clear();
+
         // Shared, so the count is over exactly the rows the page was taken from and cannot drift from it
         var matches = Filtered();
 
@@ -1144,9 +1311,12 @@ public class Inquiry<T> where T : class
     {
         // Nothing asked for is everything a caller is allowed to read, which is the only other thing it could
         // sensibly mean. A binding that does not grant Projection is not part of "all of it".
+        // A projection that names nothing reads everything a caller may read, and one that names fields reads
+        // those. The two stay apart even after pruning: a projection whose every field was dropped asked for
+        // some columns and can have none of them, which is not the same as having asked for all of them.
         var fields = Projected.IsEmpty
             ? [.. from entry in Bindings where entry.Value.Allows(BindingUse.Projection) select entry.Key]
-            : Projected.Fields;
+            : Projectable(Projected.Fields);
 
         var add = typeof(Dictionary<string, object?>).GetMethod(nameof(Dictionary<string, object?>.Add))
             ?? throw new WeequeryException($"(Should be impossible) {nameof(Dictionary<string, object?>)} has no Add");
@@ -1156,6 +1326,19 @@ public class Inquiry<T> where T : class
         var body = Expression.ListInit(Expression.New(typeof(Dictionary<string, object?>)), entries);
 
         return Expression.Lambda<Func<T, Dictionary<string, object?>>>(body, SharedBindingParameter);
+    }
+
+    /// <summary>
+    /// The projected fields, less any the caller asked to have dropped rather than refused.
+    /// </summary>
+    /// <remarks>
+    /// The mildest of the three droppings: a field that goes leaves a key out of the row and changes nothing
+    /// else, see <see cref="IgnoreUnboundFields"/>. A row with no keys left is a possible answer here, and the
+    /// honest one for a caller who asked only for columns that are no longer there.
+    /// </remarks>
+    private IReadOnlyList<string> Projectable(IReadOnlyList<string> fields)
+    {
+        return DropsUnboundFields ? [.. fields.Where(field => Keep(field, BindingUse.Projection))] : fields;
     }
 
     /// <summary>

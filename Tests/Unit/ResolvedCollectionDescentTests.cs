@@ -442,7 +442,7 @@ public class ResolvedCollectionDescentTests
 
         // And the other one is untouched, which is the whole point of naming a path rather than a type
         Assert.True(bound.Single(entry => entry.Key == "Outbound").IsCollection);
-        Assert.NotEmpty(bound.Where(entry => entry.ElementOf == "Outbound"));
+        Assert.Contains(bound, entry => entry.ElementOf == "Outbound");
     }
 
     /// <summary>

@@ -1,7 +1,12 @@
 name: release
 
 # Tag drives the version, so the package and the tag can never disagree, will override version from .csproj:
-#   git tag v2.0.0 && git push origin v2.0.0
+#   git tag 3.0.0 && git push origin 3.0.0
+#
+# Three numbers and no prefix, which is how every tag in this repository is spelled. A v prefixed one is taken
+# as well, because the version step below already strips a v and a trigger that refused what that step handles
+# is the quiet failure this is written to avoid: 2.0.0 and 2.1.0 both matched nothing, so the tag went up, no
+# run started, and nothing said so.
 #
 # Requires matching policy on nuget.org
 #   Repository Owner  rvoisin-mcl
@@ -11,7 +16,9 @@ name: release
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
@@ -34,6 +41,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # The strip is what lets both spellings in the trigger arrive here as the same number
       - name: Read the version from the tag
         id: version
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"

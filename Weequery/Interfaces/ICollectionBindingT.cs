@@ -46,6 +46,18 @@ internal interface ICollectionBinding<TClass> : IBinding
     bool Binds(string key);
 
     /// <summary>
+    /// The inner allow-list, described. See <see cref="Inquiry{T}.ListBindings"/>.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the collection because only the collection can answer it: the inner set is keyed by
+    /// <c>Binding{TElement}</c>, and TElement is what this interface exists to hide from the outer
+    /// <see cref="Inquiry{T}"/>. So the collection does the projecting and hands back something the outside can
+    /// hold.
+    /// </remarks>
+    /// <returns>every key nameable inside a quantifier, ordered</returns>
+    IReadOnlyList<BoundBinding> ListElements();
+
+    /// <summary>
     /// The test for a quantifier over this collection, as an expression on the entity's own parameter.
     /// </summary>
     /// <param name="quantifier"><see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/></param>

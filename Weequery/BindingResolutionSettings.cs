@@ -1,4 +1,4 @@
-﻿namespace Weequery;
+namespace Weequery;
 
 /// <summary>
 /// What <see cref="Inquiry{T}.ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> should leave out when it walks a type.
@@ -13,7 +13,7 @@
 /// <see cref="Default"/> is where to start when you want the defaults and one more subtraction, since building
 /// the record by hand silently gives up the string rule:
 /// <code>
-/// var settings = BindingResolutionSettings.Standard with { IgnorePaths = ["PasswordHash", "Audit."] };
+/// var settings = BindingResolutionSettings.Default with { IgnorePaths = ["PasswordHash", "Audit."] };
 /// </code>
 /// </para>
 /// </para>
@@ -21,6 +21,23 @@
 /// <param name="IgnorePaths">
 /// Paths not to bind, not keys, so "Lair.Capacity" rather than "Capacity".
 /// Can also be used to ignore anything after a path, with a trailing .
+/// <para>
+/// <b>Inside a collection, name the collection first.</b> An element is walked from its own root, so a path in
+/// there is reached by saying which collection it is in, using the same spelling
+/// <see cref="Inquiry{T}.ListBindings"/> reports, see <see cref="BoundBinding.ElementMarker"/>:
+/// <code>
+/// "Assignments[]."             bind the collection, and resolve nothing inside it
+/// "Assignments[].Lair"         leave Lair out of this collection's elements
+/// "Assignments[].Lair."        bind Lair there, and stop at it
+/// "Assignments"                take the name away altogether, collection and property both
+/// </code>
+/// The first of those leaves the property binding alone, so the key is still there to be null tested and
+/// indexed and only the quantifier goes, which is the same distinction a trailing period draws everywhere else.
+/// </para>
+/// <para>
+/// A bare path such as "Lair" is matched against the element's own paths as it always was, and so applies inside
+/// every collection that has one rather than a named one. Both spellings subtract, so naming both takes both.
+/// </para>
 /// </param>
 /// <param name="IgnoreTypes">
 /// Types not to bind a property of. Compared against the property's declared type, so a

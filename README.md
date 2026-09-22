@@ -271,15 +271,30 @@ collection of objects it meets is bound twice over, under the one key: as a prop
 [`Any`, `All` and `None`](#asking-about-all-of-them-at-once). Two questions about one thing, under one name.
 
 ```csharp
-.BindResolve()                        // Assignments Any (LairID = 5)
-.BindResolve(collectionDepth: 1)      // ...and Assignments Any (Lair.Name = 'Volcano')
+.BindResolve(maxDepth: 0)      // Assignments Any (LairID = 5)
+.BindResolve()                 // ...and Assignments Any (Lair.Name = 'Volcano')
 ```
 
-**The element depth defaults to 0, and that is on purpose.** Zero is the element's own properties, which on a
-link table is the pair of ids and the two things they point at. One reaches through to the far side, and that is
-where it stops being cheap: on a model with three collections it took the allow-list from 18 nameable keys to
-124, because the far side of a link table is the whole of another entity. Ask for the depth where you want the
-second hop, and *read what you got*.
+**There is one depth, and a collection spends what is left of it.** The entity's **own** collections are free to
+enter, so zero still reaches them and gives you the element's own properties, which on a link table is the pair of
+ids and the two things they point at. One reaches through to the far side. That second hop is where it stops being
+cheap: on a model with three collections it took the allow-list from 18 nameable keys to 124, because the far side
+of a link table is the whole of another entity. Spend the depth where you want the second hop, and
+*[read what you got](#and-reading-back-what-you-bound)*.
+
+**That discount is the root's and nobody else's.** A collection further down costs the level it took to reach it,
+like any other descent, so an element found at depth `d` is walked to `maxDepth - d - 1` and a collection the
+budget does not reach is not bound at all:
+
+```csharp
+// Yard -> Bay -> Cartons -> Carton -> Stamp
+.BindResolve(maxDepth: 1)      // nothing: 1 got the walk to Bay, and there is nothing left to enter Cartons with
+.BindResolve(maxDepth: 2)      // Bay.Cartons Any (Code = 'X'), and no further
+.BindResolve(maxDepth: 3)      // ...and Bay.Cartons Any (Stamp.Mark = 'X')
+```
+
+If it were granted at every level it would compound, each one paying for itself again, and a walk of 1 would drag
+in a second hop nobody asked for. One discount, at the top, once.
 
 Not every sequence is one. A `List<string>`, a `Dictionary<,>`, an array of numbers and a string itself all stay
 ordinary bindings, because a quantifier names a *property of an element* and none of those has one worth naming.
@@ -354,6 +369,29 @@ query.WithWeequery().BindResolve(maxDepth: 2, settings);
 | `IgnoreTypeWhenAssignable` | make `IgnoreTypes` catch anything assignable to one of them, so a base class or an interface covers everything under it |
 | `DoNotExpandTypes` | bind a property of this type but do not descend into it, for a class you want reachable and testable for null without its insides going on the wire |
 
+**To subtract inside a collection, name the collection first.** An element is walked from its own root, so a path
+in there is reached by saying which collection it is in, using the same spelling
+[`ListBindings`](#and-reading-back-what-you-bound) reports back at you, which is the point:
+
+```csharp
+IgnorePaths =
+[
+    "AssignmentsAsMember[].",                 // bind the collection, resolve nothing inside it
+    "AssignmentsAsLeader[].Member",           // leave Member out of this collection's elements
+    "LairAssignments[].Minion.",              // bind Minion there, and stop at it
+    "LairAssignments",                        // take the name away altogether
+]
+```
+
+The first of those leaves the property alone, so the key is still there to be
+[null tested](#how-nulls-behave) and [indexed](#reaching-into-a-collection) and only the quantifier goes. That is
+the same distinction the trailing period draws everywhere else, and it is why `"AssignmentsAsMember."` on its own
+does nothing: a collection is never expanded as a navigation in the first place, so there is nothing for it to
+stop.
+
+A bare path such as `"Minion"` is still matched against the element's own paths, so it applies inside **every**
+collection that has one rather than a named one. Both spellings subtract, so naming both takes both.
+
 `Standard` subtracts nothing. It does not have to: the rules below are not settings and cannot be turned off.
 
 **Where the walk stops on its own**, so bind these by hand if you want them:
@@ -379,6 +417,74 @@ through it, so `Place.Capacity` is resolved, and so is `Place.DisplayName` where
 
 And it **adds** to what is already bound rather than replacing it, so a key you bound by hand and then resolve
 again is a duplicate and is refused. Resolve first, remove after.
+
+#### And reading back what you bound
+
+Everything else here changes the allow-list. `ListBindings` merely reads it, which is how you carry out the
+instruction I keep giving you: **read what you got**. A key, the path behind it, and what may be done with it.
+
+**One flat list, and everything in it reads the same way.** A property of the entity and a property of something
+one of its collections holds are both an entry, and the second is spelled with the collection it came through:
+
+```csharp
+foreach (var bound in query.WithWeequery().BindResolve().ListBindings())
+{
+    Console.WriteLine(bound);
+}
+
+// 'Alias' may be used for all
+// 'LairAssignments', a collection, may be used for all
+// 'LairAssignments[].Lair.Name', written 'Lair.Name' inside LairAssignments, may be used for test
+// 'LairAssignments[].Minion.Pay', written 'Minion.Pay' inside LairAssignments, may be used for test
+// 'Pay', which is Salary, may be used for test, projection
+```
+
+The empty brackets are where an element is chosen, and that is not decoration: it is the
+[path you would bind by hand](#deciding-what-they-may-ask-about) with the choice left out.
+`LairAssignments[0].Lair.Name` binds, and `LairAssignments[].Lair.Name` is the same path with nothing picked,
+so the marker tells you exactly what is missing. Ask for it as it stands and the parser says so itself:
+
+```
+Expected an index for field 'LairAssignments' at position 15
+```
+
+**It is a name for the binding, not a condition you can write.** A condition takes one of two other shapes, and
+the listing hands you what each needs. `ElementKey` is the short thing you write once a quantifier has already
+said which collection, and `ElementOf` is that collection:
+
+```csharp
+// LairAssignments[].Lair.Name          Key          what the listing calls it
+// LairAssignments                      ElementOf    the collection it is reached through
+// Lair.Name                            ElementKey   what you write inside Any, All or None
+
+.ApplyCondition("LairAssignments Any (Lair.Name = 'Volcano')")     // quantify over all of them
+.ApplyCondition("LairAssignments[0] IsNotNull")                    // or name one element
+```
+
+A dotted path *after* an index is a binding and not a condition, so to ask about one element's far side, bind it
+under a key of its own and then ask about that:
+
+```csharp
+.BindProperty("LairAssignments[0].Lair.Name", "FirstLair")
+.ApplyCondition("FirstLair = 'Volcano'")
+```
+
+**This is the half of a resolved binding there is otherwise no way to look at**, and usually the longer half,
+since the element of a link table drags the whole of another entity in behind it. That model lists **18** keys
+off the entity and **106** more behind three of them. `LairAssignments[].Minion.Pay` is nameable and nobody asked
+for it. This is how you find that out before your callers do.
+
+A [collection](#asking-about-all-of-them-at-once) itself gets one entry and not two, though it is bound twice
+over under the one name: you asked what a caller may write, not what I happen to keep. Every element reports
+`Test`, because testing is all anyone does to one, and no element is itself a collection, an inner set having no
+way to bind a further one.
+
+`IsCollection` is the only thing that tells a collection apart: a quantifier is a condition, so `LairAssignments`
+and `Name` both grant `Test` and the three uses separate them not at all.
+
+It is a report and not a request.
+comes out describes an allow-list that has already been built, including the parts of it no request could have made.
+
 
 ### Normalising what gets compared
 

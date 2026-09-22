@@ -70,6 +70,20 @@ internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<T
     }
 
     /// <inheritdoc/>
+    public IReadOnlyList<BoundBinding> ListElements()
+    {
+        // Test rather than the grant the binding carries. An element is only ever tested: the inner set has no
+        // BindingUse to give and the bindings in it are built with the default, so reporting what is stored
+        // would promise a sort and a projection that nothing here can perform
+        return
+        [
+            .. Inner
+                .Select(entry => new BoundBinding(entry.Key, entry.Value.PropertyPath, BindingUse.Test))
+                .OrderBy(bound => bound.Key, BindingLookup.KeyComparer)
+        ];
+    }
+
+    /// <inheritdoc/>
     [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Expression<Func<TClass, bool>> Quantify(Operator quantifier, ICondition inner)

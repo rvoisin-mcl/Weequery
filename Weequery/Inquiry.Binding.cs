@@ -468,7 +468,7 @@ public partial class Inquiry<T> where T : class
     /// everything a collection holds becomes nameable inside the quantifier. Resolve it once, print it, and read
     /// what you got.
     /// <code>
-    /// foreach (var found in Inquiry&lt;Minion&gt;.ResolveBindableCollections(collectionDepth: 1))
+    /// foreach (var found in Inquiry&lt;Minion&gt;.ResolveBindableCollections())
     /// {
     ///     Console.WriteLine($"{found.Key}: {string.Join(", ", found.Elements.Select(e =&gt; e.Key))}");
     /// }
@@ -480,20 +480,19 @@ public partial class Inquiry<T> where T : class
     /// and the quantifiers as a collection.
     /// </para>
     /// </remarks>
-    /// <param name="maxDepth">[OPT] how far into the entity to look for collections, bounded to [0,16]</param>
-    /// <param name="collectionDepth">[OPT] how far into an element to go, 0 being its own properties, bounded to [0,16]</param>
+    /// <param name="maxDepth">[OPT] how far to go, spent on the entity and on the elements alike, bounded to [0,16]</param>
     /// <param name="settings">[OPT] what to leave out, see <see cref="BindingResolutionSettings"/></param>
     /// <returns>every collection found, in path order; never null</returns>
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: what is resolved is the collections of T, so Inquiry<T> is where a caller already is when they need them.")]
-    public static IReadOnlyList<CollectionBindingRequest> ResolveBindableCollections(int maxDepth = 1, int collectionDepth = 0, BindingResolutionSettings? settings = null)
+    public static IReadOnlyList<CollectionBindingRequest> ResolveBindableCollections(int maxDepth = 1, BindingResolutionSettings? settings = null)
     {
         List<CollectionBindingRequest> collections = [];
 
         BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0,
             Math.Min(Math.Max(maxDepth, 0), 16), "",
             (settings is null) ? BindingResolutionSettings.Default : new(settings),
-            new HashSet<Type>(), collections, Math.Min(Math.Max(collectionDepth, 0), 16));
+            new HashSet<Type>(), collections);
 
         return collections;
     }
@@ -522,17 +521,29 @@ public partial class Inquiry<T> where T : class
     /// For "has no elements", <c>Assignments None (...)</c> is the question that means it. A quantifier is total
     /// and answers the same for an absent collection as for an empty one, where a null test on the collection
     /// itself would distinguish two things a database will not.
+    /// </para>
+    /// <para>
+    /// <b>There is one depth, and a collection spends what is left of it.</b> The entity's own collections are
+    /// free to enter, so at <paramref name="maxDepth"/> 0 you get every property of the entity <i>and</i> the own
+    /// properties of anything it holds, and at 1 a level further in both directions at once.
+    /// </para>
+    /// <para>
+    /// <b>That discount belongs to the root and nowhere else.</b> A collection found further down is an ordinary
+    /// descent, costing the level it took to reach it, so an element found at depth d is walked to
+    /// <c>maxDepth - d - 1</c> and a collection the budget does not reach is not bound at all. Granted at every
+    /// level the discount would compound, and a walk of 1 would reach a second hop through a nested collection
+    /// that nobody asked for.
     /// <code>
-    /// .BindResolve()                        // Assignments Any (LairID = 5)
-    /// .BindResolve(collectionDepth: 1)      // ...and Assignments Any (Lair.Name = 'Volcano')
+    /// .BindResolve(0)     // Assignments Any (LairID = 5)
+    /// .BindResolve()      // ...and Assignments Any (Lair.Name = 'Volcano'), the far side of the link table
     /// </code>
     /// </para>
     /// <para>
-    /// <b>The element depth defaults to 0, and that is deliberate.</b> It is the element's own properties, which
-    /// on a link table is the pair of ids and the two things they point at, and it is where the cost stops being
-    /// small: a depth of 1 on an entity with three collections took one model from 18 nameable keys to 124, the
-    /// far side of every link table being the whole of another entity. Ask for the depth where you want the
-    /// second hop, and read what you got.
+    /// <b>Depth is not free, and it is the elements that make it expensive.</b> Going from 0 to 1 took one model
+    /// from 18 nameable keys to 124, because the far side of a link table is the whole of another entity, and the
+    /// per call cost from 19us to 430us: a property set is resolved once for the process and kept, and the
+    /// bindings inside a collection are not. Ask for the depth where you want the second hop, and read what you
+    /// got.
     /// </para>
     /// <para>
     /// Not every sequence is one. A <c>List&lt;string&gt;</c>, a dictionary, an array of numbers and a string
@@ -552,18 +563,15 @@ public partial class Inquiry<T> where T : class
     /// [OPT] what to leave out; null leaves nothing out, but will not bind string properties
     /// </param>
     /// <param name="use">[OPT] what the binding may be used for, everything by default, see <see cref="BindingUse"/></param>
-    /// <param name="collectionDepth">
-    /// [OPT] how far into a collection element to resolve, 0 being the element own properties. Bounded to [0, 16]
-    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key, or two bindings claim one key</exception>
     [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All, int collectionDepth = 0)
+    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
         var next = BindProperties(ResolveBindables(maxDepth, settings, use));
 
-        var collections = ResolveBindableCollections(maxDepth, collectionDepth, settings);
+        var collections = ResolveBindableCollections(maxDepth, settings);
 
         return (collections.Count == 0) ? next : next.BindCollections(collections);
     }
@@ -665,6 +673,118 @@ public partial class Inquiry<T> where T : class
         }
 
         return next;
+    }
+
+    /// <summary>
+    /// What is bound, and what may be done with each of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The allow-list, read back. Useful for telling a caller what they may ask about rather than letting them
+    /// find out by being refused, and for reading what <see cref="BindResolve"/> actually opened up, which is
+    /// the thing its own warning asks you to do:
+    /// <code>
+    /// foreach (var bound in inquiry.BindResolve().ListBindings())
+    /// {
+    ///     Console.WriteLine(bound);
+    /// }
+    ///
+    /// // 'Name' may be used for all
+    /// // 'AssignmentsAsMember', a collection, may be used for all
+    /// // 'AssignmentsAsMember[].Leader.Name', written 'Leader.Name' inside AssignmentsAsMember, may be used for test
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>One flat list, and one entry per key.</b> A property of the entity and a property of a collection's
+    /// element read the same way, the second qualified by the collection it is reached through, see
+    /// <see cref="BoundBinding.ElementMarker"/>. Nothing is nested, and nothing has to be walked into to be
+    /// counted or searched.
+    /// </para>
+    /// <para>
+    /// A collection is bound twice over under the one name, as a property and as a collection, and is reported
+    /// once with the two grants added together, so what is counted is what a caller may write rather than what
+    /// is stored. One bound on its own, by
+    /// <see cref="BindCollection{TElement}(Expression{Func{T, IEnumerable{TElement}}}, string, Action{CollectionBindingSet{TElement}})"/>,
+    /// is reported as <see cref="BindingUse.Test"/>, that being all a quantifier ever needs.
+    /// </para>
+    /// <para>
+    /// <b>An element's entry carries both of its names.</b> <see cref="BoundBinding.Key"/> is qualified and
+    /// identifies it across the whole listing; <see cref="BoundBinding.ElementKey"/> is the shorter thing a
+    /// condition inside the quantifier writes, the quantifier having already said which collection, and
+    /// <see cref="BoundBinding.ElementOf"/> names that collection. So a caller reading this list can write either
+    /// form without deriving one from the other.
+    /// </para>
+    /// <para>
+    /// The element half is also the half of a resolved binding there is otherwise no way to see, and usually the
+    /// longer half, an element of a link table carrying the whole of another entity.
+    /// </para>
+    /// <para>
+    /// A collection is told apart by <see cref="BoundBinding.IsCollection"/> rather than by its uses. A
+    /// quantifier is a condition, so a collection grants <see cref="BindingUse.Test"/> and nothing in the three
+    /// uses separates one from an ordinary property.
+    /// </para>
+    /// <para>
+    /// Ordered by key, so an element sorts just under the collection it belongs to, and the order is the only thing about it that is not a fact about the bindings: the
+    /// dictionary they live in has no order worth showing, so this imposes one to make two listings comparable.
+    /// </para>
+    /// <para>
+    /// What comes back describes this Inquiry and does not change with it. Binding something else gives a copy,
+    /// see <see cref="Copy"/>, and the list already in hand still says what was true when it was asked for.
+    /// </para>
+    /// </remarks>
+    /// <returns>every bound key, ordered, with its path, its uses and whatever is bound inside it</returns>
+    public IReadOnlyList<BoundBinding> ListBindings()
+    {
+        var listed = new Dictionary<string, BoundBinding>(BindingLookup.KeyComparer);
+
+        foreach (var (key, binding) in Bindings)
+        {
+            listed[key] = new BoundBinding(key, binding.PropertyPath, binding.Use);
+        }
+
+        // Gathered apart and added at the end, so an element cannot claim a key off the entity: the two
+        // namespaces are joined by the qualifying below and not before it
+        List<BoundBinding> elements = [];
+
+        foreach (var (key, collection) in Collections)
+        {
+            // The same key may already be here as a property, which is the resolved case: one name answering a
+            // null test and an index as well as the quantifiers. Report it once, granting both, and say that it
+            // is a collection, which is the part Use cannot carry: a quantifier is a condition, so this would
+            // otherwise read exactly like an ordinary testable property
+            var entry = listed.TryGetValue(key, out var property)
+                ? property with { Use = property.Use | BindingUse.Test, IsCollection = true }
+                : new BoundBinding(key, collection.PropertyPath, BindingUse.Test) { IsCollection = true };
+
+            listed[key] = entry;
+
+            // The collection reports its inside in the element's own terms, and the qualifying happens here,
+            // once, rather than in each collection separately guessing what it hangs off
+            elements.AddRange(collection.ListElements().Select(element => element with
+            {
+                Key = Qualify(entry.Key, element.Key),
+                Path = Qualify(entry.Path, element.Path),
+                ElementOf = entry.Key,
+                ElementKey = element.Key,
+            }));
+        }
+
+        return [.. listed.Values.Concat(elements).OrderBy(bound => bound.Key, BindingLookup.KeyComparer)];
+    }
+
+    /// <summary>
+    /// An element's key or path, said from the entity rather than from the element.
+    /// </summary>
+    /// <remarks>
+    /// The marker goes where an index would, which is what makes the result the shape of what a caller actually
+    /// writes once they have chosen one, see <see cref="BoundBinding.ElementMarker"/>.
+    /// </remarks>
+    /// <param name="collection">the collection's own key or path</param>
+    /// <param name="inside">the element's key or path, which is relative to the element</param>
+    /// <returns></returns>
+    private static string Qualify(string collection, string inside)
+    {
+        return $"{collection}{BoundBinding.ElementMarker}.{inside}";
     }
 
 }

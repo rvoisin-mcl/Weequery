@@ -138,11 +138,21 @@ internal static class BindingResolver
     /// </para>
     /// <para>
     /// Given somewhere to put them, a collection of objects is <b>also</b> gathered as a
-    /// <see cref="CollectionBindingRequest"/>, its elements resolved from nothing to
-    /// <paramref name="collectionDepth"/>. Also, not instead: the property binding is what answers a null test
-    /// and an index, and the collection binding is what answers the quantifiers, and they are three questions
-    /// about one thing. That depth is a separate budget from <paramref name="maxDepth"/>, since how far into an
-    /// element is worth going has nothing to do with how far into the entity it was found.
+    /// <see cref="CollectionBindingRequest"/>, its elements resolved to whatever is left of
+    /// <paramref name="maxDepth"/> where it was found. Also, not instead: the property binding is what answers a
+    /// null test and an index, and the collection binding is what answers the quantifiers, and they are three
+    /// questions about one thing.
+    /// </para>
+    /// <para>
+    /// <b>Entering a collection is free at the root, and costs a level anywhere below it.</b> The entity's own
+    /// collections are reached whatever the budget, so a <paramref name="maxDepth"/> of 0 still gathers them and
+    /// hands the whole of it to their elements. A collection found further down is an ordinary descent, paid for
+    /// out of what remains, and one the budget does not reach is not gathered at all.
+    /// </para>
+    /// <para>
+    /// The promotion has to be the root's alone or it compounds. Granted at every level it would pay for itself
+    /// again on each one, and a walk of 1 would reach a second hop through a nested collection that nobody asked
+    /// for: the point of a depth is that it is spent, and a discount renewed at every step is not spent.
     /// </para>
     /// </remarks>
     /// <param name="bindings">the list being built, added to in place</param>
@@ -157,10 +167,9 @@ internal static class BindingResolver
     /// [OPT] where to put the collections found, added to in place. Null gathers none, which is what a caller
     /// wanting only the property list asks for
     /// </param>
-    /// <param name="collectionDepth">[OPT] how far into an element to go, 0 being the element's own properties</param>
     /// <returns>the same list, for the caller that started it</returns>
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    internal static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors, List<CollectionBindingRequest>? collections = null, int collectionDepth = 0)
+    internal static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors, List<CollectionBindingRequest>? collections = null)
     {
         ancestors.Add(type); // Opened on the way in and closed on the way out
 
@@ -178,13 +187,20 @@ internal static class BindingResolver
                 {
                     bindings.Add(new(pathName, KeyFor(pathName)));
 
-                    // And a second entry where it is a collection worth quantifying over, the key answering both
-                    if (collections is not null) { Elements(property.PropertyType, settings, collectionDepth, pathName, collections); }
+                    // And a second entry where it is a collection worth quantifying over, the key answering both.
+                    // Free at the root and an ordinary descent below it, so what is left for the element is the
+                    // whole budget at depth 0 and one less than the remainder after that. Negative is out of reach
+                    var elementDepth = (depth == 0) ? maxDepth : (maxDepth - depth - 1);
+
+                    if ((collections is not null) && (elementDepth >= 0))
+                    {
+                        Elements(property.PropertyType, settings, elementDepth, pathName, collections);
+                    }
 
                     // if we haven't bottomed out, and settings say the property should be expanded
                     if ((depth < maxDepth) && (ShouldExpandType(property.PropertyType, settings, pathName, ancestors)))
                     {
-                        ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings, ancestors, collections, collectionDepth);
+                        ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings, ancestors, collections);
                     }
                 }
             }
@@ -202,24 +218,83 @@ internal static class BindingResolver
     /// over.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The element is walked from its own root rather than from the entity's, so the paths inside are the
-    /// element's and any <see cref="BindingResolutionSettings.IgnorePaths"/> matched here are element-relative.
-    /// Loop checking starts fresh for the same reason, the depth given being what bounds it.
+    /// element's. Loop checking starts fresh for the same reason, the depth given being what bounds it.
+    /// </para>
+    /// <para>
+    /// <b>Which leaves two ways to name a path in there</b>, see <see cref="ScopedToElement"/>. An
+    /// <see cref="BindingResolutionSettings.IgnorePaths"/> entry may be element-relative, "Leader.", which
+    /// applies inside every collection that has one; or it may name this collection,
+    /// "Assignments[].Leader.", which applies inside this one alone. The second is the spelling
+    /// <see cref="Inquiry{T}.ListBindings"/> reports, so what you read back is what you can subtract.
+    /// </para>
     /// </remarks>
     /// <param name="type">the property's declared type</param>
     /// <param name="settings"></param>
-    /// <param name="collectionDepth">how far into an element to go, 0 being the element's own properties</param>
+    /// <param name="elementDepth">
+    /// how far into an element to go, 0 being the element's own properties. Never negative: whether the budget
+    /// reaches the collection at all is the caller's to decide, and it decides by not calling
+    /// </param>
     /// <param name="path">the path to the collection, which becomes the key</param>
     /// <param name="found">the list being built, added to in place</param>
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    private static void Elements(Type type, BindingResolutionSettings settings, int collectionDepth, string path, List<CollectionBindingRequest> found)
+    private static void Elements(Type type, BindingResolutionSettings settings, int elementDepth, string path, List<CollectionBindingRequest> found)
     {
         if (ElementTypeOf(type) is not { } element) { return; }
         if (ShouldIgnoreType(element, settings)) { return; }
 
-        var bindings = ResolveBindables(new List<BindingRequest>(), element, 0, collectionDepth, "", settings, new HashSet<Type>());
+        var marker = $"{path}{BoundBinding.ElementMarker}";
+
+        // "Assignments[]" and "Assignments[]." are the collection's own stop, and they say the same thing because
+        // there is nothing between them: an element has no half to keep. The property binding is added by the
+        // caller and is untouched, so the collection stays there to be null tested and indexed, and only the
+        // quantifier goes. That is the difference between this and "Assignments", which removes the name entirely
+        if (settings.IgnorePaths.Contains(marker) || settings.IgnorePaths.Contains($"{marker}.")) { return; }
+
+        var scoped = ScopedToElement(settings, marker);
+
+        var bindings = ResolveBindables(new List<BindingRequest>(), element, 0, elementDepth, "", scoped, new HashSet<Type>());
 
         // Nothing to name inside is nothing to quantify over, and BindCollection refuses an empty set anyway
         if (bindings.Count > 0) { found.Add(new(path, KeyFor(path), element, bindings)); }
+    }
+
+    /// <summary>
+    /// The settings as the element's own walk should read them, with anything aimed at this collection re-aimed
+    /// at the element.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The element is walked from its own root, so its paths are "Leader.Alias" and never
+    /// "Assignments[].Leader.Alias". Rather than carry a prefix through the whole walk and strip it off every
+    /// binding afterwards, the subtractions are translated once on the way in: "Assignments[].Leader." becomes
+    /// "Leader." and matches as any element-relative entry does.
+    /// </para>
+    /// <para>
+    /// An entry aimed at a <i>different</i> collection is dropped rather than carried along. It could never match
+    /// in here anyway, a resolved path holding no brackets, and dropping it says so rather than leaving it to
+    /// fail to match by accident.
+    /// </para>
+    /// </remarks>
+    /// <param name="settings"></param>
+    /// <param name="marker">the collection's path with the element marker on it, so "Assignments[]"</param>
+    /// <returns>the settings unchanged where nothing named this collection, or a copy that is scoped to it</returns>
+    private static BindingResolutionSettings ScopedToElement(BindingResolutionSettings settings, string marker)
+    {
+        // The common case by far, and worth not copying a set for
+        if (!settings.IgnorePaths.Any(ignore => ignore.Contains(BoundBinding.ElementMarker, StringComparison.Ordinal))) { return settings; }
+
+        var inside = $"{marker}.";
+
+        var scoped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ignore in settings.IgnorePaths)
+        {
+            if (ignore.StartsWith(inside, StringComparison.OrdinalIgnoreCase)) { scoped.Add(ignore[inside.Length..]); }
+            else if (!ignore.Contains(BoundBinding.ElementMarker, StringComparison.Ordinal)) { scoped.Add(ignore); }
+        }
+
+        return settings with { IgnorePaths = scoped };
     }
 }

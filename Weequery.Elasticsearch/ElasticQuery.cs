@@ -374,14 +374,14 @@ internal sealed class ElasticTranslator(ElasticFieldSet fields) : ConditionTrans
     {
         if (field.IsTextual) { return; }
 
-        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for '{field.Key}', which is declared as {field.Kind}: it matches text");
+        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for '{field.Key}', which is declared as {field.Kind}");
     }
 
     private static void RequireOrderable(ElasticField field, IBoundCondition condition)
     {
         if (field.IsOrderable) { return; }
 
-        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for '{field.Key}', which is declared as {field.Kind} and has no ordering");
+        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for '{field.Key}', which is declared as {field.Kind}");
     }
 
     /// <summary>

@@ -120,7 +120,7 @@ public static class ODataQuery
 
             if (field.Collection is not null)
             {
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{field.Key}', which is declared inside the collection '{field.Collection}': $orderby has to say which of the many values to order by, and a sort does not carry that");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{field.Key}', which is declared inside the collection '{field.Collection}'");
             }
 
             if (field.Kind == ODataFieldKind.Collection)

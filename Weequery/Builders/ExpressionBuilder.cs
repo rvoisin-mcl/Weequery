@@ -1,5 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
 using Weequery.Interfaces;
@@ -183,7 +183,7 @@ internal static class ExpressionBuilder
         {
             if ((collections is null) || (!collections.TryGetValue(quantified.Field, out var collection)))
             {
-                throw new WeequeryException(WeequeryError.UnboundField, $"Unbound collection: '{quantified.Field}'. A quantifier needs a collection bound with BindCollection, which is also where what may be asked about an element is declared");
+                throw new WeequeryException(WeequeryError.UnboundField, $"Unbound collection: '{quantified.Field}'");
             }
 
             // Total, so it needs no guard from here: see the remarks on CollectionBinding.Quantify
@@ -201,7 +201,7 @@ internal static class ExpressionBuilder
             // would send a caller looking for a typo in a name that works perfectly well in a projection.
             if (!boundProperty.Allows(BindingUse.Test))
             {
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{binding.Field}' cannot be used in a condition: it is bound for {boundProperty.Use}");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{binding.Field}' cannot be used in a condition: it is only bound for {boundProperty.Use}");
             }
 
             // An index turns the binding for the collection into one for the element, which is nullable whatever
@@ -218,7 +218,7 @@ internal static class ExpressionBuilder
                     // the operator does not belong on this property
                     if ((valueCondition.Operator is Operator.IsMatch or Operator.DoesNotMatch) && (boundProperty.UnwrappedPropertyType != typeof(string)))
                     {
-                        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {valueCondition.Operator} is unsupported for the {boundProperty.UnwrappedPropertyType.Name} binding '{boundProperty.PropertyPath}', it matches a regular expression against text");
+                        throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {valueCondition.Operator} is unsupported for the {boundProperty.UnwrappedPropertyType.Name} binding '{boundProperty.PropertyPath}'");
                     }
 
                     // Reading the operands also checks them, so what either route below is handed has already been

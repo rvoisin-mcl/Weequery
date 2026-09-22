@@ -75,9 +75,8 @@ using Weequery;
 
 var minions = context.Minions
     .WithWeequery()
-    .BindProperty(minion => minion.Name)
-    .BindProperty(minion => minion.Pay)
-    .BindProperty(minion => minion.IsActive)
+    .BindResolve()
+    .RemoveBinding("Name") // Lets not make it too easy for the agents
     .ApplyCondition("(Pay > 10000) AND (IsActive = true)")
     .ApplySort(new Sort("Pay", SortDirection.Descending))
     .ApplyPagination(pageSize: 20, page: 0)
@@ -194,8 +193,7 @@ WeequeryException.IsBindingKey(".Capacity");      // false, nor is a missing one
 ```
 
 Every segment is held to the whole of the rule, so a leading or trailing period, two in a row, and a segment
-starting with a digit are all still refused. `IsSqlName` is still there and still means one name with no period
-in it, which is what a single column may be called; `IsBindingKey` is the rule a key is held to.
+starting with a digit are all still refused. `IsBindingKey` is the rule a key is held to.
 
 Which means a nested property needs no second name:
 
@@ -207,11 +205,11 @@ Which means a nested property needs no second name:
 A period is not a delimiter in the query language, so a dotted key is one word to the tokenizer and reads and
 writes unquoted like any other: `Lair.Capacity > 500` parses, and comes back out as `([Lair.Capacity] > '500')`.
 
-**They're matched without regard to case.** `pay`, `Pay` and `PAY` all find a property bound as `Pay`. Which
+**Keys are case-insensitive** `pay`, `Pay` and `PAY` all find a property bound as `Pay`. Which
 means two keys differing only in case are the *same key*, and binding both is a duplicate refused when the
 second one is created.
 
-**They may not be named after an operator.** A key is written as a bare field name, so a key called `Contains`
+**They may share a name with a keyword.** A key is written as a bare field name, so a key called `Contains`
 makes a query that reads two ways, and I did not claw my way out of a Belgian orphanage to write an *ambiguous
 parser*.
 
@@ -244,7 +242,7 @@ context.Minions
     .ApplyCondition(request.Filter)
 ```
 
-Now *look at me*. This is the allow-list saying **yes to everything**. Every property name on that entity goes on
+Now *look at me*. This is the allow-list saying **bind everything!**. Every property name on that entity goes on
 the wire for a stranger to read and filter by, and if one of them is called `PasswordHash` or `InternalRiskScore`
 or `TenantID`, you have just published it. That is a perfectly reasonable thing to do to an internal tool over a
 model you own. It is not a thing to do to an entity with an audit trail hanging off it. **Resolve it once, print
@@ -272,7 +270,7 @@ into, so `Parent` is a key and `Parent.Parent` is not. Without that, a `Node` wi
 half a million keys at depth 16 and took nine seconds and most of two gigabytes to bind them, *per request*, which
 is the kind of thing that ends up being my fault.
 
-**A property named after an operator gets an underscore.** A key called `Contains` would make a query that reads
+**A property sharing a name with a keyword gets an underscore.** A key called `Contains` would make a query that reads
 two ways, and refusing the whole model over one property name is no use to anybody, so it is keyed `Contains_`
 instead. The path is untouched; only the name the caller uses changes. Nested ones are already unambiguous, so
 `Inner.Contains` is left alone.
@@ -294,13 +292,12 @@ Two ways, and you want the second one more often than you think.
 
 ```csharp
 .BindResolve()
-.RemoveBinding("Pay", BindingUse.Test | BindingUse.Sort)   // still readable, no longer askable
+.RemoveBinding("Pay", BindingUse.Test | BindingUse.Sort)   // still readable, no longer testable
 .RemoveBinding("PasswordHash")                                  // gone entirely
 ```
 
-A binding left allowing nothing is taken away rather than kept as one that refuses every question, so the call
-with no use named is exactly what it always was. Subtracting a use a binding never had changes nothing, for the
-same reason naming a key nobody bound does not.
+A binding left with no uses is removed entirely away rather than uselessly kept. Subtracting a use a binding never had
+changes nothing.
 
 A bound collection has no use of its own (it answers a quantifier, which is a condition, and nothing else) so
 a subtraction including `Condition` takes it away and one that does not leaves it alone.
@@ -1194,7 +1191,8 @@ where that is what you meant.
 
 ## Reading back only some of it
 
-Everything so far decides **which rows**. This decides **which columns**:
+Everything so far decides **which rows**. This decides **which columns**, and I want you to notice that those
+are two entirely different questions:
 
 ```csharp
 var rows = query.WithWeequery()
@@ -1209,11 +1207,13 @@ var rows = query.WithWeequery()
   { "Name": "Bob Samuelson", "Pay": 0 } ]
 ```
 
-**The allow-list is the same one.** Anything bound is projectable, under the same keys and the same
-case-insensitive matching, and a field nobody bound is refused exactly as it is in a condition. There is nothing
-extra to declare, and this grants nothing that filtering did not already.
+**The allow-list is the same one.** I do not keep a second list. Anything bound is projectable, under the same
+keys and the same case-insensitive matching, and a field nobody bound is refused exactly as it is in a
+condition. There is nothing extra for you to declare, and this grants nothing that filtering had not already
+granted.
 
-**It is a narrower SELECT**, not a whole row fetched and then thrown away, which is the entire point:
+**It is a narrower SELECT**, not a whole row hauled across the wire and then thrown away, which is the entire
+point and the only reason I bothered:
 
 ```sql
 SELECT "m"."Name", "m"."Pay"
@@ -1221,8 +1221,9 @@ FROM "Minions" AS "m"
 WHERE "m"."IsActive" = @Value
 ```
 
-Verified on SQLite, PostgreSQL and SQL Server. Three columns of a wide table, over a page of twenty, is a
-different amount of work from twenty whole rows.
+Verified on SQLite, PostgreSQL and SQL Server, because I do not take a provider's word for anything. Three
+columns of a wide table, over a page of twenty, is a very different amount of work from twenty whole rows, and
+the difference is yours to keep.
 
 ### Asking for all of them, or all of one branch
 
@@ -1234,12 +1235,13 @@ different amount of work from twenty whole rows.
 .ApplyProjection("Name, Lair.*")         // one field and a branch, in that order
 ```
 
-**A wildcard names the allow-list; it does not go around it.** Whatever it expands to is still only what grants
-`Projection`, so a field bound `Test`-only is no more readable through `*` than it is by name. A key caught
-twice, by name and by a wildcard, is read once, in the place it was first asked for.
+**A wildcard names the allow-list. It does not go around it.** Whatever it expands to is still only what grants
+`Projection`, so a field bound `Test`-only is no more readable through `*` than it is by name. Nobody gets in
+through the star. A key caught twice, by name and by a wildcard, is read once, in the place it was first asked
+for.
 
-**The prefix keeps its dot.** `Lair.*` matches `Lair.Name` and does not match `Lairyard.Capacity`, which is the
-kind of thing that would otherwise be discovered in production.
+**The prefix keeps its dot.** `Lair.*` matches `Lair.Name` and does not match `Lairyard.Capacity`, which is
+precisely the sort of thing that is otherwise discovered in production, at speed, by someone else.
 
 A prefix matching nothing behaves like any other unbound field: refused, or dropped and recorded where
 [`IgnoreUnboundFields`](#forgetting-a-field-instead-of-refusing-it) asked for that.
@@ -1258,23 +1260,23 @@ The same two wildcards work in [`Weequery.OData`](#or-against-an-odata-service) 
 declared rather than against bindings. A declared field is a readable one out there, there being no
 `BindingUse` on that side of the wire.
 
-A few things worth knowing:
-
+Now. A few things you are going to want to know, and which I would rather tell you here than explain later:
 
 | | |
 |---|---|
 | **Keys are the binding's spelling** | Ask for `name`, `NAME` or `Name` and all three come back as `Name`. Two callers typing it differently get the same shape, which is what anything deserializing it needs |
 | **Order is the order asked** | `"Pay, Name"` and `"Name, Pay"` differ in the order the entries go in |
-| **A field named twice is kept once** | A dictionary holds each key once, so there is nothing a duplicate could mean. Assemble the list from checkboxes and stop worrying about it |
+| **A field named twice is kept once** | A dictionary holds each key once, so there is nothing a duplicate could possibly mean. Assemble the list from checkboxes and stop worrying about it |
 | **Values are boxed** | `object?`, whatever the property held, and null where the value is null or the path to it runs through one. A nullable value type boxes to null rather than to its default |
 | **Nothing asked for is everything allowed** | `BuildProjected()` with no projection reads every bound field, which is the allow-list's own answer to "all of it" |
 | **A constant projects its value** | The same for every row, see [Values I supply](#values-i-supply-that-they-merely-name) |
 | **A collection does not project** | It holds many values and a column holds one. Ask about its elements with [a quantifier](#asking-about-all-of-them-at-once) instead |
 
 An indexed field projects, so `Tallies[apples]` reads that one element and comes back keyed `Tallies[apples]`. An
-index nothing sits at is a null, [as always](#a-missing-element-is-a-null-yes-again).
+index nothing sits at is a null, [as always](#a-missing-element-is-a-null-yes-again). I am consistent about this
+to the point of tedium.
 
-`ApplyProjection` also takes the keys directly, for the caller who has them in hand rather than in a string:
+`ApplyProjection` will also take the keys directly, for the caller who has them in hand rather than in a string:
 
 ```csharp
 .ApplyProjection(["Name", "Pay"])
@@ -1282,7 +1284,8 @@ index nothing sits at is a null, [as always](#a-missing-element-is-a-null-yes-ag
 ```
 
 Called twice, the last one wins. A projection is one list of columns rather than something that accumulates, so
-two calls asking for different columns can only mean the second changed its mind.
+two calls asking for different columns can only mean the second one changed its mind, and I side with the more
+recent decision.
 
 **Paged, both halves work together:**
 
@@ -1297,12 +1300,15 @@ var (page, total) = query.WithWeequery()
 ```
 
 Only the page is projected. The count is over rows rather than over what is read off them, so it gives the same
-total either way: the projection decides what a row *says*, not which rows there are.
+total either way: a projection decides what a row *says*, not which rows there are. Those are, once again, two
+different questions.
 
 ### What a binding is *for*
 
-A binding grants three separable things: filter on it, sort on it, read it back. They are not always wanted
-together, so say which:
+*[turns to the whiteboard]*
+
+A binding grants three separable things: filter on it, sort on it, read it back. They are very much not always
+wanted together, so say which:
 
 ```csharp
 .BindProperty(minion => minion.Name)                                       // all three, the default
@@ -1318,25 +1324,26 @@ together, so say which:
 | `ApplyProjection("...")` | | refused | refused | |
 | `Name = [Notes]` | **refused** | | | |
 
-Two cases this exists for. A free text note nobody should be running `Contains` against because it is unindexed
-and the table is largly worth returning, not worth interrogating. And a tenant or owner column that *must*
-filter and must never be handed back.
+Two cases this exists for, and both of them have cost somebody dearly. A free text note that nobody should be
+running `Contains` against, because it is unindexed and the table is large: worth returning, not worth
+interrogating. And a tenant or owner column that **must** filter and must **never** be handed back.
 
-The operand row is the one worth pointing at. `Name = [Notes]` looks like a comparison and is really a **read** of
-`Notes` allow it and a caller learns the column by bisection, one query at a time. So `Condition` grants both
-sides of an operator or neither; there is no way to split them, and no reason to want to.
+The operand row is the one to point at. `Name = [Notes]` looks like a comparison and is in truth a **read** of
+`Notes`. Allow it and a patient caller learns the column by bisection, one query at a time, which is exactly how
+I would do it. So `Test` grants both sides of an operator or neither. There is no way to split them and no
+sane reason to want to.
 
-What a narrowed key is not is **unbound** it works perfectly well somewhere else so a refusal says what it is
-actually for, rather than sending you looking for a typo:
+What a narrowed key is not is **unbound**. It works perfectly well somewhere else, so the refusal says what it
+is actually for rather than sending you off hunting for a typo that was never there:
 
 ```
 'Notes' cannot be used in a condition: it is bound for Projection
 'Morale' cannot be projected: it is bound for Test, Sort
 ```
 
-`BindingUse` is a bitflag: `None`, `Condition`, `Sort`, `Projection`, and `All` for the three together, which is
-the default everywhere. It rides on `BindProperty` in all its forms, on `BindConstant`, and on `BindingRequest`
-for a whole set:
+`BindingUse` is a bitflag: `None`, `Test`, `Sort`, `Projection`, and `All` for the three together, which is the
+default everywhere. It rides on `BindProperty` in all its forms, on `BindConstant`, and on `BindingRequest` for
+a whole set:
 
 ```csharp
 new BindingRequest(nameof(Minion.Notes), "Notes", BindingUse.Projection)
@@ -1344,8 +1351,8 @@ new BindingRequest(nameof(Minion.Notes), "Notes", BindingUse.Projection)
 
 ### Broad for reading, narrow for asking
 
-The shape this is really for. `BindResolve` takes a use too, so you can let the whole model be *read* and then
-grant the few fields a caller may filter and sort on:
+Here is the shape this is really for, and the one I would use. `BindResolve` takes a use as well, so you may let
+the whole model be *read* and then grant the handful of fields a caller may filter and sort on:
 
 ```csharp
 .BindResolve(use: BindingUse.Projection)                              // everything readable
@@ -1353,9 +1360,10 @@ grant the few fields a caller may filter and sort on:
 .BindProperty(minion => minion.Pay,  use: BindingUse.Test | BindingUse.Sort)
 ```
 
-`Name` ends up `Projection | Condition`, and `Pay` ends up all three. **Binding the same property twice adds to
-what it may be used for rather than replacing it**, so the second call grants and the order of the two does not
-matter. Everything the second pass did not name stays readable and stays unaskable.
+`Name` ends up `Projection | Test`, and `Pay` ends up all three. **Binding the same property twice adds to what
+it may be used for rather than replacing it**, so the second call grants and the order of the two does not
+matter in the slightest. Everything the second pass did not name stays readable and stays unaskable, which is
+exactly where I want it.
 
 > [!WARNING]
 > **A use is only ever added, never taken away.** That is what makes the pattern above compose, and it cuts the
@@ -1368,11 +1376,12 @@ matter. Everything the second pass did not name stays readable and stays unaskab
 >
 > Pay is now filterable. If that is not what you meant, narrow the resolve with `BindResolve(use:
 > BindingUse.Projection)`, put it first, or take the use back off afterwards with
-> [`RemoveBinding`](#and-taking-one-back-off), which is the only thing here that revokes.
+> [`RemoveBinding`](#and-taking-one-back-off), which is the only thing in this entire library that revokes.
 
 **A [`ValueConverter`](#normalising-what-gets-compared) is granted the same way a use is.** A bind that never
 mentioned one is not asking for there to be none, so the call that names it wins, and it does so either way
-round. That is what lets a resolved set be given one afterwards, since `BindResolve` carries no converters:
+round. That is what lets a resolved set be given one afterwards, `BindResolve` carrying no converters of its
+own:
 
 ```csharp
 .BindResolve(use: BindingUse.Projection)
@@ -1381,7 +1390,7 @@ round. That is what lets a resolved set be given one afterwards, since `BindReso
 
 **Two different converters are the exception, and they are refused.** There is no merging `TOUPPER` with
 `TOLOWER`, and picking one quietly would leave you reading values that had been through a conversion nobody
-asked for:
+asked for, which is how people end up doubting their own data:
 
 ```
 'Name' is already bound with a different ValueConverter. One key cannot mean two normalisations of the same
@@ -1391,18 +1400,18 @@ property, so bind it once with the converter it should have
 > [!NOTE]
 > Different means *not the same object*, not "does not do the same thing". A converter wraps a delegate, so two
 > built from the same lambda cannot be shown to agree and count as two. Hold the converter in a field and pass
-> that, rather than writing `ValueConverter.For<string>(...)` twice.
+> that, rather than writing `ValueConverter.For<string>(...)` twice and hoping.
 
-A projection that names nothing reads everything that grants `Projection`, and nothing that does not "all of
-it" means all of what this caller may read.
+A projection that names nothing reads everything granting `Projection`, and nothing that does not. "All of it"
+means all of what **this caller** may read, which is a rather smaller thing than all of it, and deliberately so.
 
-`BindConstant` grants `Test | Projection`, since a constant is the same for every row and there is nothing
-to order by. A sort naming one is dropped rather than refused and says *"it is a constant and has one value
-for every row"* in [`DroppedFields`](#forgetting-a-field-instead-of-refusing-it), the order being the same
-with the clause or without it.
+`BindConstant` grants `Test | Projection`, since a constant is the same for every row and there is nothing there
+to order by. A sort naming one is dropped rather than refused, and says *"it is a constant and has one value for
+every row"* in [`DroppedFields`](#forgetting-a-field-instead-of-refusing-it), the order being identical with the
+clause or without it.
 
 **On the wire** it is one more member on `TransportCondition`, absent where nobody asked, so a payload written
-before any of this existed is the payload it always was:
+before any of this existed is the payload it always was. I do not break things that were working:
 
 ```jsonc
 { "Query": "IsActive = true", "Projection": "Name, Pay" }
@@ -1412,7 +1421,6 @@ before any of this existed is the payload it always was:
 .ApplyCondition(transport.Unpack())
 .ApplyProjection(transport.UnpackProjection())    // None where the payload named none, so this is safe either way
 ```
-
 ## Sorting and paging
 
 ```csharp
@@ -1952,7 +1960,8 @@ and `Build().ToQueryString()` answers the rest.
 
 ## Without an IQueryable
 
-For a predicate rather than a query for `Where`, for `Any`, for filtering objects already in memory:
+Sometimes there is no database. Sometimes there is only a list, sitting in memory, and a question you want asked
+of it. Fine. Take the predicate and go:
 
 ```csharp
 Expression<Func<Minion, bool>> predicate =
@@ -1962,24 +1971,30 @@ Func<Minion, bool> compiled =
     Inquiry<Minion>.BuildDelegate(MinionBindings, condition, settings);
 ```
 
-`BuildDelegate` runs in memory by definition, so it applies the [string comparison rules](#how-strings-compare)
-and the regex timeout, and takes the settings deciding the first of them. Leave the argument off and it uses
-`InquirySettings.Default`. `BuildExpression` is the translatable form and applies neither, which matters if you
-compile it yourself see the warning in that section.
+`BuildDelegate` runs in memory by definition, so I apply the [string comparison rules](#how-strings-compare) and
+the regex timeout for you, and take the settings that decide the first of them. Leave the argument off and I use
+`InquirySettings.Default`, which is what I would have chosen anyway. `BuildExpression` is the translatable form
+and applies neither, which matters enormously if you compile it yourself. I warned you about that in its own
+section. I will not be warning you again.
 
 ## Types I accept
+
+I am not an unreasonable man. I accept a great many things:
 
 `bool`, `byte`, `sbyte`, `char`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal`,
 `DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`, `TimeSpan`, `Guid`, `string`, and any `enum`.
 
-The `Nullable<>` form of any of them works too. An unsupported reference type can still be bound, but supports
-only `IsNull` and `IsNotNull`.
+The `Nullable<>` form of any of them, naturally. An unsupported reference type may still be bound, but all it
+will ever answer is `IsNull` and `IsNotNull`, which is frankly more than it deserves.
 
 ## Things you will get wrong
 
-**An Inquiry is immutable, and the way to get that wrong is to ignore what it hands back.** Every `Apply` and
-every `Bind` leaves the one you called it on exactly as it was and returns a *new* one carrying the change. A
-chain composes, the way a LINQ chain does. What does nothing whatsoever is a call whose result you drop:
+*[picks up a laser pointer, aims it at the list]*
+
+**An Inquiry is immutable, and the way you will get that wrong is by ignoring what I hand back.** Every `Apply`
+and every `Bind` leaves the one you called it on exactly as it was and returns a *new* one carrying the change.
+A chain composes, the way a LINQ chain does. What does nothing whatsoever is a call whose result you throw on
+the floor:
 
 ```csharp
 var inquiry = query.WithWeequery().BindProperties(MinionBindings);
@@ -1988,28 +2003,30 @@ inquiry.ApplyCondition("IsActive = true");   // does nothing. The filtered one w
 var all = inquiry.Build();                   // every row, and no complaint
 ```
 
-Nothing will tell you, a discarded return value being perfectly legal C#. Keep the chain, or keep the result:
+Nothing will tell you. A discarded return value is perfectly legal C#, which I consider one of the great
+oversights of our age. Keep the chain, or keep the result:
 
 ```csharp
 var active = inquiry.ApplyCondition("IsActive = true").Build();
 var paid   = inquiry.ApplyCondition("Pay > 10000").Build();   // paid, and only paid
 ```
 
-Which is also what makes one configured Inquiry worth keeping and branching off as often as you like: no branch
-can reach another, so nothing accumulates where you did not put it. What a copy copies is the lists rather than
-what is in them. A binding is immutable once built and is shared, so a copy costs a dictionary and two lists,
-which is why every call can afford to make one.
+Which is also precisely what makes one configured Inquiry worth keeping and branching off as often as you like.
+No branch can reach another. Nothing accumulates where you did not put it. A copy copies the lists rather than
+what is in them, and a binding is immutable once built and is shared, so a copy costs a dictionary and two
+lists. That is why I can afford to make one on every single call, and why you will stop complaining about it.
 
-**Conditions may only nest 16 levels deep.** `Pack()`, `Unpack()` and `ToQuery()` refuse to go further and throw.
-`ToString()` writes `<nested too deep>` where it stopped and returns what it has, because a `ToString` that throws
-makes debugging worse and I have suffered enough.
+**Conditions may only nest 16 levels deep.** `Pack()`, `Unpack()` and `ToQuery()` refuse to go further and
+throw. `ToString()` writes `<nested too deep>` where it stopped and hands back what it has, because a
+`ToString` that throws makes debugging worse, and I have suffered enough.
 
-The limit follows what a query *means*, not how it was punctuated. `(((Salary > 1)))` is three levels of text and
-no nesting at all, while `A AND B OR C AND D` has no parentheses and is a tree two deep, because precedence nests
-it.
+The limit follows what a query *means*, not how it was punctuated. `(((Salary > 1)))` is three levels of text
+and no nesting whatsoever, while `A AND B OR C AND D` has not a parenthesis in sight and is a tree two deep,
+because precedence nests it whether you intended it or not.
 
-**Values are parameterized.** Filter values go to the database as parameters, never written into the SQL. The
-same condition shape gives one statement and one query plan whatever the values:
+**Values are parameterized.** Filter values reach the database as parameters and are never written into the
+SQL, because I am not an animal. The same condition shape gives one statement and one query plan whatever the
+values:
 
 ```sql
 -- Name = 'Alice Fox' and Name = 'Someone Else' both produce:
@@ -2017,25 +2034,28 @@ WHERE "m"."Name" = @Value
 ```
 
 **An `IsIn` list is capped at 1000 values.** The list becomes parameters and a provider will only take so many.
-Checked when the condition is built, and refused naming the operator and the count, rather than left for the
-database to reject mid-scheme. Every route in is held to it.
+I check when the condition is built and refuse it naming the operator and the count, rather than let the
+database reject it halfway through the scheme, which is the worst possible moment to discover anything. Every
+route in is held to it.
 
 **String matching is case-sensitive, and the database half of it is not yours to set.** In memory every string
-operator compares ordinally unless the query says otherwise, so `Name = 'alice fox'` does not find Alice Fox;
-ask for `OrdinalIgnoreCase` if that is what you meant. Against a database the column's collation decides
-instead, including whether the match is case-sensitive, and nothing you pass here changes that. See
-[How strings compare](#how-strings-compare), which is the whole of this subject in one place.
+operator compares ordinally unless the query says otherwise, so `Name = 'alice fox'` does not find Alice Fox.
+Ask for `OrdinalIgnoreCase` if that is what you meant. Against a database the column's collation decides
+instead, including whether the match is case-sensitive, and nothing you pass me changes that. I have made my
+peace with it. See [How strings compare](#how-strings-compare), where I have put the whole of this subject in
+one place so that you need only be disappointed once.
 
 **An enum orders by its values, not its names.** With `enum Rank { Low = 1, High = 2 }`, `Rank > Low` finds
-`High`, and renaming the members changes nothing.
+`High`, and renaming the members changes precisely nothing.
 
 **Keys are your allow-list.** Auto-generated keys are the property path, so `BindProperty(x => x.Name)` puts the
 property name on the wire. If your model's names are not something you want the world reading, pass explicit
 keys. I cannot stress this enough. This is how they find the volcano.
 
 **Errors are `WeequeryException`.** Parse failures, unbound fields, unsupported operators and bad values all
-throw it. Most of it is *caller* input rather than your mistake, so a request handler will normally catch it and
-answer with a bad request rather than let it become an incident.
+throw it. Most of it is some *caller's* input rather than your mistake, so a request handler will normally catch
+it and answer with a bad request rather than let it become an incident, then a conversation, and eventually a
+meeting.
 
 ## The other end of the wire
 
@@ -2043,7 +2063,8 @@ answer with a bad request rather than let it become an incident.
 
 Somebody has to build the filter, and it is usually a browser. There is a TypeScript package in
 [`js/`](js/README.md) that does it: the same condition tree, the same query language, the same packed JSON, and
-the same operator numbers, which are the wire format and are pinned by a test on both sides.
+the same operator numbers, which are the wire format and are pinned by a test on both sides so that neither can
+drift without the other noticing.
 
 ```ts
 import { and, BindingSet, gt, eq, toQuery, pack, validateQuery } from 'weequery';
@@ -2053,15 +2074,16 @@ toQuery(and(gt('Salary', 10000), eq('IsActive', true)));
 ```
 
 The part worth having is that it validates. Hand it the same binding list you declared here and it predicts what
-this library will say, so an unbound field, a `Contains` on a number or a sort on a constant is a message beside
-the input box rather than a round trip and a 400. It grants nothing: **your** binding list is still the only
-allow-list, and a drifted copy on the client just makes worse predictions. No dependencies there either.
+I will say, so an unbound field, a `Contains` on a number or a sort on a constant becomes a message beside the
+input box rather than a round trip and a 400. It grants nothing. **Your** binding list is still the only
+allow-list, and a drifted copy on the client merely makes worse predictions, which is its own punishment. No
+dependencies there either.
 
 ## If you would rather have your own DTO
 
-[`Reading back only some of it`](#reading-back-only-some-of-it) hands you a dictionary, because the caller picked
-the columns. When *you* pick them and the shape is a type you already have, there are three separate packages,
-one per mapper, and they do the same job with the same two methods:
+[`Reading back only some of it`](#reading-back-only-some-of-it) hands you a dictionary, because there the caller
+picked the columns. When *you* pick them, and the shape is a type you already have, I have provided three
+separate packages, one per mapper, doing the same job with the same two methods:
 
 ```csharp
 var (page, total) = context.Minions
@@ -2079,23 +2101,24 @@ var (page, total) = context.Minions
 | [`Weequery.Mapster`](Weequery.Mapster/README.md) | Mapster | a `TypeAdapterConfig`, or nothing at all, Mapster mapping by convention |
 | [`Weequery.Mapperly`](Weequery.Mapperly/README.md) | Mapperly | the generated projection method itself, there being no runtime to ask |
 
-Weequery decides which rows, the mapper decides what a row looks like, and only the DTO's columns leave the
-database. Only the page is projected a count is of rows rather than of what is read off them.
+I decide which rows. The mapper decides what a row looks like. Only the DTO's columns ever leave the database,
+and only the page is projected, a count being of rows rather than of what you read off them.
 
-Take the one you already use. They are separate packages so that installing Weequery never drags a mapper in,
-and picking one never drags in the other two.
+Take the one you already use. They are separate packages so that installing me never drags a mapper in, and
+picking one never drags in the other two. I do not believe in collateral damage. Not of that sort.
 
-**The AutoMapper one is the only one with a licence to think about.** AutoMapper is dual licensed from v15:
-free for individuals, for non commercial use and for organisations under a revenue threshold, and a paid key
-above it. That package is on 15.1.3 because v14, the last MIT release, carries an unpatched high-severity DoS
+**The AutoMapper one is the only one with a licence to think about.** AutoMapper is dual licensed from v15: free
+for individuals, for non commercial use and for organisations under a revenue threshold, and a paid key above
+it. That package is on 15.1.3 because v14, the last MIT release, carries an unpatched high-severity DoS
 ([CVE-2026-32933](https://github.com/advisories/GHSA-rvv3-g6hj-g44x)) that will never be fixed in the MIT line.
-Mapster and Mapperly are MIT with nothing to inherit.
+I am in the denial-of-service business myself, and even I would not ship that. Mapster and Mapperly are MIT with
+nothing to inherit.
 
-Weequery itself still has no dependencies, and never will.
+I still have no dependencies, and I never will.
 
 ## The same filter, against an index
 
-A condition is a tree, not SQL, so a database is not the only thing it can become.
+A condition is a tree, not SQL, so a database is by no means the only thing it can become.
 [`Weequery.Elasticsearch`](Weequery.Elasticsearch/README.md) turns one into Elasticsearch Query DSL:
 
 ```csharp
@@ -2106,24 +2129,27 @@ ElasticQuery.ToJson(ConditionFunctions.ParseQuery("IsActive = true AND Pay > 100
                         { "range": { "salary": { "gt": 10000 } } } ] } }
 ```
 
-There is no entity to walk and no mapping to read, so the allow-list is declared rather than derived: a key, the
-field it means in the index, and what that field holds. Sorts, the window and the projection come along too, as
-`sort`, `from`/`size` and `_source`.
+There is no entity to walk here and no mapping to read, so the allow-list is declared rather than derived: a
+key, the field it means in the index, and what that field holds. Sorts, the window and the projection come along
+too, as `sort`, `from`/`size` and `_source`. I leave nothing behind.
 
-**The nulls survive the trip**, which is the part worth having. Elasticsearch agrees with
-[the rules above](#how-nulls-behave) for free on the positive operators, and does not on the negative ones a
-bare `must_not` matches documents that have no such field at all so those are written with an `exists` beside
-them. `Alias <> 'Ghost'` and `NOT (Alias = 'Ghost')` still answer differently, exactly as they do here.
+**The nulls survive the trip**, which is the part worth having and the part everybody else gets wrong.
+Elasticsearch agrees with [the rules above](#how-nulls-behave) free of charge on the positive operators, and
+flatly refuses to on the negative ones, a bare `must_not` matching documents that have no such field at all. So
+I write those with an `exists` beside them. `Alias <> 'Ghost'` and `NOT (Alias = 'Ghost')` still answer
+differently, exactly as they do here, because a filter that changes its mind when it changes backend is worse
+than no filter at all.
 
 Quantifiers become `nested` queries, and `All` becomes "no element fails it", which is the only way to say it
-over nested documents.
+over nested documents. Inelegant. Correct.
 
-No dependencies there either: the Query DSL is JSON, so nothing pins you to a client generation or its licence.
-It works against OpenSearch for the same reason.
+No dependencies there either: the Query DSL is JSON, so nothing pins you to a client, a generation or a licence.
+It works against OpenSearch for exactly the same reason.
 
 ## Or against an OData service
 
-[`Weequery.OData`](Weequery.OData/README.md) writes the same condition as a `$filter`:
+And if what you are pointed at is an OData service, [`Weequery.OData`](Weequery.OData/README.md) writes the same
+condition as a `$filter`:
 
 ```csharp
 ODataFilter.Write(ConditionFunctions.ParseQuery("IsActive = true AND Pay > 10000"), fields);
@@ -2133,31 +2159,31 @@ ODataFilter.Write(ConditionFunctions.ParseQuery("IsActive = true AND Pay > 10000
 Sorts, the window and the projection come along as `$orderby`, `$top`/`$skip` and `$select`, and quantifiers
 become lambdas: `Assignments/any(d1: d1/LairID eq 5)`.
 
-**The nulls survive this trip too**, and here the disagreement is written down: OData's specification says a null
-is *"not equal to any other value"*, so `Alias ne 'Ghost'` returns the records with no alias where
-[Weequery's does not](#how-nulls-behave). Every negative operator therefore carries its guard 
-`(Alias ne null and Alias ne 'Ghost')` while `NOT` deliberately does not.
+**The nulls survive this trip too**, and here the disagreement is written down for once, which I appreciate:
+OData's specification says a null is *"not equal to any other value"*, so `Alias ne 'Ghost'` returns the records
+with no alias where [mine does not](#how-nulls-behave). Every negative operator therefore carries its guard,
+`(Alias ne null and Alias ne 'Ghost')`, while `NOT` deliberately does not.
 
-The one thing OData does that neither SQL nor a search index manages easily is comparing two properties:
-`Name = [Alias]` becomes `Name eq Alias`.
+The one thing OData does that neither SQL nor a search index manages with any grace is comparing two properties:
+`Name = [Alias]` becomes `Name eq Alias`. Credit where it is due. Briefly.
 
-No dependencies there either. A `$filter` is text, and the OData client libraries are large and versioned against
-their own model.
+No dependencies there either. A `$filter` is text, and the OData client libraries are enormous and versioned
+against their own model, which is somebody else's problem and shall remain so.
 
 ## What all this costs you
 
-Fair question. I've had it measured, and the numbers are in [BENCHMARKS.md](BENCHMARKS.md).
+Fair question. Fair. I had it measured, and the numbers are in [BENCHMARKS.md](BENCHMARKS.md).
 
 The claim comes in two halves, and only one of them needed a stopwatch.
 
-**Execution is free, and that is proven rather than timed.** For the comparison operators Weequery hands the
-provider byte for byte the statement a hand written `Where` produces the test suite asserts it, on every build,
-by comparing the SQL. A server given identical SQL cannot run it more slowly. No benchmark could make that point
-better, because a benchmark would only tell you about the machine it ran on.
+**Execution is free, and that is proven rather than timed.** For the comparison operators I hand the provider,
+byte for byte, the statement a hand written `Where` produces. The test suite asserts it, on every build, by
+comparing the SQL. A server given identical SQL cannot run it more slowly. No benchmark could make that point
+better, because a benchmark would only ever tell you about the machine it happened to run on.
 
 **What is left is the work on this side of the wire**, and that is what [`Weequery.Benchmarks`](Weequery.Benchmarks/README.md)
 measures: parsing the filter your caller sent, resolving the allow-list, and building the expression tree. Time
-and allocations, per operation, with the CPU written above the table.
+and allocations, per operation, with the CPU written above the table so that nobody can pretend otherwise.
 
 ```bash
 dotnet run -c Release --project Weequery.Benchmarks
@@ -2167,22 +2193,25 @@ It also measures the two support libraries, since writing an Elasticsearch query
 arithmetic with no database anywhere in it, which makes those the most trustworthy figures in the set.
 
 **Read the baseline before you read the ratios**, because the obvious comparisons are both wrong, in opposite
-directions.
+directions, and I refuse to be misrepresented in either.
 
-Filtering a `List` through `AsQueryable` makes LINQ to Objects compile the expression tree *on every call*, which
-costs about a third of a millisecond and swamps everything either side of it so a ratio taken there would
+Filtering a `List` through `AsQueryable` makes LINQ to Objects compile the expression tree *on every call*,
+which costs about a third of a millisecond and swamps everything either side of it. A ratio taken there would
 **flatter** me, and I will not have it said that I needed the help.
 
-Comparing my compiled predicate against a hand written lambda **slanders** me instead. Anything that comes out of
-`Expression.Compile` is a `DynamicMethod`, and the JIT will not inline one into the loop that calls it; a lambda
-your compiler wrote is an ordinary method, and it will. That is a fact about .NET and it applies to *your*
-expression tree exactly as it applies to mine. So the tables run the same predicate three ways as a lambda, as
-a compiled expression, and through me and you can see which part of the gap is the runtime's and which part is
-mine. On a condition needing no null guards, mine is the smaller half by some distance.
+Comparing my compiled predicate against a hand written lambda **slanders** me instead. Anything that comes out
+of `Expression.Compile` is a `DynamicMethod`, and the JIT will not inline one into the loop that calls it; a
+lambda your compiler wrote is an ordinary method, and it will. That is a fact about .NET and it applies to
+*your* expression tree exactly as it applies to mine. So the tables run the same predicate three ways, as a
+lambda, as a compiled expression, and through me, and you may see for yourself which part of the gap belongs to
+the runtime and which part belongs to me. On a condition needing no null guards, mine is the smaller half by
+some distance.
 
-None of that applies to a database, where EF Core caches its plans and is handed the same SQL either way.
+None of which applies to a database, where EF Core caches its plans and is handed the same SQL either way.
 
 ## Building and testing
+
+Two commands. Try to keep up:
 
 ```bash
 dotnet build
@@ -2192,9 +2221,10 @@ dotnet build
 dotnet test Tests/Tests.csproj
 ```
 
-The suite runs against SQLite with no setup at all. PostgreSQL and SQL Server are opt-in set
-`WEEQUERY_TEST_POSTGRES` or `WEEQUERY_TEST_SQLSERVER` to a connection string and those tests start running
-instead of reporting as skipped. The throughput comparisons need `WEEQUERY_TEST_THROUGHPUT`.
+The suite runs against SQLite with no setup at all, because I am not going to stand here while you install
+something. PostgreSQL and SQL Server are opt-in: set `WEEQUERY_TEST_POSTGRES` or `WEEQUERY_TEST_SQLSERVER` to a
+connection string and those tests start running instead of reporting as skipped. The throughput comparisons want
+`WEEQUERY_TEST_THROUGHPUT`.
 
 ## Credit where it is due
 
@@ -2217,6 +2247,6 @@ So. Go and look at it. Thank the man. Then come back here and never speak of thi
 
 ## License
 
-MIT.
+MIT. Take it. Do as you like with it. I have larger concerns.
 
 Now get out. All of you. Not you!

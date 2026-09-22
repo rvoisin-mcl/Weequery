@@ -1,6 +1,6 @@
-using System.Linq.Expressions;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using System.Linq.Expressions;
 
 namespace Weequery.Benchmarks;
 

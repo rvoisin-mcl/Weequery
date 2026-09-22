@@ -1,6 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Weequery.EntityFrameworkCore;
 

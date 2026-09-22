@@ -26,7 +26,7 @@ internal class ObjectExpressionBuilder : ExpressionBuilderBase<object>
                 break;
 
             default:
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the {typeof(object).Name} binding '{binding.PropertyPath}', only the null tests apply to it");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the {typeof(object).Name} binding '{binding.PropertyPath}'");
         }
 
         return Expression.Lambda<Func<TClass, bool>>(expression, binding.Parameter);

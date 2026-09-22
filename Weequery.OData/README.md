@@ -1,7 +1,8 @@
 # Weequery.OData
 
-Turns a [Weequery](https://github.com/rvoisin-mcl/Weequery) condition into an OData `$filter`, so the same filter
-a caller sends to your database can be sent to an OData service.
+And if what you are pointed at is an OData service, this turns a
+[Weequery](https://github.com/rvoisin-mcl/Weequery) condition into a `$filter`, so the same filter a caller sends
+to your database can be sent somewhere else entirely without anybody rewriting a thing.
 
 ```csharp
 var fields = new ODataFieldSet
@@ -17,12 +18,13 @@ ODataFilter.Write(ConditionFunctions.ParseQuery("IsActive = true AND Pay > 10000
 // "(Active eq true and Salary gt 10000)"
 ```
 
-**No dependencies.** A `$filter` is text, and the OData client libraries are large, versioned against their own
-EDM model, and not needed to write one. What comes out goes on a query string.
+**No dependencies.** A `$filter` is text. The OData client libraries are enormous, versioned against their own
+EDM model, and entirely unnecessary for writing one. What comes out goes on a query string. That is the whole
+arrangement.
 
 ## The allow-list is declared, not derived
 
-There is no metadata document to read from here, so you say what a key means:
+There is no metadata document to read from here, so **you** say what a key means:
 
 | | |
 |---|---|
@@ -32,8 +34,8 @@ There is no metadata document to read from here, so you say what a key means:
 | **Collection** | the collection this field lives inside, for quantifiers |
 | **EnumType** | the qualified type name, for `Enum` |
 
-A condition naming a key nobody declared is refused, exactly as an unbound field is. The kind matters more here
-than in most places, because **OData writes almost every type differently and gets it wrong loudly**:
+A condition naming a key nobody declared is refused, exactly as an unbound field is. The kind matters rather more
+here than in most places, because **OData writes almost every type differently and gets it wrong loudly**:
 
 ```
 Name eq 'Alice'                                     String, quoted
@@ -45,32 +47,35 @@ Classification eq Lair.Model.Rank'High'             Enum, qualified where you na
 ShiftLength eq duration'PT8H'                       Duration
 ```
 
-Hand a service the wrong shape and it answers 400, not nothing. A value that would end the expression early, a
-quote or a comma in what should be a bare literal, is refused here instead, where the message can say why.
+Hand a service the wrong shape and it answers 400, not nothing, which at least has the virtue of being loud. A
+value that would end the expression early, a quote or a comma in what ought to be a bare literal, I refuse here
+instead, where the message can say why rather than leaving some stranger's server to say "no" and nothing else.
 
 ## Nulls are translated, not assumed
 
-This is the part worth having. **OData disagrees with Weequery about a null, and says so in the specification:**
-*"null values are equal to null and not equal to any other value"*. So `Alias ne 'Ghost'` is **true** of a record
-with no alias. In Weequery it is false, because every comparison carries a guard.
+This is the part worth having. **OData disagrees with me about a null, and has the nerve to say so in the
+specification:** *"null values are equal to null and not equal to any other value"*. So `Alias ne 'Ghost'` is
+**true** of a record with no alias. With me it is false, because every comparison I write carries a guard.
 
-So every negative operator is written with its guard beside it:
+Since one of us has to give way and it is not going to be me, every negative operator goes out with its guard
+beside it:
 
 ```
 Alias <> 'Ghost'      -> (Alias ne null and Alias ne 'Ghost')
 ```
 
-And `NOT` is deliberately **not** guarded, for the same reason it is not in Weequery: negating a condition negates
-its guard with it, so `NOT (Alias = 'Ghost')` is meant to bring the records with no alias back.
+And `NOT` is deliberately **not** guarded, for precisely the reason it is not guarded in the core: negating a
+condition negates its guard along with it, so `NOT (Alias = 'Ghost')` is *meant* to bring the records with no
+alias back.
 
 ```
 NOT (Alias = 'Ghost')  ->  not Alias eq 'Ghost'
 ```
 
-That distinction is [the one Weequery makes a fuss about](../README.md#how-nulls-behave), and it survives the
-trip. Services vary in how much of this they get right alone, particularly for the string functions; a guard a
-service would have applied anyway costs a few characters, and depending on it would cost a different answer per
-service.
+That distinction is [the one I make a fuss about](../README.md#how-nulls-behave), and it survives the trip.
+Services vary in how much of this they manage unaided, particularly for the string functions. A guard a service
+would have applied anyway costs you a few characters; depending on one would cost you a different answer per
+service, which is not a trade I would make and not one I will make for you.
 
 ## The operators
 
@@ -85,20 +90,22 @@ service.
 | `AND` `OR` `NOT` | `and` `or` `not`, parenthesised so a tree reads back as the tree it was |
 | `Any` `All` `None` | `nav/any(d1: ...)`, `nav/all(d1: ...)`, `not nav/any(d1: ...)` |
 
-**One thing OData does that neither SQL nor Elasticsearch manage easily:** comparing two properties.
-`Name = [Alias]` becomes `Name eq Alias`, and it just works.
+**One thing OData does that neither SQL nor a search index manages with any grace:** comparing two properties.
+`Name = [Alias]` becomes `Name eq Alias`, and it simply works. Credit where it is due. I shall not mention it
+again.
 
 ## Versions
 
 `ODataVersion.V401` by default, which is what most services have spoken for years. Pass `V4` and two things
-change: `in` is expanded into `(f eq a or f eq b)`, and `IsMatch` is refused rather than emitting a function 4.0
-does not have.
+change: `in` is expanded into `(f eq a or f eq b)`, and `IsMatch` is refused outright rather than emitting a
+function 4.0 has never heard of.
 
-Worth knowing that the expansion makes a long list a long URL, a thousand values, which is what Weequery will
-carry, is not something every server accepts on a query string however it is spelled.
+Worth knowing that the expansion turns a long list into a long URL. A thousand values, which is what I will
+carry, is not something every server will accept on a query string however it is spelled, and discovering that
+in production is nobody's idea of an afternoon.
 
-`matchesPattern` is ECMAScript syntax by specification and is one of the more thinly implemented parts of 4.01,
-so a service may answer 501 to a filter that is perfectly legal.
+`matchesPattern` is ECMAScript syntax by specification and is one of the more thinly implemented corners of 4.01,
+so a service may well answer 501 to a filter that is perfectly, provably legal. Not my doing.
 
 ## Quantifiers become lambdas
 
@@ -113,12 +120,14 @@ Assignments Any (LairID = 5 AND LairName = 'Volcano')
 Assignments/any(d1: (d1/LairID eq 5 and d1/Lair/Name eq 'Volcano'))
 ```
 
-The whole inner condition goes inside the lambda, which is exactly what Weequery's quantifier means, one element
-satisfying all of it, not several elements between them. `all` over an empty collection is true and `any` over
-one is false, which is what the quantifiers mean of nothing in Weequery too, so the three line up with no help.
+The whole inner condition goes inside the lambda, which is exactly what my quantifier means: *one* element
+satisfying all of it, not several elements splitting the work between them. `all` over an empty collection is
+true and `any` over one is false, which is what the quantifiers mean of nothing in the core as well, so the three
+of us line up with no assistance whatsoever. It is almost touching.
 
 A field declared inside a collection is only reachable within a quantifier over it, and one declared outside is
-not reachable inside. The two scopes do not leak, exactly as they do not in Weequery.
+not reachable inside. The two scopes do not leak. They do not leak here for the same reason nothing leaks
+anywhere else in this operation.
 
 ## What it refuses
 
@@ -126,11 +135,12 @@ not reachable inside. The two scopes do not leak, exactly as they do not in Weeq
 - **An operator that does not fit the declared kind**, `StartsWith` on a number, ordering on a boolean.
 - **A value that cannot be written as its kind**, including one that would end the expression early.
 - **A collection compared** rather than quantified, and a non-collection quantified.
-- **An index** (`Tags[0]`). A `$filter` has no way to address one element of a collection.
-- **A quantifier inside a quantifier.** OData can nest lambdas, but a Weequery collection declares no collections
-  of its own, so there is nothing that could have been meant.
-- **Sorting on or selecting a field inside a collection.** `$orderby` would have to say which of the many values,
-  and reading one is `$expand` with a select of its own.
+- **An index** (`Tags[0]`). A `$filter` has no way to address one element of a collection, and I will not
+  pretend otherwise.
+- **A quantifier inside a quantifier.** OData can nest lambdas perfectly well, but a Weequery collection
+  declares no collections of its own, so there is nothing that could possibly have been meant.
+- **Sorting on or selecting a field inside a collection.** `$orderby` would have to say which of the many
+  values, and reading one is `$expand` with a select of its own. Neither is a guess I am willing to make.
 
 ## The whole set of query options
 
@@ -144,14 +154,16 @@ ODataQuery.ToQueryString(fields, parsed.Condition, parsed.Sorts,
 $filter=Active eq true&$orderby=Salary desc,Name asc&$top=20&$skip=40&$select=Name,Alias
 ```
 
-`Build` gives the same thing as a dictionary if you would rather place the options yourself. The order is fixed,
-so the same query gives the same string every time, which is what makes one comparable and cacheable. The first
-page writes no `$skip`, since skipping nothing is what not saying so already means.
+`Build` hands you the same thing as a dictionary, if you would rather place the options yourself. The order is
+fixed, so the same query gives the same string every single time, which is what makes one comparable and
+cacheable. The first page writes no `$skip`, since skipping nothing is what not saying so already means, and I do
+not pad.
 
 > [!IMPORTANT]
 > **Nothing here is percent encoded.** Encoding is the job of whatever builds the URL, and doing it here would
-> mean a caller who does it properly encodes it twice.
+> mean a caller who does it properly encodes the whole thing twice, which is the sort of quiet catastrophe I
+> refuse to be responsible for.
 
 ## Licence
 
-MIT, same as Weequery.
+MIT, same as the rest of the operation.

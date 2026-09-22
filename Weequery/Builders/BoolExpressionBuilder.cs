@@ -46,7 +46,7 @@ internal class BoolExpressionBuilder : ExpressionBuilderBase<bool>
 
         if (!IsSupported(condition.Operator))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}', only null tests, equality and the IsIn family apply to a truth value");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {condition.Operator} is unsupported for the bool binding '{binding.PropertyPath}'");
         }
 
         // The shared implementation already handles both the plain and the Nullable<> forms of every operator

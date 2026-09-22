@@ -167,7 +167,7 @@ public partial class Inquiry<T> where T : class
             // If the field has been bound, but not for ordering
             if (!binding.Allows(BindingUse.Sort))
             {
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}': it is bound for {binding.Use}");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{sort.Field}': it is only bound for {binding.Use}");
             }
 
             // If the binding doesn not represent an orderable type, just ignore
@@ -236,7 +236,7 @@ public partial class Inquiry<T> where T : class
         long skip = (long)pageSize * page;
         if (skip > int.MaxValue)
         {
-            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"page size {pageSize} * page {page} exceeds {int.MaxValue}");
+            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"Page size {pageSize} * page {page} exceeds {int.MaxValue}");
         }
 
         return query.Skip((int)skip).Take(pageSize);

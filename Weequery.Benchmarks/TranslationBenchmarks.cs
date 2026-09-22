@@ -1,5 +1,5 @@
-using System.Text.Json.Nodes;
 using BenchmarkDotNet.Attributes;
+using System.Text.Json.Nodes;
 using Weequery.Elasticsearch;
 using Weequery.OData;
 

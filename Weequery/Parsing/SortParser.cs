@@ -170,7 +170,7 @@ internal sealed class SortParser
         {
             if (style == QueryStyle.Native)
             {
-                throw new WeequeryException(WeequeryError.QuerySyntax, $"'ORDER BY' at position {tokens[index].Position} is not valid in the {nameof(QueryStyle.Native)} style, write 'OrderBy'");
+                throw new WeequeryException(WeequeryError.QuerySyntax, $"'ORDER BY' at position {tokens[index].Position} is not valid in the {nameof(QueryStyle.Native)} style");
             }
 
             return 2;

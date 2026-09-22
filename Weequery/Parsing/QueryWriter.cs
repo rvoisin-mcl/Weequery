@@ -1,5 +1,5 @@
 using Weequery.Bindings;
-﻿using Weequery.Interfaces;
+using Weequery.Interfaces;
 
 namespace Weequery.Parsing;
 
@@ -118,7 +118,7 @@ internal static class QueryWriter
 
             if (notCondition.Conditions.Count == 0)
             {
-                if (strict) { throw new WeequeryException(WeequeryError.OperatorInvalid, $"{nameof(Operator.Not)} has no condition to negate, so it cannot be written as a query"); }
+                if (strict) { throw new WeequeryException(WeequeryError.OperatorInvalid, $"{nameof(Operator.Not)} has no condition to negate"); }
 
                 // The placeholder takes the style's spelling too, so a ToString does not read half in one
                 // language and half in another
@@ -178,7 +178,7 @@ internal static class QueryWriter
             // never produce this, it only arrives from a hand built tree.
             if (strict)
             {
-                throw new WeequeryException(WeequeryError.NotTranslatable, $"An empty {conjunction.Operator} condition has no representation in the query language, so it cannot be round tripped");
+                throw new WeequeryException(WeequeryError.NotTranslatable, $"An empty {conjunction.Operator} condition cannot be represented in the query language");
             }
 
             return $"(<empty {conjunction.Operator}>)";

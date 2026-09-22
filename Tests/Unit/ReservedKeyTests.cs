@@ -147,7 +147,7 @@ public class ReservedKeyTests
             var spelling = ConditionFunctions.GetOperationString(op);
 
             // The symbolic ones could never be a key anyway, since a key has to be a name
-            if (!WeequeryException.IsSqlName(spelling)) { continue; }
+            if (!WeequeryException.IsKeyName(spelling)) { continue; }
 
             Assert.Throws<WeequeryException>(() => Things().WithWeequery().BindProperty(thing => thing.Name, spelling));
         }

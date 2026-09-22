@@ -336,14 +336,14 @@ internal sealed class QueryParser
         // as either, since neither reading is what it says.
         if (index is not null)
         {
-            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"'{field}[{index}]' is one element rather than a collection, so there is nothing for '{name}' to quantify over. Drop the index to ask about every element, or compare the element itself", start));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"'{field}[{index}]' is one element rather than a collection, so there is nothing for '{name}' to quantify over.", start));
         }
 
         var open = PositionOfCurrentOrEnd;
 
         if (!Check(QueryTokenKind.GroupOpen))
         {
-            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected '(' after '{name}' for collection '{field}', which takes a condition about one element rather than a value, as \"{field} {name} (Name = 'x')\"", open));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected '(' after '{name}' for collection '{field}'", open));
         }
 
         Index++;
@@ -560,11 +560,11 @@ internal sealed class QueryParser
         }
         else if ((op == Operator.IsBetween) || (op == Operator.IsNotBetween))
         {
-            // SQL writes a range as "BETWEEN low AND high" rather than as a list. In operand position that AND can
+            // SQL style writes a range as "BETWEEN low AND high" rather than as a list. In operand position that AND can
             // only be the separator, so there is nothing to disambiguate, and a following AND is still read as the
             // conjunction: "Pay BETWEEN 1 AND 5 AND IsActive == true" splits where SQL splits it.
             //
-            // Native does not take it. Reading one AND as a separator and the next as a conjunction is exactly the
+            // Native style does not take it. Reading one AND as a separator and the next as a conjunction is exactly the
             // sort of two-ways sentence the style exists to be rid of, and the parenthesised list says the same
             // thing without asking anyone to know the rule.
             if (Strict)
@@ -585,12 +585,12 @@ internal sealed class QueryParser
 
         if (values.Count < required.Minimum)
         {
-            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' needs at least {required.Minimum} value(s) but got {values.Count}", position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' needs at least {required.Minimum} value(s) but recieved {values.Count}", position));
         }
 
         if (values.Count > required.Maximum)
         {
-            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' accepts at most {required.Maximum} value(s) but got {values.Count}", position));
+            throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Operator '{ConditionFunctions.GetOperationString(op)}' on field '{field}' accepts at most {required.Maximum} value(s) but recieved {values.Count}", position));
         }
 
         return values;

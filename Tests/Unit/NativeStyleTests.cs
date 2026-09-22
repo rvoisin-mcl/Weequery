@@ -267,7 +267,6 @@ public class NativeStyleTests
         var error = Assert.Throws<WeequeryException>(() => Sort.Parse(clause, null, QueryStyle.Native));
 
         Assert.Contains("ORDER BY", error.Message);
-        Assert.Contains("OrderBy", error.Message);
         Assert.Equal(WeequeryError.QuerySyntax, error.Error);
     }
 
@@ -300,7 +299,7 @@ public class NativeStyleTests
 
         var error = Assert.Throws<WeequeryException>(() => ParsedQuery.Parse("Pay > 1 ORDER BY Pay", null, QueryStyle.Native));
 
-        Assert.Contains("OrderBy", error.Message);
+        Assert.Contains("ORDER BY", error.Message);
 
         // the one word spelling goes through, and so does a clause with no condition in front of it
         Assert.NotNull(ParsedQuery.Parse("Pay > 1 OrderBy Pay", null, QueryStyle.Native).Condition);

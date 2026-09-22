@@ -1,5 +1,5 @@
-using System.Linq.Expressions;
 using BenchmarkDotNet.Attributes;
+using System.Linq.Expressions;
 
 namespace Weequery.Benchmarks;
 

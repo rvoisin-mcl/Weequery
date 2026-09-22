@@ -74,7 +74,7 @@ internal static class QueryKeywords
         {
             var spelling = ConditionFunctions.GetOperationString(op);
 
-            if (WeequeryException.IsSqlName(spelling)) { reserved.Add(spelling); }
+            if (WeequeryException.IsKeyName(spelling)) { reserved.Add(spelling); }
         }
 
         return reserved;

@@ -163,7 +163,7 @@ internal static class ProjectionBuilder<T> where T : class
         // holds many values and a column holds one, so there is nothing for this to read.
         if (collections.ContainsKey(key))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{key}' is a collection, so it cannot be projected: it has no single value to read. Project a field of the entity, or ask about its elements with a quantifier");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{key}' is a collection, and cannot be projected.");
         }
 
         return BindingLookup.CanonicalKey(bindings, field);
@@ -182,7 +182,7 @@ internal static class ProjectionBuilder<T> where T : class
         // Bound, but not for this
         if (!binding.Allows(BindingUse.Projection))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field}' cannot be projected: it is bound for {binding.Use}");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field}' cannot be projected: it is only bound for {binding.Use}");
         }
 
         Expression value = Expression.Convert(binding.Accessor, typeof(object));

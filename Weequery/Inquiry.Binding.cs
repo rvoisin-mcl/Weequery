@@ -386,12 +386,64 @@ public partial class Inquiry<T> where T : class
         {
             var narrowed = existing.Narrowed(use);
 
-            // Nothing left to answer with, so the binding goes rather than staying as one that refuses everything
-            if (narrowed.Use == BindingUse.None) { next.Bindings.Remove(key); }
-            else { next.Bindings[key] = narrowed; }
+            // No uses left, remove the binding entirely
+            if (narrowed.Use == BindingUse.None)
+            {
+                next.Bindings.Remove(key);
+            }
+            else
+            {
+                next.Bindings[key] = narrowed;
+            }
         }
 
-        if (use.HasFlag(BindingUse.Test)) { next.Collections.Remove(key); }
+        if (use.HasFlag(BindingUse.Test))
+        {
+            next.Collections.Remove(key);
+        }
+
+        return next;
+    }
+
+    /// <summary>
+    /// Batch variant <see cref="RemoveBinding(string, BindingUse)"/>
+    /// </summary>
+    /// <param name="keys">the binding names</param>
+    /// <param name="use">
+    /// [OPT] what to stop it being used for, <see cref="BindingUse.All"/> by default
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the key is null or empty</exception>
+    public Inquiry<T> RemoveBindings(IEnumerable<string> keys, BindingUse use = BindingUse.All)
+    {
+        WeequeryException.ThrowIfNull(keys);
+
+        if (!keys.Any()) { return this; } // NOP
+
+        var next = Copy();
+
+        foreach (var key in keys)
+        {
+            if (next.Bindings.TryGetValue(key, out var existing))
+            {
+                var narrowed = existing.Narrowed(use);
+
+                // No uses left, remove the binding entirely
+                if (narrowed.Use == BindingUse.None)
+                {
+                    next.Bindings.Remove(key);
+                }
+                else
+                {
+                    next.Bindings[key] = narrowed;
+                }
+            }
+
+            if (use.HasFlag(BindingUse.Test))
+            {
+                next.Collections.Remove(key);
+            }
+        }
 
         return next;
     }

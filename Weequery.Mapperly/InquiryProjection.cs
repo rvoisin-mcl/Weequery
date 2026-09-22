@@ -160,7 +160,7 @@ public static class InquiryProjection
     /// Refuse an Inquiry that already had a projection applied.
     /// </summary>
     /// <remarks>
-    /// Two answers to one question. <see cref="Inquiry{T}.ApplyProjection(string?)"/> says a row is the keys the
+    /// Two answers to one question. <see cref="Inquiry{T}.ApplyProjection(string?, QueryStyle)"/> says a row is the keys the
     /// caller named, and a DTO says a row is the DTO; going ahead would honour the second and drop the first
     /// without saying so, which for a caller whose projection came from a request is a filter's worth of
     /// intention quietly discarded. Say it instead.
@@ -174,6 +174,6 @@ public static class InquiryProjection
     {
         if (inquiry.AppliedProjection.IsEmpty) { return; }
 
-        throw new WeequeryException(WeequeryError.UsageInvalid, $"{called} cannot be used on an Inquiry that has already had ApplyProjection('{inquiry.AppliedProjection.ToQuery()}') called on it: the DTO decides what a row holds here, so the projected fields would be silently ignored. Drop one of the two");
+        throw new WeequeryException(WeequeryError.UsageInvalid, $"{called} cannot be used on an Inquiry that has already had ApplyProjection('{inquiry.AppliedProjection.ToQuery()}') called on it, choose one or the other");
     }
 }

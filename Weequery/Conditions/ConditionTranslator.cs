@@ -143,6 +143,6 @@ public abstract class ConditionTranslator<TResult, TScope>
     {
         return (values.Count == 1)
             ? values[0]
-            : throw new WeequeryException(WeequeryError.OperandCount, $"Operator {condition.Operator} on field '{condition.Field}' needs one value but got {values.Count}");
+            : throw new WeequeryException(WeequeryError.OperandCount, $"Operator {condition.Operator} on field '{condition.Field}' needs one value but received {values.Count}");
     }
 }

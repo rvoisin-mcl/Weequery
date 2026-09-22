@@ -118,7 +118,7 @@ public static class ElasticSearchBody
 
             if (field.Nested is not null)
             {
-                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{field.Key}', which is declared under the nested path '{field.Nested}': a nested sort has to say which of the many values to order by, and a sort does not carry that");
+                throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot sort on '{field.Key}', which is declared under the nested path '{field.Nested}'");
             }
 
             var direction = (sort.Direction == SortDirection.Descending) ? "desc" : "asc";

@@ -39,13 +39,13 @@ public static partial class ConditionFunctions
 
         if (count < required.Minimum)
         {
-            throw new WeequeryException(WeequeryError.OperandCount, $"Not enough values provided for Operator '{op}' on field '{field}', it needs at least {required.Minimum} but got {count}");
+            throw new WeequeryException(WeequeryError.OperandCount, $"Not enough values provided for Operator '{op}' on field '{field}', it needs at least {required.Minimum} but received {count}");
         }
 
         // IsIn has a cap, see MaxValuesInList
         if (count > required.Maximum)
         {
-            throw new WeequeryException(WeequeryError.OperandCount, $"Extra values provided for Operator '{op}' on field '{field}', it accepts at most {required.Maximum} but got {count}");
+            throw new WeequeryException(WeequeryError.OperandCount, $"Extra values provided for Operator '{op}' on field '{field}', it accepts at most {required.Maximum} but received {count}");
         }
     }
 

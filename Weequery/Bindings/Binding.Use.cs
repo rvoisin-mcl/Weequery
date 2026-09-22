@@ -96,7 +96,7 @@ internal partial class Binding<TClass>
         if (existing.Converter is null) { return candidate.WithUse(use); }
         if (candidate.Converter is null) { return existing.WithUse(use); }
 
-        throw new WeequeryException(WeequeryError.KeyTaken, $"'{key}' is already bound with a different ValueConverter. One key cannot mean two normalisations of the same property, so bind it once with the converter it should have");
+        throw new WeequeryException(WeequeryError.KeyTaken, $"'{key}' is already bound with a different ValueConverter.");
     }
 
     /// <summary>

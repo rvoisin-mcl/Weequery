@@ -1,6 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Bindings;
@@ -113,7 +113,7 @@ internal static class FieldComparison
     {
         if (left.UnwrappedPropertyType == typeof(object))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} is unsupported for Binding '{left.PropertyPath}': a {typeof(object).Name} is not something to compare, only the null tests apply to it");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} is unsupported for {typeof(object).Name} Binding '{left.PropertyPath}'");
         }
 
         if (!ExpressionBuilder.HasBuilderForBinding(left))
@@ -144,7 +144,7 @@ internal static class FieldComparison
         // Condition: allow it and the value is learnable by bisection, one query at a time
         if (!property.Allows(BindingUse.Test))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{value.Value}', compared against on field '{field}', cannot be used in a condition: it is bound for {property.Use}");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{value.Value}', compared against on field '{field}', cannot be used in a condition: it is only bound for {property.Use}");
         }
 
         // The expression api compares like with like, and promoting one side to the other would mean deciding
@@ -163,7 +163,7 @@ internal static class FieldComparison
         // still two lambdas: share one ValueConverter between the bindings meant to be compared.
         if (!ReferenceEquals(left.AccessorConverter, property.AccessorConverter))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot compare '{left.PropertyPath}' with '{property.PropertyPath}': they are normalised differently, and a comparison has no way to say which normalisation the answer is in. Bind both with the same ValueConverter, or neither");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Cannot compare '{left.PropertyPath}' with '{property.PropertyPath}': each has a distinct normalization. Bind both with the same ValueConverter, or neither");
         }
 
         return new Operand<TClass> { Property = property, Expression = property.UnwrappedAccessor };
@@ -335,7 +335,7 @@ internal static class FieldComparison
         // A bool orders no better against another property than it does against a value
         if ((left.UnwrappedPropertyType == typeof(bool)) && (op is not (Operator.Equals or Operator.NotEqual)))
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} is unsupported for the bool property '{left.PropertyPath}', only equality applies to a truth value");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"Operator {op} is unsupported for the bool property '{left.PropertyPath}'");
         }
 
         if (left.UnwrappedPropertyTypeIsEnum)

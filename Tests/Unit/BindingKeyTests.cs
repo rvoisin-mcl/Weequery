@@ -1,4 +1,4 @@
-﻿using Tests.Common;
+using Tests.Common;
 using Weequery;
 
 namespace Tests.Unit;
@@ -38,7 +38,7 @@ public class BindingKeyTests
             "name:", "name;", "name,", "name'", "name\"", "name(", "name)", "name[", "name]", "name{", "name}",
             "name<", "name>", "name~", "name^", "name\\",
             // not ASCII, deliberately out even though some databases would take it
-            "Név", "имя", "名前", "na­me", "name​");
+            "NÃ©v", "Ð¸Ð¼Ñ", "åå‰", "naÂ­me", "nameâ€‹");
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public class BindingKeyTests
     /// Keys with a period in them, which is what makes a nested property's own path a key.
     /// <para>
     /// Held separately from <see cref="ValidKeys"/> because the two predicates differ on exactly this:
-    /// IsSqlName is one unquoted name and refuses a period, IsBindingKey is a period separated sequence of them.
+    /// IsKeyName is one unquoted name and refuses a period, IsBindingKey is a period separated sequence of them.
     /// </para>
     /// </summary>
     public static TheoryData<string> ValidDottedKeys()
@@ -428,37 +428,37 @@ public class BindingKeyTests
 
     [Theory]
     [MemberData(nameof(ValidKeys))]
-    public void IsSqlNameAcceptsValidNames(string key)
+    public void IsKeyNameAcceptsValidNames(string key)
     {
-        Assert.True(WeequeryException.IsSqlName(key));
+        Assert.True(WeequeryException.IsKeyName(key));
     }
 
     [Theory]
     [MemberData(nameof(InvalidKeys))]
-    public void IsSqlNameRejectsInvalidNames(string key)
+    public void IsKeyNameRejectsInvalidNames(string key)
     {
-        Assert.False(WeequeryException.IsSqlName(key));
+        Assert.False(WeequeryException.IsKeyName(key));
     }
 
     [Fact]
-    public void IsSqlNameRejectsNullAndEmpty()
+    public void IsKeyNameRejectsNullAndEmpty()
     {
-        Assert.False(WeequeryException.IsSqlName(null));
-        Assert.False(WeequeryException.IsSqlName(string.Empty));
+        Assert.False(WeequeryException.IsKeyName(null));
+        Assert.False(WeequeryException.IsKeyName(string.Empty));
     }
 
     // ---------- the period, and where the two predicates part company ----------
 
     /// <summary>
-    /// IsSqlName is still one unquoted name, which is what a single column may be called, and a period is not
+    /// IsKeyName is still one unquoted name, which is what a single column may be called, and a period is not
     /// part of one. The key rule is the looser one, and it is the one keys are held to.
     /// </summary>
     [Theory]
     [MemberData(nameof(ValidDottedKeys))]
-    public void IsSqlNameStillRefusesAPeriodWhereABindingKeyTakesIt(string key)
+    public void IsKeyNameStillRefusesAPeriodWhereABindingKeyTakesIt(string key)
     {
-        Assert.False(WeequeryException.IsSqlName(key));
-        Assert.True(WeequeryException.IsQualifiedSqlName(key));
+        Assert.False(WeequeryException.IsKeyName(key));
+        Assert.True(WeequeryException.IsQualifiedKeyName(key));
         Assert.True(WeequeryException.IsBindingKey(key));
     }
 
@@ -469,7 +469,7 @@ public class BindingKeyTests
     [MemberData(nameof(ValidKeys))]
     public void EveryPlainNameIsStillAKey(string key)
     {
-        Assert.True(WeequeryException.IsSqlName(key));
+        Assert.True(WeequeryException.IsKeyName(key));
         Assert.True(WeequeryException.IsBindingKey(key));
     }
 
@@ -491,16 +491,16 @@ public class BindingKeyTests
     [InlineData("OrderBy")]
     public void AReservedWordIsStillRefusedAsAWholeKey(string key)
     {
-        Assert.True(WeequeryException.IsQualifiedSqlName(key));
+        Assert.True(WeequeryException.IsQualifiedKeyName(key));
         Assert.False(WeequeryException.IsBindingKey(key));
         Assert.Throws<WeequeryException>(() => new BindingRequest(nameof(Minion.Name), key));
     }
 
     [Fact]
-    public void IsQualifiedSqlNameRejectsNullAndEmpty()
+    public void IsQualifiedKeyNameRejectsNullAndEmpty()
     {
-        Assert.False(WeequeryException.IsQualifiedSqlName(null));
-        Assert.False(WeequeryException.IsQualifiedSqlName(string.Empty));
+        Assert.False(WeequeryException.IsQualifiedKeyName(null));
+        Assert.False(WeequeryException.IsQualifiedKeyName(string.Empty));
         Assert.False(WeequeryException.IsBindingKey(null));
     }
 

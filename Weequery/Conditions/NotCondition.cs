@@ -1,5 +1,5 @@
+using Weequery.Interfaces;
 using Weequery.Parsing;
-﻿using Weequery.Interfaces;
 
 namespace Weequery;
 

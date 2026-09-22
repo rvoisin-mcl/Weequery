@@ -225,7 +225,7 @@ public class QueryRequestTests
     [InlineData("Pay > 0 || Pay = 0", "OR")]
     [InlineData("Alias IS NULL", "IsNull")]
     [InlineData("Alias IS NOT NULL", "IsNotNull")]
-    [InlineData("Pay > 0 ORDER BY Pay DESC", "OrderBy")]
+    [InlineData("Pay > 0 ORDER BY Pay DESC", "ORDER BY")]
     public void OnlyTheNativeSpellingsAreRead(string query, string instead)
     {
         var error = Assert.Throws<WeequeryException>(() => Bound().ApplyRequest(new QueryRequest { Query = query }));

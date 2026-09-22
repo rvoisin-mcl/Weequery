@@ -1,5 +1,5 @@
-using System.Text.Json;
 using BenchmarkDotNet.Attributes;
+using System.Text.Json;
 
 namespace Weequery.Benchmarks;
 

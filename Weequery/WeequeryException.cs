@@ -167,13 +167,13 @@ public class WeequeryException : Exception
     /// <param name="argument"></param>
     /// <param name="paramName"></param>
     /// <exception cref="WeequeryException"></exception>
-    public static void ThrowIfNotSqlName(string? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
+    public static void ThrowIfNotKeyName(string? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
     {
         if (argument is null) { return; }
 
-        if (!IsSqlName(argument))
+        if (!IsKeyName(argument))
         {
-            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} must be a valid unquoted SQL name, a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} will not accept '{argument}', which must be a valid unquoted SQL name, a letter or underscore followed by letters, digits or underscores");
         }
     }
 
@@ -188,7 +188,7 @@ public class WeequeryException : Exception
     /// unquoted like any other key.
     /// </para>
     /// <para>
-    /// Every segment is held to the whole of <see cref="ThrowIfNotSqlName"/>, so a leading or trailing period, two
+    /// Every segment is held to the whole of <see cref="ThrowIfNotKeyName"/>, so a leading or trailing period, two
     /// in a row, and a segment starting with a digit are all still refused. What is legal is a name; what is now
     /// also legal is several of them joined.
     /// </para>
@@ -214,28 +214,28 @@ public class WeequeryException : Exception
         // has to pick one. So an element of a collection is given a name, which is one the caller sees anyway.
         if (argument.Contains('['))
         {
-            throw new WeequeryException(WeequeryError.KeyInvalid, $"'{argument}' cannot be a key, since brackets after a name are how a condition asks for one element of a collection. Give the binding a key of its own, as BindProperty(x => x.Labels[0], \"FirstLabel\")");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"'{argument}' cannot be a key, brackets indicate a single element of a collection");
         }
 
-        if (!IsQualifiedSqlName(argument))
+        if (!IsQualifiedKeyName(argument))
         {
-            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} must be one or more valid unquoted SQL names separated by periods, each a letter or underscore followed by letters, digits or underscores, so '{argument}' is not allowed");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} cannot accept '{argument}', which must be one or more valid unquoted names separated by periods");
         }
 
         if (QueryKeywords.IsReserved(argument))
         {
-            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} '{argument}' is a word the query language reads as an operator, so a query could not tell it from one; bind it under a different key");
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"{paramName} '{argument}' is a reserved keyword for the query language; bind it under a different key");
         }
     }
 
     /// <summary>
-    /// If the text is shaped like a binding key: one or more <see cref="IsSqlName"/> segments separated by
+    /// If the text is shaped like a binding key: one or more <see cref="IsKeyName"/> segments separated by
     /// periods. Says nothing about if the language has already claimed it, which
     /// <see cref="IsBindingKey"/> does as well.
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
-    public static bool IsQualifiedSqlName(string? text)
+    public static bool IsQualifiedKeyName(string? text)
     {
         if (string.IsNullOrEmpty(text)) { return false; }
 
@@ -243,7 +243,7 @@ public class WeequeryException : Exception
         // segment and an empty segment is not a name
         foreach (var segment in text.Split('.'))
         {
-            if (!IsSqlName(segment)) { return false; }
+            if (!IsKeyName(segment)) { return false; }
         }
 
         return true;
@@ -257,16 +257,16 @@ public class WeequeryException : Exception
     /// <returns></returns>
     public static bool IsBindingKey(string? text)
     {
-        return IsQualifiedSqlName(text) && (!QueryKeywords.IsReserved(text));
+        return IsQualifiedKeyName(text) && (!QueryKeywords.IsReserved(text));
     }
 
     /// <summary>
-    /// If the text is a valid unquoted SQL name, as described on <see cref="ThrowIfNotSqlName"/>. One name,
+    /// If the text is a valid unquoted SQL name, as described on <see cref="ThrowIfNotKeyName"/>. One name,
     /// so no period; <see cref="IsBindingKey"/> is the rule a key is held to.
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
-    public static bool IsSqlName(string? text)
+    public static bool IsKeyName(string? text)
     {
         if (string.IsNullOrEmpty(text)) { return false; }
 

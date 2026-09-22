@@ -113,7 +113,7 @@ public record InquirySettings(StringComparison StringComparison = StringComparis
     {
         if (size is not (null or > 0))
         {
-            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(DefaultPageSize)} must be > 0, {size} is not");
+            throw new WeequeryException(WeequeryError.ArgumentInvalid, $"{nameof(DefaultPageSize)} must be > 0, {size} was received");
         }
 
         return size;

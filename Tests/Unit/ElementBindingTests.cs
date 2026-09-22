@@ -152,7 +152,7 @@ public class ElementBindingTests
         var error = Assert.Throws<WeequeryException>(() => Boxes().WithWeequery().BindProperty(box => box.Labels![0]));
 
         Assert.Equal(WeequeryError.KeyInvalid, error.Error);
-        Assert.Contains("key of its own", error.Message);
+        Assert.Contains("brackets indicate a single element of a collection", error.Message);
     }
 
     /// <summary>

@@ -181,7 +181,7 @@ internal partial class Binding<TClass> : IBinding
         {
             if (converter.ValueType != UnwrappedPropertyType)
             {
-                throw new WeequeryException(WeequeryError.ConversionFailed, $"The converter for '{name}' reads a {converter.ValueType.Name}, and the property is a {UnwrappedPropertyType.Name}. A converter is declared for the unwrapped type, so an int? property takes ValueConverter.For<int>");
+                throw new WeequeryException(WeequeryError.ConversionFailed, $"The converter for '{name}' is for a {converter.ValueType.Name}, but the property is a {UnwrappedPropertyType.Name}. A converter must be for the unwrapped type (eg. ValueConverter<int> for an int?)");
             }
 
             Converter = converter;

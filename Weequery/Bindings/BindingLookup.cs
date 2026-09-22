@@ -34,7 +34,7 @@ internal static class BindingLookup
         var open = field.IndexOf('[');
         if (open < 0) { return new IndexedField(field, null); }
 
-        if (!field.EndsWith(']')) { throw new WeequeryException(WeequeryError.PathInvalid, $"'{field}' has a '[' that is never closed"); }
+        if (!field.EndsWith(']')) { throw new WeequeryException(WeequeryError.PathInvalid, $"'{field}' has a unclosed '['"); }
 
         var index = field[(open + 1)..^1];
         if (index.Length == 0) { throw new WeequeryException(WeequeryError.PathInvalid, $"'{field}' has an empty index"); }

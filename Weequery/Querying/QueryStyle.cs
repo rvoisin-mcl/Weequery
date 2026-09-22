@@ -15,13 +15,13 @@ public enum QueryStyle
     /// <summary>
     /// C# spelling: <c>&amp;&amp;</c>, <c>||</c>, <c>!</c>, <c>==</c>, <c>!=</c>.
     /// </summary>
-    [Obsolete("The C# and SQL styles are deprecated in favour of " + nameof(Native) + ", which spells every operator exactly one way. Both are removed in 4.0; until then this still writes what it always wrote, and the parser still reads it.")]
+    [Obsolete("The C# and SQL styles are deprecated in favour of " + nameof(Native) + ". Both will be removed in 4.0.")]
     CSharp,
 
     /// <summary>
     /// SQL spelling: <c>AND</c>, <c>OR</c>, <c>NOT</c>, <c>=</c>, <c>&lt;&gt;</c>
     /// </summary>
-    [Obsolete("The C# and SQL styles are deprecated in favour of " + nameof(Native) + ", which spells every operator exactly one way. Both are removed in 4.0; until then this still writes what it always wrote, and the parser still reads it.")]
+    [Obsolete("The C# and SQL styles are deprecated in favour of " + nameof(Native) + ". Both will be removed in 4.0.")]
     Sql,
 
     /// <summary>

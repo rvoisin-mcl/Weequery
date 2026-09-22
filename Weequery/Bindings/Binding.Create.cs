@@ -26,7 +26,9 @@ internal partial class Binding<TClass>
         var useParameter = parameter ?? Expression.Parameter(typeof(TClass));
         var resolved = GetPropertyExpression(useParameter, propertyPath);
 
-        return new Binding<TClass>(useParameter, propertyPath, resolved.Expression, resolved.ExpressionType, resolved.LinkChecks, isConstant: false, use, converter);
+        // The canonical spelling rather than the caller's: a path is matched without regard to case, so one
+        // property reached two ways has to arrive as one path or nothing downstream can tell it is one property
+        return new Binding<TClass>(useParameter, resolved.Path, resolved.Expression, resolved.ExpressionType, resolved.LinkChecks, isConstant: false, use, converter);
     }
 
     /// <summary>

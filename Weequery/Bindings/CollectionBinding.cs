@@ -7,54 +7,6 @@ using Weequery.Interfaces;
 namespace Weequery.Bindings;
 
 /// <summary>
-/// A bound collection, and the allow-list for what may be asked about one of its elements.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The one binding that holds bindings. A quantified condition names the collection and carries a condition
-/// scoped to the element, so the element's fields have to resolve against something, and that something is
-/// declared separately: binding a collection says nothing about what is reachable inside it, and the inner set
-/// is an allow-list in its own right.
-/// </para>
-/// <para>
-/// Generic in the element type, which the outer <see cref="Inquiry{T}"/> does not know, so it is reached through
-/// <see cref="ICollectionBinding{TClass}"/>.
-/// </para>
-/// </remarks>
-/// <typeparam name="TClass">the entity the collection hangs off</typeparam>
-internal interface ICollectionBinding<TClass>
-{
-    /// <summary>The key the collection was bound under</summary>
-    string Key { get; }
-
-    /// <summary>What the collection holds, for an error that has to name it</summary>
-    Type ElementType { get; }
-
-    /// <summary>
-    /// If the inner allow-list bound this key, so if a condition inside the quantifier can name it.
-    /// </summary>
-    /// <remarks>
-    /// Asked rather than resolved, by the one thing that has to know a field is missing without wanting it to
-    /// fail: pruning an unbound field out of a query, see <see cref="InquirySettings.IgnoreUnboundFields"/>. The
-    /// inner set is the collection's own, so nothing outside it can answer this.
-    /// </remarks>
-    /// <param name="key">a key, which may carry an index</param>
-    /// <returns></returns>
-    bool Binds(string key);
-
-    /// <summary>
-    /// The test for a quantifier over this collection, as an expression on the entity's own parameter.
-    /// </summary>
-    /// <param name="quantifier"><see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/></param>
-    /// <param name="inner">the condition scoped to one element</param>
-    /// <returns>a predicate on the entity, total: it is never null and needs no guard of its own</returns>
-    /// <exception cref="WeequeryException">the inner condition names something the inner set did not bind</exception>
-    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
-    [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    Expression<Func<TClass, bool>> Quantify(Operator quantifier, ICondition inner);
-}
-
-/// <summary>
 /// A collection bound on <typeparamref name="TClass"/>, holding the bindings for its elements.
 /// </summary>
 /// <typeparam name="TClass">the entity the collection hangs off</typeparam>
@@ -65,6 +17,31 @@ internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<T
     public string Key { get; }
 
     public Type ElementType { get { return typeof(TElement); } }
+
+    // The IBinding half is the collection's own accessor, which this has had all along as Collection: where it
+    // lives, how to reach it, and the guard that says reaching it is safe. Guarded() below is already built out
+    // of the last two, so none of this is new behaviour, only a name for what was already true.
+
+    /// <inheritdoc/>
+    public string PropertyPath { get { return Collection.PropertyPath; } }
+
+    /// <inheritdoc/>
+    public Expression Accessor { get { return Collection.Accessor; } }
+
+    /// <inheritdoc/>
+    public Type PropertyType { get { return Collection.PropertyType; } }
+
+    /// <inheritdoc/>
+    public bool AccessorIsNullable { get { return Collection.AccessorIsNullable; } }
+
+    /// <inheritdoc/>
+    public ParameterExpression Parameter { get { return Collection.Parameter; } }
+
+    /// <inheritdoc/>
+    public bool RequiresNullCheck { get { return Collection.RequiresNullCheck; } }
+
+    /// <inheritdoc/>
+    public Expression NotNullCheck { get { return Collection.NotNullCheck; } }
 
     /// <summary>How to reach the collection from the entity, guards and all</summary>
     private Binding<TClass> Collection { get; }

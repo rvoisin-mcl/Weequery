@@ -17,12 +17,16 @@ internal class ObjectExpressionBuilder : ExpressionBuilderBase<object>
 
         switch (condition.Operator)
         {
+            // NotNullCheck rather than a test on the accessor, because the accessor is not always safe to read
+            // on its own: it carries the links on the way in, and an index is one of them. Reading Slots[0]
+            // where the list holds nothing throws rather than answering, so the bounds check has to short
+            // circuit in front of it.
             case Operator.IsNull:
-                expression = Expression.Equal(binding.Accessor, Expression.Constant(null, typeof(object)));
+                expression = Expression.Not(binding.NotNullCheck);
                 break;
 
             case Operator.IsNotNull:
-                expression = Expression.NotEqual(binding.Accessor, Expression.Constant(null, typeof(object)));
+                expression = binding.NotNullCheck;
                 break;
 
             default:

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Weequery.Bindings;
+using Weequery.Interfaces;
 
 namespace Weequery.Builders;
 
@@ -157,11 +158,15 @@ internal static class ProjectionBuilder<T> where T : class
     /// <exception cref="WeequeryException">the field names a bound collection</exception>
     private static string CanonicalKey(Dictionary<string, Binding<T>> bindings, Dictionary<string, ICollectionBinding<T>> collections, string field)
     {
-        var key = BindingLookup.SplitIndex(field).Key;
+        var indexed = BindingLookup.SplitIndex(field);
+        var key = indexed.Key;
 
         // Refused here rather than as "unbound", since it is bound and the message would be a lie. A collection
         // holds many values and a column holds one, so there is nothing for this to read.
-        if (collections.ContainsKey(key))
+        //
+        // One element of it is a different matter, and the same key answers for that: an index picks a single
+        // value, which is exactly what a column holds, so only the bare key is refused here.
+        if ((indexed.Index is null) && collections.ContainsKey(key))
         {
             throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{key}' is a collection, and cannot be projected.");
         }

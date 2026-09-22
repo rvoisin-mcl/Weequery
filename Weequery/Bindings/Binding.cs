@@ -5,7 +5,7 @@ using Weequery.Interfaces;
 
 namespace Weequery.Bindings;
 
-internal partial class Binding<TClass> : IBinding
+internal partial class Binding<TClass> : IValueBinding
 {
     public string PropertyPath { get; init; }
     public Expression Accessor { get; init; }

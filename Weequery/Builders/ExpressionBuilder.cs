@@ -33,7 +33,7 @@ internal static class ExpressionBuilder
         typeof(object),
     };
 
-    internal static bool HasBuilderForBinding(IBinding binding)
+    internal static bool HasBuilderForBinding(IValueBinding binding)
     {
         if (binding is null) return false;
 

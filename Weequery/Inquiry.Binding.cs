@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
+using System.Reflection;
 using Weequery.Bindings;
 
 namespace Weequery;
@@ -115,12 +116,19 @@ public partial class Inquiry<T> where T : class
         WeequeryException.ThrowIfNotBindingKey(key);
         WeequeryException.ThrowIfNull(configure);
 
-        if (Bindings.ContainsKey(key) || Collections.ContainsKey(key))
+        if (Collections.ContainsKey(key))
         {
             throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{key}'");
         }
 
         var collection = Binding<T>.Create(SharedBindingParameter, selector, bindings: null);
+
+        // One key may be a property and a collection at once, so long as they are the same property: that is what
+        // lets a null test, an index and a quantifier all answer to it. A different property wanting the name is not
+        if (Bindings.TryGetValue(key, out var property) && (property.PropertyPath != collection.PropertyPath))
+        {
+            throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{key}'");
+        }
 
         var inner = new CollectionBindingSet<TElement>();
         configure(inner);
@@ -201,19 +209,90 @@ public partial class Inquiry<T> where T : class
     }
 
     /// <summary>
-    /// Refuse a property binding if a collection is using the same key
+    /// Bind a set of collections that resolution found, see <see cref="ResolveBindableCollections"/>.
     /// </summary>
+    /// <remarks>
+    /// The collection half of <see cref="BindProperties"/>. Each request names a path, the key it answers to and
+    /// what may be asked about one of its elements, and the element type is only known at run time, so this is
+    /// the one binding call that cannot be written with a type argument.
+    /// </remarks>
+    /// <param name="requests">what to bind; an empty set binds nothing and is not an error</param>
+    /// <returns>a copy carrying them</returns>
+    /// <exception cref="WeequeryException">a key is already a collection, or a path does not resolve</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    public Inquiry<T> BindCollections(IEnumerable<CollectionBindingRequest> requests)
+    {
+        WeequeryException.ThrowIfNull(requests);
+
+        var next = Copy();
+
+        foreach (var request in requests)
+        {
+            if (next.Collections.ContainsKey(request.Key))
+            {
+                throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{request.Key}'");
+            }
+
+            // The element type is a Type rather than a type argument here, so the one call needing it closed has
+            // to be closed by hand
+            typeof(Inquiry<T>)
+                .GetMethod(nameof(AddCollection), BindingFlags.NonPublic | BindingFlags.Instance)!
+                .MakeGenericMethod(request.ElementType)
+                .Invoke(next, [request]);
+        }
+
+        return next.RefuseDuplicateKeys();
+    }
+
+    /// <summary>
+    /// Add one resolved collection in place, which is safe because the caller is holding a copy
+    /// </summary>
+    /// <typeparam name="TElement">what the collection holds</typeparam>
+    /// <param name="request">the path, the key and what an element answers</param>
+    /// <exception cref="WeequeryException">the path does not resolve, or nothing was bound inside</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    private void AddCollection<TElement>(CollectionBindingRequest request)
+        where TElement : class
+    {
+        var collection = Binding<T>.Create(SharedBindingParameter, request.PropertyPath, bindings: null);
+
+        var inner = new CollectionBindingSet<TElement>();
+        inner.BindProperties(request.Elements);
+
+        if (inner.Count == 0)
+        {
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"Nothing was bound inside '{request.Key}', so no condition could be written about one of its elements");
+        }
+
+        Collections[request.Key] = new CollectionBinding<T, TElement>(request.Key, collection, inner.Bindings);
+    }
+
+    /// <summary>
+    /// Refuse a property binding that claims a collection's key for a <b>different</b> property
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One key may be both, and on a collection it usually is: the same key answers a null test and an index as
+    /// a property, and the quantifiers as a collection, because those are three questions about one thing rather
+    /// than three things. What is refused is a key standing for two <i>different</i> properties, which is the
+    /// same refusal two property bindings would get.
+    /// </para>
+    /// </remarks>
     /// <returns>the copy it was called on, so it can be returned from the binding call</returns>
-    /// <exception cref="WeequeryException">a key now names both a property and a collection</exception>
+    /// <exception cref="WeequeryException">a key names a collection and some other property</exception>
     private Inquiry<T> RefuseDuplicateKeys()
     {
         if (Collections.Count == 0) { return this; }
 
-        foreach (var key in Collections.Keys)
+        foreach (var collection in Collections.Values)
         {
-            if (Bindings.Remove(key))
+            if (Bindings.TryGetValue(collection.Key, out var property) && (property.PropertyPath != collection.PropertyPath))
             {
-                throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{key}', which is bound as a collection");
+                Bindings.Remove(collection.Key);
+
+                throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{collection.Key}', which is bound as a collection of '{collection.PropertyPath}'");
             }
         }
 
@@ -380,6 +459,46 @@ public partial class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// What resolution would bind as collections, and what it would let a quantifier ask about one element.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The collection half of <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/>, and
+    /// the same warning applies twice over: this opens the element type as well, so every readable property of
+    /// everything a collection holds becomes nameable inside the quantifier. Resolve it once, print it, and read
+    /// what you got.
+    /// <code>
+    /// foreach (var found in Inquiry&lt;Minion&gt;.ResolveBindableCollections(collectionDepth: 1))
+    /// {
+    ///     Console.WriteLine($"{found.Key}: {string.Join(", ", found.Elements.Select(e =&gt; e.Key))}");
+    /// }
+    /// </code>
+    /// </para>
+    /// <para>
+    /// Every path here also comes back from <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/>
+    /// as an ordinary property, and both are bound: one key answering a null test and an index as a property,
+    /// and the quantifiers as a collection.
+    /// </para>
+    /// </remarks>
+    /// <param name="maxDepth">[OPT] how far into the entity to look for collections, bounded to [0,16]</param>
+    /// <param name="collectionDepth">[OPT] how far into an element to go, 0 being its own properties, bounded to [0,16]</param>
+    /// <param name="settings">[OPT] what to leave out, see <see cref="BindingResolutionSettings"/></param>
+    /// <returns>every collection found, in path order; never null</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: what is resolved is the collections of T, so Inquiry<T> is where a caller already is when they need them.")]
+    public static IReadOnlyList<CollectionBindingRequest> ResolveBindableCollections(int maxDepth = 1, int collectionDepth = 0, BindingResolutionSettings? settings = null)
+    {
+        List<CollectionBindingRequest> collections = [];
+
+        BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0,
+            Math.Min(Math.Max(maxDepth, 0), 16), "",
+            (settings is null) ? BindingResolutionSettings.Default : new(settings),
+            new HashSet<Type>(), collections, Math.Min(Math.Max(collectionDepth, 0), 16));
+
+        return collections;
+    }
+
+    /// <summary>
     /// Bind every readable property this entity reaches, as <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> resolves them.
     /// </summary>
     /// <remarks>
@@ -393,6 +512,38 @@ public partial class Inquiry<T> where T : class
     /// side named is kept (or both, if the converter is the same instance). Only a key standing for a 
     /// <i>different</i> property is refused, see <see cref="BindProperties"/>.
     /// </para>
+    /// <para>
+    /// <b>It descends into collections</b>, which is what makes a quantifier work without declaring one. Every
+    /// collection of objects it meets is bound twice over, and both are the same key: as a property, which is
+    /// what an index reads one element out of, and as a collection, which is what answers
+    /// <c>Assignments Any (...)</c>. Two questions about one thing, under one name.
+    /// </para>
+    /// <para>
+    /// For "has no elements", <c>Assignments None (...)</c> is the question that means it. A quantifier is total
+    /// and answers the same for an absent collection as for an empty one, where a null test on the collection
+    /// itself would distinguish two things a database will not.
+    /// <code>
+    /// .BindResolve()                        // Assignments Any (LairID = 5)
+    /// .BindResolve(collectionDepth: 1)      // ...and Assignments Any (Lair.Name = 'Volcano')
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>The element depth defaults to 0, and that is deliberate.</b> It is the element's own properties, which
+    /// on a link table is the pair of ids and the two things they point at, and it is where the cost stops being
+    /// small: a depth of 1 on an entity with three collections took one model from 18 nameable keys to 124, the
+    /// far side of every link table being the whole of another entity. Ask for the depth where you want the
+    /// second hop, and read what you got.
+    /// </para>
+    /// <para>
+    /// Not every sequence is one. A <c>List&lt;string&gt;</c>, a dictionary, an array of numbers and a string
+    /// stay ordinary bindings, a quantifier naming a property of an element and none of those having one worth
+    /// naming. Index those instead.
+    /// </para>
+    /// <para>
+    /// For the property list alone, with nothing entered, bind
+    /// <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> yourself through
+    /// <see cref="BindProperties"/>, which is what this did before it descended.
+    /// </para>
     /// </remarks>
     /// <param name="maxDepth">
     /// how many levels below the entity to reach. Defaults to 1, and bounded to [0, 16]
@@ -401,15 +552,20 @@ public partial class Inquiry<T> where T : class
     /// [OPT] what to leave out; null leaves nothing out, but will not bind string properties
     /// </param>
     /// <param name="use">[OPT] what the binding may be used for, everything by default, see <see cref="BindingUse"/></param>
+    /// <param name="collectionDepth">
+    /// [OPT] how far into a collection element to resolve, 0 being the element own properties. Bounded to [0, 16]
+    /// </param>
     /// <returns></returns>
     /// <exception cref="WeequeryException">a resolved path does not make a valid key, or two bindings claim one key</exception>
     [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
+    public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All, int collectionDepth = 0)
     {
-        var reqs = ResolveBindables(maxDepth, settings, use);
+        var next = BindProperties(ResolveBindables(maxDepth, settings, use));
 
-        return BindProperties(reqs);
+        var collections = ResolveBindableCollections(maxDepth, collectionDepth, settings);
+
+        return (collections.Count == 0) ? next : next.BindCollections(collections);
     }
 
     /// <summary>

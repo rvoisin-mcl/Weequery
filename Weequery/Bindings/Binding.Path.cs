@@ -26,7 +26,14 @@ internal partial class Binding<TClass>
         }
     }
 
-    private record GetPropertyExpressionRecord(Expression Expression, Type ExpressionType, List<Expression> LinkChecks);
+    /// <param name="Expression">the accessor built for the path</param>
+    /// <param name="ExpressionType">the type it returns</param>
+    /// <param name="LinkChecks">the guards for every link the path passed through, outermost first</param>
+    /// <param name="Path">
+    /// the path as the type spells it rather than as the caller typed it, see the remarks on
+    /// <see cref="GetPropertyExpression"/>
+    /// </param>
+    private record GetPropertyExpressionRecord(Expression Expression, Type ExpressionType, List<Expression> LinkChecks, string Path);
 
     /// <summary>
     /// One step of a binding path: a property name, and the index to read from it if the path named one.
@@ -155,6 +162,9 @@ internal partial class Binding<TClass>
         Type expType = typeof(TClass);
         List<Expression> linkChecks = new();
 
+        // The same path, spelled the way the members are actually named
+        List<string> canonical = new();
+
         foreach (var step in PathSteps(propertyPath))
         {
             // A Nullable<T> exposes only its own HasValue and Value, so getting a member of T means going
@@ -180,6 +190,12 @@ internal partial class Binding<TClass>
                 throw new WeequeryException(WeequeryError.PathInvalid, $"Could not resolve '{step.Name}' of property path '{propertyPath}' on {exp.Type.Name}", ex);
             }
 
+            // The member as the declaring type spells it. A segment is matched without regard to case, so two
+            // spellings of one property would otherwise be two different paths to everything downstream. The
+            // index is left exactly as written: a dictionary key is data rather than a member name
+            var named = (exp is MemberExpression stepped) ? stepped.Member.Name : step.Name;
+            canonical.Add((step.Index is null) ? named : $"{named}[{step.Index}]");
+
             // An index in the path reads one element and carries on from it. We will treat the element as a nullable,
             // exactly as one named by a condition does, so a path that indexes outside the collection past the end is a path
             // is a null, and not an exception
@@ -195,7 +211,7 @@ internal partial class Binding<TClass>
         // MemberExpression for an a plain old ordinary path
         var memberType = (exp is MemberExpression member) ? GetMemberType(member) : expType;
 
-        return new(exp, memberType, linkChecks);
+        return new(exp, memberType, linkChecks, string.Join(".", canonical));
     }
 
     private record IndexOfRecord(Expression Source, string Index);

@@ -265,6 +265,37 @@ is the ceiling rather than a suggestion:
 .BindResolve(maxDepth: 3)      // as far as you like, up to 16
 ```
 
+**And it descends into collections**, which is what makes a quantifier work without your declaring one. Every
+collection of objects it meets is bound twice over, under the one key: as a property, which is what an
+[index](#reaching-into-a-collection) reads a single element out of, and as a collection, which is what answers
+[`Any`, `All` and `None`](#asking-about-all-of-them-at-once). Two questions about one thing, under one name.
+
+```csharp
+.BindResolve()                        // Assignments Any (LairID = 5)
+.BindResolve(collectionDepth: 1)      // ...and Assignments Any (Lair.Name = 'Volcano')
+```
+
+**The element depth defaults to 0, and that is on purpose.** Zero is the element's own properties, which on a
+link table is the pair of ids and the two things they point at. One reaches through to the far side, and that is
+where it stops being cheap: on a model with three collections it took the allow-list from 18 nameable keys to
+124, because the far side of a link table is the whole of another entity. Ask for the depth where you want the
+second hop, and *read what you got*.
+
+Not every sequence is one. A `List<string>`, a `Dictionary<,>`, an array of numbers and a string itself all stay
+ordinary bindings, because a quantifier names a *property of an element* and none of those has one worth naming.
+[Index those](#reaching-into-a-collection) instead.
+
+For "does this one have none", ask `Assignments None (...)` rather than reaching for a null test. A quantifier is
+total: it answers the same for a collection that is absent as for one that is empty, which is the distinction a
+database will not make for you anyway.
+
+And if you want the property list with nothing entered, which is what this did before it descended, bind
+`ResolveBindables` yourself:
+
+```csharp
+.BindProperties(Inquiry<Minion>.ResolveBindables())
+```
+
 **A model that refers back to itself terminates.** A type already open on the path is bound but not descended
 into, so `Parent` is a key and `Parent.Parent` is not. Without that, a `Node` with two self-references resolved
 half a million keys at depth 16 and took nine seconds and most of two gigabytes to bind them, *per request*, which

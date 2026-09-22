@@ -36,6 +36,39 @@ internal static class BindingResolver
     }
 
     /// <summary>
+    /// What a collection holds, where that is something a quantifier could ask about.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null for anything that is not a collection of objects, which is the same rule a
+    /// <see cref="CollectionBindingSet{TElement}"/> already applies by requiring a class. A string is a sequence
+    /// of characters, a dictionary a sequence of pairs, and a list of strings has no property of an element to
+    /// name, so none of the three is one. Index those instead.
+    /// </para>
+    /// </remarks>
+    /// <param name="type">the property's declared type</param>
+    /// <returns>the element type, or null where there is nothing an element could be asked about</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    internal static Type? ElementTypeOf(Type type)
+    {
+        if ((type == typeof(string)) || (!IsContainer(type))) { return null; }
+
+        var element = type.IsArray
+            ? type.GetElementType()
+            : type.GetInterfaces().Append(type)
+                .Where(candidate => candidate.IsGenericType && (candidate.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+                .Select(candidate => candidate.GetGenericArguments()[0])
+                .FirstOrDefault();
+
+        if (element is null) { return null; }
+        if (element == typeof(string)) { return null; }                  // no member of an element to name
+        if (!(element.IsClass || element.IsInterface)) { return null; }   // a dictionary's pairs, and every value type
+        if (IsContainer(element)) { return null; }                        // a list of lists, which nothing can reach into
+
+        return element;
+    }
+
+    /// <summary>
     /// If the walk should descend into a property
     /// </summary>
     /// <param name="type">the property's declared type</param>
@@ -100,7 +133,17 @@ internal static class BindingResolver
     /// recursing into those as appropriate
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Properties are returned in path order.
+    /// </para>
+    /// <para>
+    /// Given somewhere to put them, a collection of objects is <b>also</b> gathered as a
+    /// <see cref="CollectionBindingRequest"/>, its elements resolved from nothing to
+    /// <paramref name="collectionDepth"/>. Also, not instead: the property binding is what answers a null test
+    /// and an index, and the collection binding is what answers the quantifiers, and they are three questions
+    /// about one thing. That depth is a separate budget from <paramref name="maxDepth"/>, since how far into an
+    /// element is worth going has nothing to do with how far into the entity it was found.
+    /// </para>
     /// </remarks>
     /// <param name="bindings">the list being built, added to in place</param>
     /// <param name="type">the type to walk</param>
@@ -110,9 +153,14 @@ internal static class BindingResolver
     /// <param name="settings"></param>
     /// <param name="ancestors">the types found on the path to here, used for loop-checking
     /// </param>
+    /// <param name="collections">
+    /// [OPT] where to put the collections found, added to in place. Null gathers none, which is what a caller
+    /// wanting only the property list asks for
+    /// </param>
+    /// <param name="collectionDepth">[OPT] how far into an element to go, 0 being the element's own properties</param>
     /// <returns>the same list, for the caller that started it</returns>
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    internal static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors)
+    internal static IReadOnlyList<BindingRequest> ResolveBindables(List<BindingRequest> bindings, Type type, int depth, int maxDepth, string prefix, BindingResolutionSettings settings, HashSet<Type> ancestors, List<CollectionBindingRequest>? collections = null, int collectionDepth = 0)
     {
         ancestors.Add(type); // Opened on the way in and closed on the way out
 
@@ -130,10 +178,13 @@ internal static class BindingResolver
                 {
                     bindings.Add(new(pathName, KeyFor(pathName)));
 
+                    // And a second entry where it is a collection worth quantifying over, the key answering both
+                    if (collections is not null) { Elements(property.PropertyType, settings, collectionDepth, pathName, collections); }
+
                     // if we haven't bottomed out, and settings say the property should be expanded
                     if ((depth < maxDepth) && (ShouldExpandType(property.PropertyType, settings, pathName, ancestors)))
                     {
-                        ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings, ancestors);
+                        ResolveBindables(bindings, property.PropertyType, depth + 1, maxDepth, pathName, settings, ancestors, collections, collectionDepth);
                     }
                 }
             }
@@ -144,5 +195,31 @@ internal static class BindingResolver
         }
 
         return bindings;
+    }
+
+    /// <summary>
+    /// Record what may be asked about one element of a collection, where the property is one worth quantifying
+    /// over.
+    /// </summary>
+    /// <remarks>
+    /// The element is walked from its own root rather than from the entity's, so the paths inside are the
+    /// element's and any <see cref="BindingResolutionSettings.IgnorePaths"/> matched here are element-relative.
+    /// Loop checking starts fresh for the same reason, the depth given being what bounds it.
+    /// </remarks>
+    /// <param name="type">the property's declared type</param>
+    /// <param name="settings"></param>
+    /// <param name="collectionDepth">how far into an element to go, 0 being the element's own properties</param>
+    /// <param name="path">the path to the collection, which becomes the key</param>
+    /// <param name="found">the list being built, added to in place</param>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    private static void Elements(Type type, BindingResolutionSettings settings, int collectionDepth, string path, List<CollectionBindingRequest> found)
+    {
+        if (ElementTypeOf(type) is not { } element) { return; }
+        if (ShouldIgnoreType(element, settings)) { return; }
+
+        var bindings = ResolveBindables(new List<BindingRequest>(), element, 0, collectionDepth, "", settings, new HashSet<Type>());
+
+        // Nothing to name inside is nothing to quantify over, and BindCollection refuses an empty set anyway
+        if (bindings.Count > 0) { found.Add(new(path, KeyFor(path), element, bindings)); }
     }
 }

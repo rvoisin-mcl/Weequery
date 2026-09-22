@@ -24,7 +24,7 @@ namespace Weequery;
 /// </para>
 /// <para>
 /// The fields inside resolve against the collection's own allow-list rather than the entity's, see
-/// <see cref="Inquiry{T}.BindCollection"/>. Nothing is reachable inside a collection until it is bound there,
+/// <see cref="CollectionBindingSet{TElement}"/>. Nothing is reachable inside a collection until it is bound there,
 /// which is the same rule the outer bindings follow.
 /// </para>
 /// <para>

@@ -20,7 +20,7 @@ namespace Weequery;
 /// </code>
 /// <para>
 /// A field may carry an index, as it may anywhere else: <c>Tallies[apples]</c> projects that one element. It may not be 
-/// a bound collection, which has no single value to read, see <see cref="Inquiry{T}.BindCollection"/>.
+/// a bound collection, which has no single value to read, see <see cref="CollectionBindingSet{TElement}"/>.
 /// </para>
 /// </remarks>
 /// <param name="Fields">

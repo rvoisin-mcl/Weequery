@@ -138,6 +138,69 @@ public partial class Inquiry<T> where T : class
     }
 
     /// <summary>
+    /// Bind a collection and <b>resolve</b> what may be asked about one of its elements, rather than declaring
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same call as the one taking a configuring action, with the element's allow-list walked out of the
+    /// element type by <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/> instead of
+    /// written by hand:
+    /// <code>
+    /// .BindCollection(minion =&gt; minion.LairAssignments, "Assignments")
+    /// .ApplyCondition("Assignments Any (Lair.Name = 'Volcano')")
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>The depth is counted from the element</b>, exactly as the other one counts from the entity, and it
+    /// defaults to the same 1. On a link table that is usually what you want: 0 binds only the element's own
+    /// columns, which for a row that exists to join two things is a pair of ids and little else, where 1 reaches
+    /// through to the far side and is the second hop of the join.
+    /// <code>
+    /// .BindCollection(minion =&gt; minion.LairAssignments, "Assignments", 0)   // LairID, MinionID, Lair, Minion
+    /// .BindCollection(minion =&gt; minion.LairAssignments, "Assignments")      // ...and Lair.Name, Lair.Capacity
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>Read the warning on <see cref="ResolveBindables(int, BindingResolutionSettings, BindingUse)"/>, which
+    /// applies here twice over.</b> This opens the element type, and at the default depth the one past it, so
+    /// everything either of them can reach is nameable inside the quantifier. Resolve it once and read what you
+    /// got before you ship it, or declare the inside by hand where the element is anything you would not publish.
+    /// </para>
+    /// <para>
+    /// There is no <see cref="BindingUse"/> here because an element has none: it is tested, and never sorted on
+    /// or read back, so the only question is whether it is nameable at all.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TElement">what the collection holds</typeparam>
+    /// <param name="selector">the collection property</param>
+    /// <param name="key">the name a caller writes the quantifier against</param>
+    /// <param name="maxDepth">
+    /// [OPT] how many levels below the element to reach. Defaults to 1, and bounded to [0, 16]
+    /// </param>
+    /// <param name="settings">
+    /// [OPT] what to leave out, matched against paths inside the element rather than inside the entity
+    /// </param>
+    /// <returns>a copy carrying the binding</returns>
+    /// <exception cref="WeequeryException">
+    /// the key is invalid or already in use, the property is not a collection, or the element resolved to
+    /// nothing, which is the same refusal declaring an empty set gets
+    /// </exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    public Inquiry<T> BindCollection<TElement>(
+        Expression<Func<T, IEnumerable<TElement>?>> selector,
+        string key,
+        int maxDepth = 1,
+        BindingResolutionSettings? settings = null)
+        where TElement : class
+    {
+        // The element is an entity as far as resolution is concerned, so this is the same walk, one level down.
+        // An element resolving to nothing falls through to the refusal the declaring form already gives.
+        return BindCollection(selector, key, inner => inner.BindProperties(Inquiry<TElement>.ResolveBindables(maxDepth, settings)));
+    }
+
+    /// <summary>
     /// Refuse a property binding if a collection is using the same key
     /// </summary>
     /// <returns>the copy it was called on, so it can be returned from the binding call</returns>

@@ -6,7 +6,7 @@ namespace Weequery;
 
 /// <summary>
 /// What may be asked about one element of a bound collection, declared when the collection is bound. See
-/// <see cref="Inquiry{T}.BindCollection"/>.
+/// <see cref="Inquiry{T}.BindCollection{TElement}(Expression{Func{T, IEnumerable{TElement}}}, string, Action{CollectionBindingSet{TElement}})"/>.
 /// </summary>
 /// <remarks>
 /// <para>

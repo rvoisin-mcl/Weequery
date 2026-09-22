@@ -203,7 +203,7 @@ public enum Operator
     /// The quantifiers are the one family that takes a condition rather than values, so they carry a whole test
     /// scoped to the element: "Assignments Any (LairID = 5 AND IsPrimary = true)" asks for one assignment that is
     /// both, which is a different question from two separate tests over the collection. What may be asked about
-    /// inside is its own allow-list, see <see cref="Inquiry{T}.BindCollection"/>.
+    /// inside is its own allow-list, see <see cref="CollectionBindingSet{TElement}"/>.
     /// </para>
     /// <para>
     /// <b>Total rather than nullable.</b> Unlike every operator above, there is no unknown here: either some

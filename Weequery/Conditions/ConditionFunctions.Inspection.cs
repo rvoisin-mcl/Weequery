@@ -31,7 +31,7 @@ public static partial class ConditionFunctions
     /// <para>
     /// <b>Stops at a quantifier</b>, taking the collection's key and not the fields inside it. Those resolve
     /// against the collection's own allow-list rather than the entity's, see
-    /// <see cref="Inquiry{T}.BindCollection"/>, so putting them in one flat list would say a field is bound on the
+    /// <see cref="CollectionBindingSet{TElement}"/>, so putting them in one flat list would say a field is bound on the
     /// entity when it is not. Walk into <see cref="QuantifiedCondition.Condition"/> and call this again to get
     /// them.
     /// </para>

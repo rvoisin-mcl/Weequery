@@ -987,6 +987,31 @@ Assignments None (LairID = 5)
 `Any`, `All` and `None`. The parentheses are not decoration: without them the end of the inner condition would be
 indistinguishable from the start of whatever follows it.
 
+**Or have it resolved for you**, where writing the inside out by hand is not what you came here for. Leave the
+action off and hand it a depth instead, and the element's allow-list is walked out of the element type by the
+same [`ResolveBindables`](#binding-all-of-it-against-my-better-judgement) that walks the entity:
+
+```csharp
+.BindCollection(minion => minion.LairAssignments, "Assignments")
+.ApplyCondition("Assignments Any (Lair.Name = 'Volcano')")
+```
+
+**The depth is counted from the element**, exactly as the other one counts from the entity, and it defaults to
+the same 1. On a link table that is usually what you want: `0` binds the element's own columns, which for a row
+that exists to join two things is a pair of ids and the two things they point at, where the default reaches
+through to the far side and gives you the second hop for nothing:
+
+```csharp
+.BindCollection(minion => minion.LairAssignments, "Assignments", 0)   // LairID, MinionID, Lair, Minion
+.BindCollection(minion => minion.LairAssignments, "Assignments")      // ...and Lair.Name, Lair.Capacity
+```
+
+And **the warning above applies here twice over**, because this opens the element type and, at the default depth,
+the one past it. Everything either can reach becomes nameable inside the brackets. Read what you got, or declare
+the inside by hand where the element is anything you would not publish. There is no `BindingUse` to set, an
+element having none: it is tested, never sorted on and never read back.
+
+
 **The inside is its own allow-list.** Binding the collection exposes nothing within it. `Assignments` on its own
 is not a field a caller can compare, and `LairName` is not a field they can name outside the brackets. The two
 lists cannot leak into each other, and a key cannot be a property on one and a collection on the other.

@@ -70,6 +70,24 @@ internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<T
     }
 
     /// <inheritdoc/>
+    public ICollectionBinding<TClass>? Without(Func<string, bool> remove)
+    {
+        WeequeryException.ThrowIfNull(remove);
+
+        var kept = Inner
+            .Where(entry => !remove(entry.Key))
+            .ToDictionary(entry => entry.Key, entry => entry.Value, BindingLookup.KeyComparer);
+
+        // Nothing matched, so the collection is returned rather than rebuilt: a binding is immutable and shared,
+        // and a copy of one that did not change is a copy for nothing
+        if (kept.Count == Inner.Count) { return this; }
+
+        // Nothing left inside is nothing to quantify over, which is the state BindCollection refuses to be built
+        // in. The caller takes the collection out rather than keeping one that can answer no condition
+        return (kept.Count == 0) ? null : new CollectionBinding<TClass, TElement>(Key, Collection, kept);
+    }
+
+    /// <inheritdoc/>
     public IReadOnlyList<BoundBinding> ListElements()
     {
         // Test rather than the grant the binding carries. An element is only ever tested: the inner set has no

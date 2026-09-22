@@ -589,15 +589,44 @@ public partial class Inquiry<T> where T : class
     /// binding's use only ever widening, see <see cref="Binding{TClass}.Widened"/>
     /// <code>
     /// .BindResolve()
-    /// .RemoveBinding("Pay", BindingUse.Condition | BindingUse.Sort)   // still readable, no longer testable
-    /// .RemoveBinding("PasswordHash")                                  // gone entirely
+    /// .RemoveBinding("Pay", BindingUse.Test | BindingUse.Sort)   // still readable, no longer testable
+    /// .RemoveBinding("PasswordHash")                             // gone entirely
     /// </code>
     /// </para>
     /// <para>
-    /// Bound collections are only ever testable, so any Remove against one will remove it entirely
+    /// <b>It takes the wildcards a projection takes</b>, with the same meanings, see
+    /// <see cref="Projection.Wildcard"/>. A trailing <c>.*</c> stands for everything under a branch and not the
+    /// branch itself, so "Lair.*" leaves Lair bound and testable for null, and a bare <c>*</c> stands for all of
+    /// it:
+    /// <code>
+    /// .RemoveBinding("Lair.*")     // Lair.Name, Lair.Capacity; Lair itself stays
+    /// .RemoveBinding("*")          // every binding, and every collection with it
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <b>And it reaches inside a collection</b>, in the spelling <see cref="ListBindings"/> reports, see
+    /// <see cref="BoundBinding.ElementMarker"/>. That is the only way to subtract in there at all, an element's
+    /// keys not being keys of this Inquiry:
+    /// <code>
+    /// .RemoveBinding("Assignments[].*")            // nothing may be asked about an element any more
+    /// .RemoveBinding("Assignments[].Minion.*")     // the far side of the link table, and no more than that
+    /// .RemoveBinding("Assignments[].Lair.Name")    // just the one
+    /// </code>
+    /// Emptying the inside takes the collection with it, an empty allow-list being one no condition can satisfy.
+    /// The <i>property</i> binding is untouched either way, so the key stays there to be null tested and indexed
+    /// and only the quantifier goes.
+    /// </para>
+    /// <para>
+    /// Bound collections are only ever testable, so any Remove against one will remove it entirely, and one that
+    /// does not include <see cref="BindingUse.Test"/> leaves every collection and every element alone.
+    /// </para>
+    /// <para>
+    /// <b>A wildcard matching nothing is not an error here</b>, which is where this parts company with a
+    /// projection. A projection naming nothing would quietly return nothing and is worth hearing about; a
+    /// subtraction that subtracts nothing has already done what it said it would.
     /// </para>
     /// </remarks>
-    /// <param name="key">the binding name</param>
+    /// <param name="key">the binding name, a wildcard, or a path into a collection</param>
     /// <param name="use">
     /// [OPT] what to stop it being used for, <see cref="BindingUse.All"/> by default
     /// </param>
@@ -607,72 +636,141 @@ public partial class Inquiry<T> where T : class
     {
         WeequeryException.ThrowIfNullOrEmpty(key);
 
+        return RemoveBindings([key], use);
+    }
+
+    /// <summary>
+    /// Batch variant <see cref="RemoveBinding(string, BindingUse)"/>, which takes the same wildcards.
+    /// </summary>
+    /// <remarks>
+    /// Applied in the order given, though the order cannot matter: every one of them subtracts, and nothing here
+    /// puts anything back.
+    /// </remarks>
+    /// <param name="keys">the binding names</param>
+    /// <param name="use">
+    /// [OPT] what to stop them being used for, <see cref="BindingUse.All"/> by default
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">a key is null or empty</exception>
+    public Inquiry<T> RemoveBindings(IEnumerable<string> keys, BindingUse use = BindingUse.All)
+    {
+        WeequeryException.ThrowIfNull(keys);
+
+        // Enumerated once, the caller's sequence being theirs rather than something to walk twice
+        var wanted = keys.ToList();
+
+        if (wanted.Count == 0) { return this; } // NOP
+
         var next = Copy();
 
-        if (next.Bindings.TryGetValue(key, out var existing))
+        foreach (var key in wanted)
         {
-            var narrowed = existing.Narrowed(use);
+            WeequeryException.ThrowIfNullOrEmpty(key, nameof(keys));
 
-            // No uses left, remove the binding entirely
-            if (narrowed.Use == BindingUse.None)
-            {
-                next.Bindings.Remove(key);
-            }
-            else
-            {
-                next.Bindings[key] = narrowed;
-            }
-        }
-
-        if (use.HasFlag(BindingUse.Test))
-        {
-            next.Collections.Remove(key);
+            next.Subtract(key, use);
         }
 
         return next;
     }
 
     /// <summary>
-    /// Batch variant <see cref="RemoveBinding(string, BindingUse)"/>
+    /// One subtraction, applied in place, which is safe here and nowhere else: this runs against a
+    /// <see cref="Copy"/> that nothing outside has seen yet.
     /// </summary>
-    /// <param name="keys">the binding names</param>
-    /// <param name="use">
-    /// [OPT] what to stop it being used for, <see cref="BindingUse.All"/> by default
-    /// </param>
-    /// <returns></returns>
-    /// <exception cref="WeequeryException">the key is null or empty</exception>
-    public Inquiry<T> RemoveBindings(IEnumerable<string> keys, BindingUse use = BindingUse.All)
+    /// <param name="field">a key, a wildcard, or a path into a collection</param>
+    /// <param name="use">what to stop it being used for</param>
+    private void Subtract(string field, BindingUse use)
     {
-        WeequeryException.ThrowIfNull(keys);
+        var inside = InsideOfACollection(field);
 
-        if (!keys.Any()) { return this; } // NOP
-
-        var next = Copy();
-
-        foreach (var key in keys)
+        // A field naming the inside of a collection is the collection's to answer, the inner set being keyed by
+        // the element's own names and reachable from nowhere else
+        if (inside.Collection is not null)
         {
-            if (next.Bindings.TryGetValue(key, out var existing))
-            {
-                var narrowed = existing.Narrowed(use);
+            SubtractInside(inside.Collection, inside.Inside, use);
 
-                // No uses left, remove the binding entirely
-                if (narrowed.Use == BindingUse.None)
-                {
-                    next.Bindings.Remove(key);
-                }
-                else
-                {
-                    next.Bindings[key] = narrowed;
-                }
-            }
-
-            if (use.HasFlag(BindingUse.Test))
-            {
-                next.Collections.Remove(key);
-            }
+            return;
         }
 
-        return next;
+        var matches = Matching(field);
+
+        foreach (var key in Bindings.Keys.Where(matches).ToList()) { Narrow(key, use); }
+
+        if (use.HasFlag(BindingUse.Test))
+        {
+            foreach (var key in Collections.Keys.Where(matches).ToList()) { Collections.Remove(key); }
+        }
+    }
+
+    /// <summary>
+    /// Narrow one binding to what is left of it, and drop it where that is nothing
+    /// </summary>
+    /// <param name="key">a key, already matched, so it is one this holds</param>
+    /// <param name="use">what to stop it being used for</param>
+    private void Narrow(string key, BindingUse use)
+    {
+        if (!Bindings.TryGetValue(key, out var existing)) { return; }
+
+        var narrowed = existing.Narrowed(use);
+
+        // No uses left, so the binding goes rather than staying as a name that answers nothing
+        if (narrowed.Use == BindingUse.None) { Bindings.Remove(key); }
+        else { Bindings[key] = narrowed; }
+    }
+
+    /// <summary>
+    /// Take part of a collection's inside away, and the collection too where that leaves nothing in it
+    /// </summary>
+    /// <param name="collection">the collection's key</param>
+    /// <param name="inside">a key or a wildcard, in the element's own terms</param>
+    /// <param name="use">what to stop it being used for</param>
+    private void SubtractInside(string collection, string inside, BindingUse use)
+    {
+        // An element is only ever tested, so a subtraction of anything less leaves the inside alone
+        if (!use.HasFlag(BindingUse.Test)) { return; }
+
+        if (!Collections.TryGetValue(collection, out var bound)) { return; }
+
+        var kept = bound.Without(Matching(inside));
+
+        if (kept is null) { Collections.Remove(collection); }
+        else { Collections[collection] = kept; }
+    }
+
+    /// <summary>
+    /// The collection a field names the inside of, and what it names in there.
+    /// </summary>
+    /// <remarks>
+    /// The marker cannot be mistaken for part of a name, a key holding a bracket being refused at binding time,
+    /// so the first one found is the boundary.
+    /// </remarks>
+    /// <param name="field">a key, a wildcard, or a path into a collection</param>
+    /// <returns>("Assignments", "Lair.*") for "Assignments[].Lair.*", and a null collection for anything else</returns>
+    private static (string? Collection, string Inside) InsideOfACollection(string field)
+    {
+        var marker = $"{BoundBinding.ElementMarker}.";
+
+        var at = field.IndexOf(marker, StringComparison.Ordinal);
+
+        return (at < 0) ? (null, field) : (field[..at], field[(at + marker.Length)..]);
+    }
+
+    /// <summary>
+    /// What a field stands for, which is one key, a branch of them, or all of them.
+    /// </summary>
+    /// <remarks>
+    /// The wildcards are <see cref="ProjectionWildcard"/>'s rather than a second set that happens to look like
+    /// them, so "Lair.*" cannot come to mean one thing in a projection and another in a subtraction.
+    /// </remarks>
+    /// <param name="field">a key or a wildcard</param>
+    /// <returns>a predicate over keys</returns>
+    private static Func<string, bool> Matching(string field)
+    {
+        if (ProjectionWildcard.IsEverything(field)) { return _ => true; }
+
+        return (ProjectionWildcard.Prefix(field) is string prefix)
+            ? key => ProjectionWildcard.Under(key, prefix)
+            : key => BindingLookup.KeyComparer.Equals(key, field);
     }
 
     /// <summary>

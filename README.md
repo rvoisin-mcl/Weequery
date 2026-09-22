@@ -346,7 +346,37 @@ A binding left with no uses is removed entirely away rather than uselessly kept.
 changes nothing.
 
 A bound collection has no use of its own (it answers a quantifier, which is a condition, and nothing else) so
-a subtraction including `Condition` takes it away and one that does not leaves it alone.
+a subtraction including `Test` takes it away and one that does not leaves it alone.
+
+**It takes the wildcards a projection takes**, and deliberately the same code decides what they match, so
+`Lair.*` cannot come to mean one thing when you [read it back](#and-reading-back-what-you-bound) and another when
+you remove it. A trailing `.*` is everything under a branch and *not* the branch itself:
+
+```csharp
+.RemoveBinding("Lair.*")     // Lair.Name, Lair.Capacity; Lair itself stays, still testable for null
+.RemoveBinding("*")          // all of it, collections included
+```
+
+The dot is load-bearing. `"Lair.*"` cannot sweep in a key called `Lairyard`, which is exactly why the prefix keeps
+it.
+
+**And it reaches inside a collection**, in the spelling `ListBindings` reports. This is the *only* way to subtract
+in there, an element's keys not being keys of the query:
+
+```csharp
+.RemoveBinding("Assignments[].*")            // nothing may be asked about an element any more
+.RemoveBinding("Assignments[].Minion.*")     // the far side of the link table, and no more than that
+.RemoveBinding("Assignments[].Lair.Name")    // just the one, no wildcard needed
+```
+
+Emptying the inside takes the collection with it, an empty allow-list being one no condition can satisfy. The
+*property* binding is untouched either way, so the key is still there to be [indexed](#reaching-into-a-collection)
+and tested for null, and only the quantifier goes. Which makes it the after-the-fact twin of
+`IgnorePaths = ["Assignments[]."]`, and you want that one more often, for the reason below.
+
+A wildcard that matches nothing is not an error here, though it is in a projection. A projection naming nothing
+would quietly hand you nothing back and you would want to hear about it; a subtraction that subtracts nothing has
+already done what it said it would.
 
 `BindingResolutionSettings` subtracts *before*, which is better, because a path that was never resolved cannot be
 forgotten about later. Start from `Standard` and use a `with`, or you will quietly drop the rules it already

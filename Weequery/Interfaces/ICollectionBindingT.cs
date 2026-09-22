@@ -58,6 +58,22 @@ internal interface ICollectionBinding<TClass> : IBinding
     IReadOnlyList<BoundBinding> ListElements();
 
     /// <summary>
+    /// The same collection with part of its inside taken away, see
+    /// <see cref="Inquiry{T}.RemoveBinding(string, BindingUse)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the collection for the reason <see cref="ListElements"/> is: the inner set is keyed by
+    /// <c>Binding{TElement}</c> and TElement is what this interface hides, so only the collection can rebuild
+    /// itself around a smaller one.
+    /// </remarks>
+    /// <param name="remove">what to take out, asked of each key the inner set holds</param>
+    /// <returns>
+    /// the collection unchanged where nothing matched, a smaller one where some did, and null where the inner set
+    /// would be left empty, an empty one being unable to answer any condition at all
+    /// </returns>
+    ICollectionBinding<TClass>? Without(Func<string, bool> remove);
+
+    /// <summary>
     /// The test for a quantifier over this collection, as an expression on the entity's own parameter.
     /// </summary>
     /// <param name="quantifier"><see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/></param>

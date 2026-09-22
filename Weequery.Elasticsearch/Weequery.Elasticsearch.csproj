@@ -3,6 +3,11 @@
 	<PropertyGroup>
 		<Description>Elasticsearch support for Weequery. Turns a Weequery condition tree into Elasticsearch Query DSL, so the same filter a caller sends to your database can be sent to your index. Emits plain JSON through System.Text.Json, so it works with any Elasticsearch client or none. No dependencies.</Description>
 		<PackageTags>weequery;elasticsearch;opensearch;query-dsl;filtering;sorting;paging;dynamic-query;query-language</PackageTags>
+		<PackageReleaseNotes>
+First release. Turns a Weequery condition tree into Elasticsearch Query DSL, so the same filter a caller sends
+to your database can be sent to your index. Plain JSON through System.Text.Json, so it works with any
+Elasticsearch client. Requires Weequery 3.0.0.
+		</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

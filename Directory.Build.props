@@ -38,6 +38,7 @@
 		<Copyright>&#169;2026 MacLean Engineering &amp; Marketing Co. Ltd.</Copyright>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>maclean_128x128.png</PackageIcon>
 		<RepositoryUrl>https://github.com/rvoisin-mcl/Weequery</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
@@ -69,9 +70,14 @@
 		<IsAotCompatible>true</IsAotCompatible>
 	</PropertyGroup>
 
-	<!-- Every package carried the same licence, and each one said so for itself -->
+	<!--
+	  Every package carried the same licence, and each one said so for itself. The icon is here for the same
+	  reason and has to be: PackageIcon names a file inside the package rather than a path on disk, so the
+	  property above is only half of it and a package setting one without packing the other is refused outright.
+	-->
 	<ItemGroup>
 		<None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" />
+		<None Include="$(MSBuildThisFileDirectory)maclean_128x128.png" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
 </Project>

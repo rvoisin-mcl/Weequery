@@ -3,6 +3,11 @@
 	<PropertyGroup>
 		<Description>AutoMapper support for Weequery. Filter, sort and page with Weequery, then read the rows back as your own DTO through AutoMapper's ProjectTo, so only the columns the DTO needs leave the database. Adds ProjectTo and ProjectToPaged to Inquiry.</Description>
 		<PackageTags>weequery;automapper;projectto;iqueryable;linq;efcore;dto;projection</PackageTags>
+		<PackageReleaseNotes>
+First release. Adds ProjectTo and ProjectToPaged to Inquiry, so a filtered, sorted and paged query is read back
+as your own DTO through AutoMapper's ProjectTo and only the columns the DTO needs leave the database. Requires
+Weequery 3.0.0.
+		</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

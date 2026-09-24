@@ -74,4 +74,31 @@ public class BindingBenchmarks
                 .BindProperty(assignment => assignment.Stipend)
                 .BindProperty(assignment => assignment.IsPrimary));
     }
+
+    /// <summary>
+    /// Resolving the entity's own properties, and the own properties of what its collections hold.
+    /// </summary>
+    [Benchmark(Description = "bind: resolve, depth 0")]
+    public Inquiry<Henchman> BindResolveShallow()
+    {
+        return Empty.WithWeequery().BindResolve(maxDepth: 0);
+    }
+
+    /// <summary>
+    /// Resolving at the default depth, which reaches the far side of a link table.
+    /// </summary>
+    [Benchmark(Description = "bind: resolve, depth 1")]
+    public Inquiry<Henchman> BindResolveDefault()
+    {
+        return Empty.WithWeequery().BindResolve();
+    }
+
+    /// <summary>
+    /// Resolving with settings built fresh for the call, which is how a request handler usually writes them.
+    /// </summary>
+    [Benchmark(Description = "bind: resolve, depth 1, fresh settings")]
+    public Inquiry<Henchman> BindResolveFreshSettings()
+    {
+        return Empty.WithWeequery().BindResolve(settings: BindingResolutionSettings.Default with { IgnorePaths = ["Pay"] });
+    }
 }

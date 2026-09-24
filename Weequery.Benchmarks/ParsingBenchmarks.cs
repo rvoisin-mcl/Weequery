@@ -44,7 +44,7 @@ public class ParsingBenchmarks
     [Benchmark(Description = "parse: filter and sort together")]
     public ParsedQuery ParseFilterAndSort()
     {
-        return ParsedQuery.Parse("IsActive = true AND Pay > 10000 ORDER BY Pay DESC, Name");
+        return ParsedQuery.Parse("IsActive = true AND Pay > 10000 OrderBy Pay DESC, Name");
     }
 
     /// <summary>

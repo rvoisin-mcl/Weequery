@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Weequery.Bindings;
+using Weequery.Interfaces;
 
 namespace Weequery;
 
@@ -234,26 +235,40 @@ public partial class Inquiry<T> where T : class
                 throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{request.Key}'");
             }
 
-            // The element type is a Type rather than a type argument here, so the one call needing it closed has
-            // to be closed by hand
-            typeof(Inquiry<T>)
-                .GetMethod(nameof(AddCollection), BindingFlags.NonPublic | BindingFlags.Instance)!
-                .MakeGenericMethod(request.ElementType)
-                .Invoke(next, [request]);
+            next.Collections[request.Key] = CreateCollection(request);
         }
 
         return next.RefuseDuplicateKeys();
     }
 
     /// <summary>
-    /// Add one resolved collection in place, which is safe because the caller is holding a copy
+    /// Build one resolved collection
     /// </summary>
-    /// <typeparam name="TElement">what the collection holds</typeparam>
     /// <param name="request">the path, the key and what an element answers</param>
+    /// <returns>the collection, immutable and so safe to share</returns>
     /// <exception cref="WeequeryException">the path does not resolve, or nothing was bound inside</exception>
     [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
-    private void AddCollection<TElement>(CollectionBindingRequest request)
+    private static ICollectionBinding<T> CreateCollection(CollectionBindingRequest request)
+    {
+        // The element type is a Type rather than a type argument here, so the one call needing it closed has
+        // to be closed by hand
+        return (ICollectionBinding<T>)typeof(Inquiry<T>)
+            .GetMethod(nameof(CreateCollectionOf), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(request.ElementType)
+            .Invoke(null, [request])!;
+    }
+
+    /// <summary>
+    /// Build one resolved collection, once its element type is a type argument
+    /// </summary>
+    /// <typeparam name="TElement">what the collection holds</typeparam>
+    /// <param name="request">the path, the key and what an element answers</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the path does not resolve, or nothing was bound inside</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    private static CollectionBinding<T, TElement> CreateCollectionOf<TElement>(CollectionBindingRequest request)
         where TElement : class
     {
         var collection = Binding<T>.Create(SharedBindingParameter, request.PropertyPath, bindings: null);
@@ -266,7 +281,7 @@ public partial class Inquiry<T> where T : class
             throw new WeequeryException(WeequeryError.BindingInvalid, $"Nothing was bound inside '{request.Key}', so no condition could be written about one of its elements");
         }
 
-        Collections[request.Key] = new CollectionBinding<T, TElement>(request.Key, collection, inner.Bindings);
+        return new CollectionBinding<T, TElement>(request.Key, collection, inner.Bindings);
     }
 
     /// <summary>
@@ -383,21 +398,32 @@ public partial class Inquiry<T> where T : class
 
         var next = Copy();
 
-        foreach (var binding in BindingSetCache<T>.For(bindingRequests, SharedBindingParameter))
+        next.MergeBindings(BindingSetCache<T>.For(bindingRequests, SharedBindingParameter));
+
+        return next.RefuseDuplicateKeys();
+    }
+
+    /// <summary>
+    /// Add a set of built bindings in place, which is safe because the caller is holding a copy. A key already
+    /// bound to the same property is merged, see <see cref="BindProperties"/>.
+    /// </summary>
+    /// <param name="bindings">what to add; read, never changed, since it may be shared</param>
+    /// <exception cref="WeequeryException">a key points to a different property, or attempts to merge distinct converters</exception>
+    private void MergeBindings(Dictionary<string, Binding<T>> bindings)
+    {
+        foreach (var binding in bindings)
         {
-            if (next.Bindings.TryGetValue(binding.Key, out var existing))
+            if (Bindings.TryGetValue(binding.Key, out var existing))
             {
                 if (!Binding<T>.IsSameBinding(existing, binding.Value)) { throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{binding.Key}'"); }
 
-                next.Bindings[binding.Key] = Binding<T>.Merged(existing, binding.Value, binding.Key);
+                Bindings[binding.Key] = Binding<T>.Merged(existing, binding.Value, binding.Key);
 
                 continue;
             }
 
-            next.Bindings[binding.Key] = binding.Value;
+            Bindings[binding.Key] = binding.Value;
         }
-
-        return next.RefuseDuplicateKeys();
     }
 
     /// <summary>
@@ -540,10 +566,14 @@ public partial class Inquiry<T> where T : class
     /// </para>
     /// <para>
     /// <b>Depth is not free, and it is the elements that make it expensive.</b> Going from 0 to 1 took one model
-    /// from 18 nameable keys to 124, because the far side of a link table is the whole of another entity, and the
-    /// per call cost from 19us to 430us: a property set is resolved once for the process and kept, and the
-    /// bindings inside a collection are not. Ask for the depth where you want the second hop, and read what you
-    /// got.
+    /// from 18 nameable keys to 124, because the far side of a link table is the whole of another entity. Ask for
+    /// the depth where you want the second hop, and read what you got.
+    /// </para>
+    /// <para>
+    /// <b>The cost is paid once per distinct call.</b> What is bound, collections included, is kept for the
+    /// process under the depth, the settings and the use it was asked for, so a repeat walks nothing and builds
+    /// nothing. The settings are compared by what they hold rather than by reference, so building them fresh per
+    /// request still finds the entry, and changing a set after the call does not change what was kept under it.
     /// </para>
     /// <para>
     /// Not every sequence is one. A <c>List&lt;string&gt;</c>, a dictionary, an array of numbers and a string
@@ -569,11 +599,32 @@ public partial class Inquiry<T> where T : class
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
     public Inquiry<T> BindResolve(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
-        var next = BindProperties(ResolveBindables(maxDepth, settings, use));
+        maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
+        settings ??= BindingResolutionSettings.Default;
 
-        var collections = ResolveBindableCollections(maxDepth, settings);
+        // Keyed on what was asked for, so a repeat walks nothing and builds nothing, see BindingSetCache
+        var resolved = BindingSetCache<T>.ForResolution(maxDepth, settings, use, () => new ResolvedBindingSet<T>(
+            BindingSetCache<T>.Build(ResolveBindables(maxDepth, settings, use), SharedBindingParameter),
+            [.. ResolveBindableCollections(maxDepth, settings).Select(CreateCollection)]));
 
-        return (collections.Count == 0) ? next : next.BindCollections(collections);
+        var next = Copy();
+
+        next.MergeBindings(resolved.Properties);
+        next.RefuseDuplicateKeys();
+
+        if (resolved.Collections.Count == 0) { return next; }
+
+        foreach (var collection in resolved.Collections)
+        {
+            if (next.Collections.ContainsKey(collection.Key))
+            {
+                throw new WeequeryException(WeequeryError.KeyTaken, $"Binding already exists for '{collection.Key}'");
+            }
+
+            next.Collections[collection.Key] = collection;
+        }
+
+        return next.RefuseDuplicateKeys();
     }
 
     /// <summary>

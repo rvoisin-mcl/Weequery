@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Text;
+using Weequery.Interfaces;
 
 namespace Weequery.Bindings;
 
@@ -50,6 +51,25 @@ internal static class BindingSetCache<T> where T : class
         var key = CacheKey(requests);
         if (BindingSets.TryGetValue(key, out var cached)) { return cached; }
 
+        var bindings = Build(requests, parameter);
+
+        // Two threads meeting on the same new set both build one, and either will do
+        if (BindingSets.Count < MaxCachedBindingSets) { BindingSets.TryAdd(key, bindings); }
+
+        return bindings;
+    }
+
+    /// <summary>
+    /// Build the bindings for a set of requests, without looking in or adding to the cache
+    /// </summary>
+    /// <param name="requests"></param>
+    /// <param name="parameter">the shared parameter every binding for this type hangs off</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">a request names a property that cannot be bound, or two claim one key</exception>
+    [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    internal static Dictionary<string, Binding<T>> Build(IEnumerable<BindingRequest> requests, ParameterExpression parameter)
+    {
         // Against the shared parameter, so these compose with anything else bound for this type
         Dictionary<string, Binding<T>> bindings = BindingLookup.Create<T>();
         foreach (var bindingDefinition in requests)
@@ -57,10 +77,51 @@ internal static class BindingSetCache<T> where T : class
             Binding<T>.Create(parameter, bindingDefinition.PropertyPath, bindings, bindingDefinition.Key, bindingDefinition.Use);
         }
 
-        // Two threads meeting on the same new set both build one, and either will do
-        if (BindingSets.Count < MaxCachedBindingSets) { BindingSets.TryAdd(key, bindings); }
-
         return bindings;
+    }
+
+    /// <summary>
+    /// What <see cref="Inquiry{T}.BindResolve"/> built for T, keyed by what it was asked for rather than by what
+    /// the walk returned.
+    /// </summary>
+    private static readonly ConcurrentDictionary<ResolutionKey, ResolvedBindingSet<T>> ResolvedSets = new();
+
+    /// <summary>
+    /// How many distinct resolutions to hold, arbitrary, as <see cref="MaxCachedBindingSets"/> is.
+    /// </summary>
+    private const int MaxCachedResolvedSets = 64;
+
+    /// <summary>
+    /// The bindings a <see cref="Inquiry{T}.BindResolve"/> call produces, built once per distinct set of arguments
+    /// and kept.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keyed on the arguments rather than on the requests they resolve to, which is what makes a hit cheap: the
+    /// walk itself, and the collections inside it, are what a resolution costs, and a key built from the requests
+    /// could only be built after walking. Both halves are kept, so a repeated call walks nothing and builds nothing.
+    /// </para>
+    /// <para>
+    /// The settings are compared by what they hold, see <see cref="ResolutionKey"/>, so settings built fresh per
+    /// request find the entry the first one made.
+    /// </para>
+    /// </remarks>
+    /// <param name="maxDepth">already bounded to [0, 16]</param>
+    /// <param name="settings">already defaulted</param>
+    /// <param name="use">what the bindings may be used for</param>
+    /// <param name="resolve">builds the set on a miss</param>
+    /// <returns>a set that must be treated as read only, since it is shared</returns>
+    internal static ResolvedBindingSet<T> ForResolution(int maxDepth, BindingResolutionSettings settings, BindingUse use, Func<ResolvedBindingSet<T>> resolve)
+    {
+        var key = new ResolutionKey(maxDepth, settings, use);
+        if (ResolvedSets.TryGetValue(key, out var cached)) { return cached; }
+
+        var resolved = resolve();
+
+        // Two threads meeting on the same new set both build one, and either will do
+        if (ResolvedSets.Count < MaxCachedResolvedSets) { ResolvedSets.TryAdd(key, resolved); }
+
+        return resolved;
     }
 
     /// <summary>
@@ -81,3 +142,11 @@ internal static class BindingSetCache<T> where T : class
     }
 
 }
+
+/// <summary>
+/// Everything a <see cref="Inquiry{T}.BindResolve"/> call binds, see <see cref="BindingSetCache{T}.ForResolution"/>.
+/// </summary>
+/// <param name="Properties">the property bindings, keyed; shared, so read only</param>
+/// <param name="Collections">the collection bindings, each immutable</param>
+/// <typeparam name="T">the entity the bindings are against</typeparam>
+internal sealed record ResolvedBindingSet<T>(Dictionary<string, Binding<T>> Properties, IReadOnlyList<ICollectionBinding<T>> Collections);

@@ -78,6 +78,12 @@ Three ways to say the same nine bindings, which do not cost the same. The fluent
 every time. `BindProperties` goes through the cache and pays for a lookup and a copy. `ResolveBindables` reflects
 over the type, and is the only one of the three that touches reflection at all.
 
+**The `resolve` rows are `BindResolve`, and they are the repeat call.** What it binds, collections included, is
+kept for the process under the depth, the settings and the use it was asked for, so after the first call it walks
+nothing and builds nothing, and costs about what the cached request set does. The first call for each distinct
+set of arguments pays the whole walk, and that is not what these measure. Settings built fresh for every call
+still find the entry, being compared by what they hold, and the last row is what that comparison costs.
+
 {{BindingBenchmarks}}
 
 ## A whole request

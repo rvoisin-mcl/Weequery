@@ -1,31 +1,26 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<Description>Dynamic filtering, sorting and paging for IQueryable, driven by data rather than code. A condition built in code, parsed from a compact query language, or deserialized from a client becomes an expression tree and is applied to a query. You declare which properties are filterable, and callers can filter on those and nothing else. Works with EF Core, where conditions become SQL with values passed as parameters, and in memory over the same data. No dependencies.</Description>
 		<PackageTags>iqueryable;linq;efcore;entity-framework-core;filtering;sorting;paging;expression-trees;dynamic-query;query-language</PackageTags>
 		<PackageReleaseNotes>
-Weequery 3.0.0. A large release; the README covers all of it.
+Weequery 3.1.0.
 
-BREAKING. Inquiry is immutable. ApplyCondition, ApplySorts and every Bind call return a new Inquiry rather than
-changing the one they were called on, so a configured Inquiry can be kept and branched and neither branch can
-reach the other. A chain that discards the return value no longer accumulates anything.
+BEHAVIOUR. BindingResolutionSettings.Default now leaves out anything marked [NotMapped], so BindResolve and
+ResolveBindables with no settings no longer bind a property the model says is not a column. A caller filtering
+in memory on one loses it; assign IgnoreAttributes = [] to keep the 3.0 behaviour.
 
-BREAKING. QueryStyle.Native is the default for reading and writing query strings. QueryStyle.CSharp and
-QueryStyle.Sql are deprecated and will be removed in 4.0; pass one explicitly to keep the old spelling.
+Added: BindingResolutionSettings.IgnoreAttributes. A property carrying a listed attribute is not bound, nor is
+anything below it, nor a property whose type carries one, nor a quantifier over a collection whose element type
+does. Assigning a set replaces the default one, so spread Default.IgnoreAttributes in to add to it. An entry
+that is not an attribute type is refused.
 
-Added: binding resolution, so BindResolve walks the entity and binds what it finds, with
-BindingResolutionSettings to subtract before it does. Collections, with BindCollection and Any, All and None
-over their elements. Projection, so a caller chooses the columns as well as the rows, with * and Prefix.*
-wildcards. Paging, through BuildPaged and PagedQuery. BindingUse, so filtering, sorting and projection are
-granted separately and RemoveBinding revokes any of them, by name or by wildcard. ListBindings, which reads the
-allow-list back so you can see what resolution opened up. Validate, which reports what a query would do before
-it runs. InquirySettings.IgnoreUnboundFields, which drops what it cannot bind rather than refusing the query and
-reports it in DroppedFields. QueryRequest, carrying filter, sort, projection and paging in one object. A
-WeequeryError code on every refusal. Value conversion, per-backend operator support, and trimming and Native AOT
-annotations throughout.
+Faster: BindResolve keeps what it binds, collections included, for the process, under the depth, the settings
+and the use it was asked for. A repeated call walks nothing and builds nothing, and costs about what binding a
+cached request set does. Settings are compared by what they hold, so settings built fresh for every request still
+find the entry.
 
-Companion packages for EF Core, OData, Elasticsearch, AutoMapper, Mapster and Mapperly are released alongside at
-the same version.
+The companion packages are released alongside at the same version.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

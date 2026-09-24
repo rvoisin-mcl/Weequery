@@ -478,6 +478,7 @@ public partial class Inquiry<T> where T : class
     {
         maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
         settings = (settings is null) ? BindingResolutionSettings.Default : new(settings); // use defaults if nothing provided
+        BindingResolver.ThrowIfInvalid(settings);
 
         var resolved = BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
 
@@ -515,9 +516,11 @@ public partial class Inquiry<T> where T : class
     {
         List<CollectionBindingRequest> collections = [];
 
+        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings);
+        BindingResolver.ThrowIfInvalid(settings);
+
         BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0,
-            Math.Min(Math.Max(maxDepth, 0), 16), "",
-            (settings is null) ? BindingResolutionSettings.Default : new(settings),
+            Math.Min(Math.Max(maxDepth, 0), 16), "", settings,
             new HashSet<Type>(), collections);
 
         return collections;

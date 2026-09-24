@@ -19,10 +19,44 @@ internal static class BindingResolver
     /// <returns></returns>
     internal static bool ShouldIgnoreType(Type type, BindingResolutionSettings settings)
     {
+        if (HasIgnoredAttribute(type, settings)) { return true; }
         if (settings.IgnoreTypes.Count == 0) { return false; }
         if (settings.IgnoreTypes.Contains(type)) { return true; }
         if (!settings.IgnoreTypeWhenAssignable) { return false; }
         return settings.IgnoreTypes.Where(ignore => type.IsAssignableTo(ignore)).Any();
+    }
+
+    /// <summary>
+    /// If a property, or a type, carries an attribute the caller asked to leave out, see
+    /// <see cref="BindingResolutionSettings.IgnoreAttributes"/>.
+    /// </summary>
+    /// <param name="member">the property, or the property's declared type</param>
+    /// <param name="settings"></param>
+    /// <returns></returns>
+    internal static bool HasIgnoredAttribute(MemberInfo member, BindingResolutionSettings settings)
+    {
+        if (settings.IgnoreAttributes.Count == 0) { return false; }
+
+        // Attribute.IsDefined rather than MemberInfo.IsDefined, which ignores inherit for a property
+        return settings.IgnoreAttributes.Any(attribute => Attribute.IsDefined(member, attribute, inherit: true));
+    }
+
+    /// <summary>
+    /// Refuse settings that name something other than an attribute as one to ignore
+    /// </summary>
+    /// <param name="settings"></param>
+    /// <exception cref="WeequeryException">an entry in <see cref="BindingResolutionSettings.IgnoreAttributes"/> is not an attribute type</exception>
+    internal static void ThrowIfInvalid(BindingResolutionSettings settings)
+    {
+        WeequeryException.ThrowIfNull(settings.IgnoreAttributes, nameof(settings.IgnoreAttributes));
+
+        foreach (var attribute in settings.IgnoreAttributes)
+        {
+            if ((attribute is null) || (!attribute.IsAssignableTo(typeof(Attribute))))
+            {
+                throw new WeequeryException(WeequeryError.ArgumentInvalid, $"'{attribute?.FullName ?? "null"}' is not an attribute, so it cannot be in {nameof(BindingResolutionSettings.IgnoreAttributes)}");
+            }
+        }
     }
 
     /// <summary>
@@ -183,7 +217,7 @@ internal static class BindingResolver
                 // A value type with no builder cannot be bound
                 if (!ExpressionBuilder.CanBindPropertyType(property.PropertyType)) { continue; }
 
-                if ((!settings.IgnorePaths.Contains(pathName)) && (!ShouldIgnoreType(property.PropertyType, settings)))
+                if ((!settings.IgnorePaths.Contains(pathName)) && (!HasIgnoredAttribute(property, settings)) && (!ShouldIgnoreType(property.PropertyType, settings)))
                 {
                     bindings.Add(new(pathName, KeyFor(pathName)));
 

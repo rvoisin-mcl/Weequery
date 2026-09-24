@@ -379,11 +379,11 @@ would quietly hand you nothing back and you would want to hear about it; a subtr
 already done what it said it would.
 
 `BindingResolutionSettings` subtracts *before*, which is better, because a path that was never resolved cannot be
-forgotten about later. Start from `Standard` and use a `with`, or you will quietly drop the rules it already
+forgotten about later. Start from `Default` and use a `with`, or you will quietly drop the rules it already
 carries:
 
 ```csharp
-var settings = BindingResolutionSettings.Standard with
+var settings = BindingResolutionSettings.Default with
 {
     IgnorePaths = ["PasswordHash", "Audit."],
     IgnoreTypes = [typeof(byte[])],
@@ -398,6 +398,7 @@ query.WithWeequery().BindResolve(maxDepth: 2, settings);
 | `IgnoreTypes` | leave out any property of these types, matched on the declared type, so a `Nullable<>` is its own type |
 | `IgnoreTypeWhenAssignable` | make `IgnoreTypes` catch anything assignable to one of them, so a base class or an interface covers everything under it |
 | `DoNotExpandTypes` | bind a property of this type but do not descend into it, for a class you want reachable and testable for null without its insides going on the wire |
+| `IgnoreAttributes` | leave out any property carrying one of these attributes, and everything under it, along with any property whose type carries one and any collection whose element type does. `Default` holds `NotMappedAttribute`, so what the model already says is not a column stays off the wire without naming each one again in `IgnorePaths` |
 
 **To subtract inside a collection, name the collection first.** An element is walked from its own root, so a path
 in there is reached by saying which collection it is in, using the same spelling
@@ -422,7 +423,15 @@ stop.
 A bare path such as `"Minion"` is still matched against the element's own paths, so it applies inside **every**
 collection that has one rather than a named one. Both spellings subtract, so naming both takes both.
 
-`Standard` subtracts nothing. It does not have to: the rules below are not settings and cannot be turned off.
+`Default` subtracts one thing: anything marked `[NotMapped]`, which the model has already said is not a column
+and which a provider could not translate anyway. Assigning `IgnoreAttributes` replaces that rather than adding to
+it, so spread the default in to keep it:
+
+```csharp
+BindingResolutionSettings.Default with { IgnoreAttributes = [.. BindingResolutionSettings.Default.IgnoreAttributes, typeof(SecretAttribute)] }
+```
+
+Past that it does not have to subtract anything: the rules below are not settings and cannot be turned off.
 
 **Where the walk stops on its own**, so bind these by hand if you want them:
 

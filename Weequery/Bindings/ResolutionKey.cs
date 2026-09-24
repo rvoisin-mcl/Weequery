@@ -23,6 +23,7 @@ internal sealed class ResolutionKey : IEquatable<ResolutionKey>
     private readonly HashSet<string> ignorePaths;
     private readonly HashSet<Type> ignoreTypes;
     private readonly HashSet<Type> doNotExpandTypes;
+    private readonly HashSet<Type> ignoreAttributes;
     private readonly int hash;
 
     /// <summary>
@@ -39,9 +40,11 @@ internal sealed class ResolutionKey : IEquatable<ResolutionKey>
         ignorePaths = settings.IgnorePaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
         ignoreTypes = settings.IgnoreTypes.ToHashSet();
         doNotExpandTypes = settings.DoNotExpandTypes.ToHashSet();
+        ignoreAttributes = settings.IgnoreAttributes.ToHashSet();
 
         hash = HashCode.Combine(maxDepth, use, ignoreTypeWhenAssignable,
-            SetHash(ignorePaths, StringComparer.OrdinalIgnoreCase), SetHash(ignoreTypes, EqualityComparer<Type>.Default), SetHash(doNotExpandTypes, EqualityComparer<Type>.Default));
+            SetHash(ignorePaths, StringComparer.OrdinalIgnoreCase), SetHash(ignoreTypes, EqualityComparer<Type>.Default), SetHash(doNotExpandTypes, EqualityComparer<Type>.Default),
+            SetHash(ignoreAttributes, EqualityComparer<Type>.Default));
     }
 
     /// <summary>
@@ -65,7 +68,8 @@ internal sealed class ResolutionKey : IEquatable<ResolutionKey>
             && (ignoreTypeWhenAssignable == other.ignoreTypeWhenAssignable)
             && ignorePaths.SetEquals(other.ignorePaths)
             && ignoreTypes.SetEquals(other.ignoreTypes)
-            && doNotExpandTypes.SetEquals(other.doNotExpandTypes);
+            && doNotExpandTypes.SetEquals(other.doNotExpandTypes)
+            && ignoreAttributes.SetEquals(other.ignoreAttributes);
     }
 
     public override bool Equals(object? obj)

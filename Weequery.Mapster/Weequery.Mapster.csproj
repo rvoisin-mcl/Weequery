@@ -1,12 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<Description>Mapster support for Weequery. Filter, sort and page with Weequery, then read the rows back as your own DTO through Mapster's ProjectToType, so only the columns the DTO needs leave the database. Adds ProjectTo and ProjectToPaged to Inquiry.</Description>
 		<PackageTags>weequery;mapster;projecttotype;iqueryable;linq;efcore;dto;projection</PackageTags>
 		<PackageReleaseNotes>
-First release. Adds ProjectTo and ProjectToPaged to Inquiry, so a filtered, sorted and paged query is read back
-as your own DTO through Mapster's ProjectToType and only the columns the DTO needs leave the database. Requires
-Weequery 3.0.0.
+No changes of its own. Released alongside Weequery 3.1.0, and requires it.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

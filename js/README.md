@@ -364,8 +364,8 @@ Mirror it here and this side refuses precisely the things the server will:
 const bindings = [
   { key: 'Name' },                                                    // all three, the default
   { key: 'Notes',  type: 'string', use: BindingUse.Projection },
-  { key: 'Tenant', type: 'number', use: BindingUse.Condition },
-  { key: 'Morale', type: 'number', use: BindingUse.Condition | BindingUse.Sort },
+  { key: 'Tenant', type: 'number', use: BindingUse.Test },
+  { key: 'Morale', type: 'number', use: BindingUse.Test | BindingUse.Sort },
 ];
 
 validateProjection('Name, Notes', { bindings });                //  fine
@@ -377,7 +377,7 @@ validateProjection('Tenant', { bindings });                     //  not-projecta
 
 Note the third line. The operand is a back door, and I have nailed it shut.
 
-`BindingUse` is a bitmask (`None`, `Condition`, `Sort`, `Projection`, `All`) and leaving `use` off means all
+`BindingUse` is a bitmask (`None`, `Test`, `Sort`, `Projection`, `All`) and leaving `use` off means all
 three, matching the server's default. Two helpers come with it: `allows(use, wanted)`, which treats "nothing
 said" as all three, and `useName(use)` for a message that has to name the combination out loud.
 

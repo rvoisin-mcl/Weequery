@@ -486,9 +486,8 @@ class Parser {
 /**
  * Parse a query string into a condition tree.
  *
- * Reading is permissive by default, and has to stay that way: every spelling the language ever accepted is
- * sitting in somebody's saved filter. Pass `'native'` for the strict grammar, where each operator has one
- * spelling and every alternate more than one word long is refused by name.
+ * Native style only: each operator has one spelling, and the C# and SQL alternates are refused by name, with
+ * the Native spelling to write instead.
  *
  * @returns null if the query is empty or whitespace
  */

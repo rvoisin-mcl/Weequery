@@ -254,8 +254,8 @@ export const BOOLEAN_OPERATORS: ReadonlySet<Operator> = new Set([
  * ```ts
  * { key: 'Name' }                                                  // all three, the default
  * { key: 'Notes', use: BindingUse.Projection }                     // read it back, and nothing else
- * { key: 'Tenant', use: BindingUse.Condition }                     // filter on it, never show it
- * { key: 'Morale', use: BindingUse.Condition | BindingUse.Sort }
+ * { key: 'Tenant', use: BindingUse.Test }                          // filter on it, never show it
+ * { key: 'Morale', use: BindingUse.Test | BindingUse.Sort }
  * ```
  */
 export enum BindingUse {
@@ -264,7 +264,7 @@ export enum BindingUse {
    * May be named in a condition: on the left of an operator, and as an operand another field is compared
    * against. The two go together because comparing against a field is a read of it.
    */
-  Condition = 1,
+  Test = 1,
   /** May be sorted on. */
   Sort = 2,
   /** May be read back by a projection. */
@@ -286,7 +286,7 @@ export function useName(use: BindingUse | undefined): string {
     return 'All';
   }
 
-  const names = (['Condition', 'Sort', 'Projection'] as const).filter(
+  const names = (['Test', 'Sort', 'Projection'] as const).filter(
     (name) => (granted & BindingUse[name]) !== 0,
   );
 

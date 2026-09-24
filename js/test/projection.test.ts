@@ -153,18 +153,18 @@ suite('a narrowed binding', () => {
   const bindings = [
     { key: 'Name', type: 'string' as const },
     { key: 'Notes', type: 'string' as const, use: BindingUse.Projection },
-    { key: 'Tenant', type: 'number' as const, use: BindingUse.Condition },
-    { key: 'Morale', type: 'number' as const, use: BindingUse.Condition | BindingUse.Sort },
+    { key: 'Tenant', type: 'number' as const, use: BindingUse.Test },
+    { key: 'Morale', type: 'number' as const, use: BindingUse.Test | BindingUse.Sort },
   ];
 
   test('the helpers agree with the flags', () => {
     assert.equal(allows(undefined, BindingUse.Sort), true, 'nothing said means all three');
-    assert.equal(allows(BindingUse.Condition | BindingUse.Sort, BindingUse.Sort), true);
-    assert.equal(allows(BindingUse.Condition, BindingUse.Projection), false);
+    assert.equal(allows(BindingUse.Test | BindingUse.Sort, BindingUse.Sort), true);
+    assert.equal(allows(BindingUse.Test, BindingUse.Projection), false);
 
     assert.equal(useName(undefined), 'All');
     assert.equal(useName(BindingUse.None), 'None');
-    assert.equal(useName(BindingUse.Condition | BindingUse.Sort), 'Condition, Sort');
+    assert.equal(useName(BindingUse.Test | BindingUse.Sort), 'Test, Sort');
   });
 
   test('condition-only filters and nothing else', () => {
@@ -181,7 +181,7 @@ suite('a narrowed binding', () => {
 
   test('a refusal says what the key is actually for', () => {
     assert.match(validateCondition(contains('Notes', 'x'), { bindings })[0]!.message, /Projection/);
-    assert.match(validateProjection('Morale', { bindings })[0]!.message, /Condition, Sort/);
+    assert.match(validateProjection('Morale', { bindings })[0]!.message, /Test, Sort/);
   });
 
   test('it projects', () => {

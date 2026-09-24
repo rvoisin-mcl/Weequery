@@ -107,11 +107,11 @@ function renderConjunction(
     // produce this; it only arrives from a hand built tree.
     if (strict) {
       throw new WeequeryError(
-        `An empty ${operationString(operator, 'native')} condition has no representation in the query language, so it cannot be round tripped`,
+        `An empty ${operationString(operator)} condition has no representation in the query language, so it cannot be round tripped`,
       );
     }
 
-    return `(<empty ${operationString(operator, 'native')}>)`;
+    return `(<empty ${operationString(operator)}>)`;
   }
 
   return `(${conditions.map((child) => render(child, strict, depth + 1)).join(separator)})`;

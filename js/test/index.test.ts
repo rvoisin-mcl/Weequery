@@ -81,7 +81,7 @@ suite('reading an index back', () => {
   });
 
   test('an index is still read under the strict grammar', () => {
-    assert.ok(parseQuery('Tallies[apples] > 5', 'native'));
+    assert.ok(parseQuery('Tallies[apples] > 5'));
   });
 
   test('a field with no index is unaffected', () => {

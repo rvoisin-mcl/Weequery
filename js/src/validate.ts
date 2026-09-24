@@ -274,7 +274,7 @@ export function validateCondition(condition: Condition, options: ValidateOptions
         diagnostics.push(
           warning(
             'empty-conjunction',
-            `An empty ${operationString(node.operator, 'native')} matches ${node.operator === Operator.And ? 'everything' : 'nothing'}, and cannot be written as a query string`,
+            `An empty ${operationString(node.operator)} matches ${node.operator === Operator.And ? 'everything' : 'nothing'}, and cannot be written as a query string`,
           ),
         );
       }
@@ -322,7 +322,7 @@ export function validateCondition(condition: Condition, options: ValidateOptions
     const bound = scope.get(field);
     if (bound === undefined) {
       diagnostics.push(unbound(options, 'unbound-field', `Unbound field: '${field}'`, field));
-    } else if (!allows(bound.use, BindingUse.Condition)) {
+    } else if (!allows(bound.use, BindingUse.Test)) {
       // Bound, so "unbound" would send the caller looking for a typo in a name that works perfectly well
       // elsewhere. Say what it is actually for.
       diagnostics.push(
@@ -365,7 +365,7 @@ export function validateCondition(condition: Condition, options: ValidateOptions
           // fine, and the operand is the name the caller has to do something about
           unbound(options, 'unbound-operand', `'${operand.value}', compared against on field '${field}', is not bound`, operand.value),
         );
-      } else if (!allows(named.use, BindingUse.Condition)) {
+      } else if (!allows(named.use, BindingUse.Test)) {
         // Comparing against a column is a read of it, so this is the back door onto a binding that does not
         // grant Condition: the value would be learnable by bisection
         diagnostics.push(

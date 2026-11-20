@@ -399,6 +399,13 @@ internal sealed class QueryParser
         // Quoted where the key needs it, bare where it does not, exactly as a value is written
         if (!(Check(QueryTokenKind.Word) || Check(QueryTokenKind.Text)))
         {
+            // "Assignments[] Any (...)" is the element marker ListBindings reports, written where the collection's
+            // key belongs, see QuantifiedCondition. Said by name rather than as a missing index
+            if (Check(QueryTokenKind.BracketClose) && (QuantifierAfterEmptyIndex() is { } quantifier))
+            {
+                throw new WeequeryException(WeequeryError.KeyInvalid, Describe($"'{field}{BoundBinding.ElementMarker}' names the inside of a collection rather than the collection. A quantifier takes the key the collection was bound under, so write '{field} {quantifier} (...)'", open));
+            }
+
             throw new WeequeryException(WeequeryError.QuerySyntax, Describe($"Expected an index for field '{field}'", open));
         }
 
@@ -489,6 +496,21 @@ internal sealed class QueryParser
         var instead = ConditionFunctions.GetOperationString(op, QueryStyle.Native);
 
         return new WeequeryException(WeequeryError.QuerySyntax, Describe($"'{found}' is not valid in the {nameof(QueryStyle.Native)} style, write '{instead}'", position));
+    }
+
+    /// <summary>
+    /// The quantifier written after an empty index, where there is one, read without moving: the current token is
+    /// the "]" that closed it.
+    /// </summary>
+    /// <returns>the quantifier as it is spelled, or null where what follows is anything else</returns>
+    private string? QuantifierAfterEmptyIndex()
+    {
+        if ((Index + 1) >= Tokens.Count) { return null; }
+
+        var next = Tokens[Index + 1];
+        if (next.Kind != QueryTokenKind.Word) { return null; }
+
+        return (OperatorLookup.TryGetValue(next.Text, out var op) && QuantifiedCondition.IsQuantifier(op)) ? ConditionFunctions.GetOperationString(op) : null;
     }
 
     private Operator ParseOperator(string field)

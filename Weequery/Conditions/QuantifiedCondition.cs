@@ -58,7 +58,10 @@ public class QuantifiedCondition : ICondition, IBound, IConditionContainer<ICond
     /// <param name="op">must be <see cref="Operator.Any"/>, <see cref="Operator.All"/> or <see cref="Operator.None"/></param>
     /// <param name="field">the key the collection was bound under</param>
     /// <param name="condition">the test one element has to satisfy</param>
-    /// <exception cref="WeequeryException">the operator is not a quantifier, or either argument is missing</exception>
+    /// <exception cref="WeequeryException">
+    /// the operator is not a quantifier, either argument is missing, or the field carries the element marker, as
+    /// "Assignments[]" does, where the key is "Assignments"
+    /// </exception>
     public QuantifiedCondition(Operator op, string field, ICondition condition)
     {
         WeequeryException.ThrowIfNullOrEmpty(field);
@@ -67,6 +70,15 @@ public class QuantifiedCondition : ICondition, IBound, IConditionContainer<ICond
         if (!IsQuantifier(op))
         {
             throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator '{op}' on field '{field}' is not a quantifier, so it cannot be represented by {nameof(QuantifiedCondition)}");
+        }
+
+        // "Assignments[]" is how ListBindings and IgnorePaths spell the inside of a collection, and it reads as
+        // the collection's name, so it gets written here. Said plainly rather than left to fail as an empty index
+        if (field.EndsWith(BoundBinding.ElementMarker, StringComparison.Ordinal) && (field.Length > BoundBinding.ElementMarker.Length))
+        {
+            var key = field[..^BoundBinding.ElementMarker.Length];
+
+            throw new WeequeryException(WeequeryError.KeyInvalid, $"'{field}' names the inside of a collection rather than the collection. A quantifier takes the key the collection was bound under, so write '{key} {op} (...)'");
         }
 
         Operator = op;

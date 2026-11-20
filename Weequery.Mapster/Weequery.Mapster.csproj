@@ -4,7 +4,7 @@
 		<Description>Mapster support for Weequery. Filter, sort and page with Weequery, then read the rows back as your own DTO through Mapster's ProjectToType, so only the columns the DTO needs leave the database. Adds ProjectTo and ProjectToPaged to Inquiry.</Description>
 		<PackageTags>weequery;mapster;projecttotype;iqueryable;linq;efcore;dto;projection</PackageTags>
 		<PackageReleaseNotes>
-No changes of its own beyond targeting .NET 10 and .NET 11. Released alongside Weequery 3.2.0, and requires it.
+References Mapster 10.0.14, up from 10.0.12. Targets .NET 10 and .NET 11. Requires Weequery 3.2.0.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

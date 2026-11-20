@@ -111,7 +111,7 @@ Use `BuildProjected()` for caller-chosen columns, or a DTO for a fixed shape, no
 
 ## Versions
 
-Built and tested against **Mapster 10.0.12**, referenced as a minimum rather than a pin. The package uses only
+Built and tested against **Mapster 10.0.14**, referenced as a minimum rather than a pin. The package uses only
 `ProjectToType`, which has been stable for a long time.
 
 ## Licence

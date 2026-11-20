@@ -86,12 +86,8 @@ works, not on the request path.
 
 ## Versions
 
-Each target framework takes its own EF Core version rather than one floor for both: **8.0.31** for `net8.0` and
-**10.0.12** for `net10.0`.
-
-> [!NOTE]
-> The `net8.0` floor must stay above 8.0.4: 8.0.0 through 8.0.4 bring in `Microsoft.Extensions.Caching.Memory`
-> 8.0.0, which carries a high-severity denial-of-service advisory.
+Each target framework takes its own EF Core version rather than one floor for both: **10.0.15** for `net10.0` and
+**11.0.0** for `net11.0`.
 
 The reference is to `Microsoft.EntityFrameworkCore`, the abstraction, not to any provider. The package reads a model
 and never touches a database, so the provider underneath is irrelevant.

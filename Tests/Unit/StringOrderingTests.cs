@@ -100,8 +100,6 @@ public class StringOrderingTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void ItTranslatesToTheProvidersComparison(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         using var context = TestDatabase.Create(provider);
 
         var queryString = context.Minions

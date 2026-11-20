@@ -39,7 +39,10 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          # SDK 11 builds both targets; 10 is installed for its runtime, which the net10.0 tests run on
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       # The strip is what lets both spellings in the trigger arrive here as the same number
       - name: Read the version from the tag

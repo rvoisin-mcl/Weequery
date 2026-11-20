@@ -158,8 +158,6 @@ public class PagedQueryTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheCountQueryReadsANumberRatherThanARow(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var (page, total) = StatementsFor(provider);
 
         Assert.Matches(@"(?i)^SELECT\s+count\(\*\)", total);
@@ -179,8 +177,6 @@ public class PagedQueryTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheCountQueryAsksForNoOrderingAndNoWindow(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var (page, total) = StatementsFor(provider);
 
         Assert.Contains("WHERE", total, StringComparison.Ordinal);
@@ -200,8 +196,6 @@ public class PagedQueryTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void BothHalvesCarryTheSameFilter(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var (page, total) = StatementsFor(provider);
 
         // The count nests the filtered rows in a subquery, so its WHERE ends at the bracket closing that

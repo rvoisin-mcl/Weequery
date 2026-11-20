@@ -41,8 +41,6 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AnyBecomesExists(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var sql = Sql(provider, "Legs Any (Miles > 100)");
 
         Assert.Contains("EXISTS", sql);
@@ -68,8 +66,6 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void TheInnerConditionTranslatesToo(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var sql = Sql(provider, "Legs Any (Miles > 100 AND Miles < 500)");
 
         Assert.Contains("EXISTS", sql);
@@ -82,8 +78,6 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AQuantifierCombinesWithAnOrdinaryTest(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var sql = Sql(provider, "Id > 1 AND Legs Any (Miles > 100)");
 
         var where = sql[sql.IndexOf("WHERE", StringComparison.Ordinal)..];
@@ -120,8 +114,6 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void AQuantifierOverValuesTranslates(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         foreach (var query in new[] { "Tags Any (Value = 'crimson')", "Tags None (Value = 'crimson')", "Tags All (Value StartsWith 'crimson')" })
         {
             var sql = ValuesSql(provider, query);
@@ -135,8 +127,6 @@ public class QuantifierProviderTests
     [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
     public void SeveralTestsOnOneNumericElementTranslate(TestProvider provider)
     {
-        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
-
         var sql = ValuesSql(provider, "Counts Any (Value > 4242 AND Value < 4343) AND Counts All (Value >= 0)");
 
         Assert.Contains("Counts", sql, StringComparison.OrdinalIgnoreCase);

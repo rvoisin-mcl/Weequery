@@ -18,14 +18,19 @@ dotnet add package Weequery.AutoMapper
 > [automapper.io](https://automapper.io). Whether a given organisation is above the threshold is for it to
 > establish.
 >
-> **This package references AutoMapper 15.1.3, which is a licensed version.** It previously referenced 14.0.0 to
+> **This package references AutoMapper 15.1.4, which is a licensed version.** It previously referenced 14.0.0 to
 > stay MIT, which exposed it to [CVE-2026-32933](https://github.com/advisories/GHSA-rvv3-g6hj-g44x): an
 > unauthenticated denial of service through uncontrolled recursion on deeply nested object graphs, CVSS 7.5,
 > ending in a `StackOverflowException` and process termination. The CVE affects **every** MIT release and the MIT
 > line will not be patched, so no version of this dependency is both MIT and safe. The licence pays for the patch.
 >
-> The reference is a **minimum, not a pin**: a project already on 16 resolves to 16 with no change here. 15.1.3 is
-> the lowest patched version of the lowest licensed major, the lowest floor that is still safe.
+> Two later advisories, [GHSA-6vhm-j9h7-f9gh](https://github.com/advisories/GHSA-6vhm-j9h7-f9gh) and
+> [GHSA-gpwp-5797-mjff](https://github.com/advisories/GHSA-gpwp-5797-mjff), are further high-severity denials of
+> service through uncontrolled recursion. They affect every release below 15.1.4, and 16.0.0 through 16.2.x.
+>
+> The reference is a **minimum, not a pin**: a project already on 16 resolves to 16 with no change here, and should
+> be on 16.3.0 or later. 15.1.4 is the lowest patched version of the lowest licensed major, the lowest floor that
+> is still safe.
 >
 > If the licence is unsuitable, [`Weequery.Mapster`](../Weequery.Mapster/README.md) and
 > [`Weequery.Mapperly`](../Weequery.Mapperly/README.md) do the same job against MIT mappers. To stay on 14
@@ -122,7 +127,7 @@ Use `BuildProjected()` for caller-chosen columns, or a DTO for a fixed shape, no
 
 ## Versions
 
-Built and tested against **AutoMapper 15.1.3**. The `ProjectTo` surface the package uses is stable across 14, 15
+Built and tested against **AutoMapper 15.1.4**. The `ProjectTo` surface the package uses is stable across 14, 15
 and 16, so a newer AutoMapper referenced by the application works unchanged. The only code change when moving off
 14 is the `MapperConfiguration` constructor (see [Mapping configuration](#mapping-configuration)).
 
@@ -147,13 +152,13 @@ with two additions to the project file:
 - The `NoWarn` is required. Without it, restore **fails** with a non-zero exit code:
 
   ```
-  error NU1605: Detected package downgrade: AutoMapper from 15.1.3 to 14.0.0
+  error NU1605: Detected package downgrade: AutoMapper from 15.1.4 to 14.0.0
   ```
 
   This is NuGet's default in current SDKs, not a choice made by this package.
 
 > [!WARNING]
-> `NU1903` stays on for every restore, reporting the CVE. **Leave it on.** After the override it is the only
+> `NU1903` stays on for every restore, reporting the advisories. **Leave it on.** After the override it is the only
 > remaining signal of which AutoMapper version the project is on.
 
 > [!NOTE]

@@ -4,7 +4,7 @@ Weequery turns a filter that arrives as data -- from a form, a query string, a c
 real `IQueryable` expression. You declare which properties may be asked about, and callers may ask about only
 those: the declaration is an allow-list.
 
-- **Targets .NET 8 and .NET 10.**
+- **Targets .NET 10 and .NET 11.**
 - **Works with Entity Framework Core.** Conditions become SQL, with values sent as parameters rather than
   concatenated into the statement.
 - **Works in memory.** The same condition filters a `List<T>`.
@@ -1199,7 +1199,7 @@ Scores Any  (Value > 5 AND Value < 10)        one score between the two, not one
 
 | Target | Support |
 |---|---|
-| EF Core 8 and later | Mapped as primitive collections. Quantifiers translate on SQLite (`json_each`), PostgreSQL (the array itself) and SQL Server (`OPENJSON`), with the value still sent as a parameter |
+| EF Core 10 and 11 | Mapped as primitive collections. Quantifiers translate on SQLite (`json_each`), PostgreSQL (the array itself) and SQL Server (`OPENJSON`), with the value still sent as a parameter |
 | OData | Declare the field with `ODataField.ForValues`; `Tags Any (Value = 'red')` becomes `Tags/any(d1: d1 eq 'red')` |
 | Elasticsearch | Declare the field with `ElasticField.ForValues`; the condition becomes a query against the array field, for conditions that can be answered one value at a time. See [Weequery.Elasticsearch](Weequery.Elasticsearch/README.md) |
 
@@ -2160,7 +2160,7 @@ mapper, and choosing one never pulls in the other two. The core library has no d
 
 > [!NOTE]
 > **AutoMapper licensing.** AutoMapper is dual-licensed from v15: free for individuals, for non-commercial use and
-> for organisations under a revenue threshold, with a paid key above it. `Weequery.AutoMapper` uses 15.1.3 because
+> for organisations under a revenue threshold, with a paid key above it. `Weequery.AutoMapper` uses 15.1.4 because
 > v14, the last MIT release, has an unpatched high-severity denial-of-service vulnerability
 > ([CVE-2026-32933](https://github.com/advisories/GHSA-rvv3-g6hj-g44x)) that will not be fixed in the MIT line.
 > Mapster and Mapperly are MIT.

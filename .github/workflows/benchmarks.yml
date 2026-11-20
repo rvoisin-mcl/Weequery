@@ -27,7 +27,10 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          # SDK 11 restores the library's two targets; 10 is installed for its runtime, which the benchmarks run on
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Restore
         run: dotnet restore Weequery.Benchmarks/Weequery.Benchmarks.csproj

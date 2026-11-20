@@ -9,7 +9,7 @@
     <IsAotCompatible>false</IsAotCompatible>
         <!-- xunit.v3 test projects are self-executing -->
         <OutputType>Exe</OutputType>
-        <!-- net8.0 would otherwise default to an older C#, and these tests use expression trees the newer one allows -->
+        <!-- The newest C# on every target, since these tests use expression trees the newer language allows -->
         <LangVersion>latest</LangVersion>
     </PropertyGroup>
 
@@ -23,17 +23,17 @@
         </PackageReference>
     </ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.31" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.31" />
-        <!-- Npgsql does not follow EF Core's patch numbers and its 8.x line ends at 8.0.11. Asking for more resolves UP to 9.x, which drags EF Core 9 in beside the 8.x providers and every DbContext then throws TypeLoadException -->
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <!-- Npgsql does not follow EF Core's patch numbers, so its version is the newest of its own line rather than a match -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.15" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
     </ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="11.0.0" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />
     </ItemGroup>
 
     <ItemGroup>

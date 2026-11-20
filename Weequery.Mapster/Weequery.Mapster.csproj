@@ -9,7 +9,7 @@ No changes of its own beyond targeting .NET 10 and .NET 11. Released alongside W
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Mapster" Version="10.0.12" />
+		<PackageReference Include="Mapster" Version="10.0.14" />
 	</ItemGroup>
 
 	<ItemGroup>

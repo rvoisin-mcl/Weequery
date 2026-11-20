@@ -4,7 +4,7 @@
 		<Description>Checks a Weequery binding list against an EF Core model before any query is built, so a path nothing maps is a startup failure rather than a translation error on the first request that names it. Adds ValidateBindings to DbContext.</Description>
 		<PackageTags>weequery;efcore;entity-framework-core;validation;bindings;iqueryable;model</PackageTags>
 		<PackageReleaseNotes>
-No changes of its own. Released alongside Weequery 3.1.0, and requires it.
+Targets .NET 10 and .NET 11, referencing EF Core 10.0.15 and 11.0.0; .NET 8 is no longer supported. Requires Weequery 3.2.0.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

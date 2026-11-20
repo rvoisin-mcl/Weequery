@@ -4,7 +4,7 @@
 		<Description>Elasticsearch support for Weequery. Turns a Weequery condition tree into Elasticsearch Query DSL, so the same filter a caller sends to your database can be sent to your index. Emits plain JSON through System.Text.Json, so it works with any Elasticsearch client or none. No dependencies.</Description>
 		<PackageTags>weequery;elasticsearch;opensearch;query-dsl;filtering;sorting;paging;dynamic-query;query-language</PackageTags>
 		<PackageReleaseNotes>
-No changes of its own. Released alongside Weequery 3.1.0, and requires it.
+Added: ElasticField.ForValues, for an array of values, quantified over as Value. Only what one value at a time can answer is translated, and the rest is refused naming the form that would say it. Targets .NET 10 and .NET 11. Requires Weequery 3.2.0.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

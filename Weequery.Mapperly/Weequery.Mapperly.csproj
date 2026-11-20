@@ -4,7 +4,7 @@
 		<Description>Mapperly support for Weequery. Filter, sort and page with Weequery, then read the rows back as your own DTO through a Mapperly generated queryable projection, so only the columns the DTO needs leave the database. Adds ProjectTo and ProjectToPaged to Inquiry.</Description>
 		<PackageTags>weequery;mapperly;riok;source-generator;iqueryable;linq;efcore;dto;projection</PackageTags>
 		<PackageReleaseNotes>
-No changes of its own. Released alongside Weequery 3.1.0, and requires it.
+No changes of its own beyond targeting .NET 10 and .NET 11. Released alongside Weequery 3.2.0, and requires it.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

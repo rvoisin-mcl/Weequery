@@ -4,21 +4,21 @@
 		<Description>Dynamic filtering, sorting and paging for IQueryable, driven by data rather than code. A condition built in code, parsed from a compact query language, or deserialized from a client becomes an expression tree and is applied to a query. You declare which properties are filterable, and callers can filter on those and nothing else. Works with EF Core, where conditions become SQL with values passed as parameters, and in memory over the same data. No dependencies.</Description>
 		<PackageTags>iqueryable;linq;efcore;entity-framework-core;filtering;sorting;paging;expression-trees;dynamic-query;query-language</PackageTags>
 		<PackageReleaseNotes>
-Weequery 3.1.0.
+Weequery 3.2.0.
 
-BEHAVIOUR. BindingResolutionSettings.Default now leaves out anything marked [NotMapped], so BindResolve and
-ResolveBindables with no settings no longer bind a property the model says is not a column. A caller filtering
-in memory on one loses it; assign IgnoreAttributes = [] to keep the 3.0 behaviour.
+BREAKING. Targets .NET 10 and .NET 11. .NET 8 is no longer supported; stay on 3.1.x for it.
 
-Added: BindingResolutionSettings.IgnoreAttributes. A property carrying a listed attribute is not bound, nor is
-anything below it, nor a property whose type carries one, nor a quantifier over a collection whose element type
-does. Assigning a set replaces the default one, so spread Default.IgnoreAttributes in to add to it. An entry
-that is not an attribute type is refused.
+BEHAVIOUR. BindResolve now binds every collection of values it finds, a List&lt;string&gt; or an int[], for the
+quantifiers as well as a property, so its output gains keys. IgnorePaths "Tags[]" takes the quantifier away and
+keeps the property. A byte[] and a dictionary are not collections of values.
 
-Faster: BindResolve keeps what it binds, collections included, for the process, under the depth, the settings
-and the use it was asked for. A repeated call walks nothing and builds nothing, and costs about what binding a
-cached request set does. Settings are compared by what they hold, so settings built fresh for every request still
-find the entry.
+Added: Any, All and None over a collection of values, naming the element Value (QuantifiedCondition.ValueKey):
+Tags Any (Value = 'red'). BindCollection binds it on its own for such a collection, and
+CollectionBindingSet.BindValue() does it by hand; the element type no longer has to be a class. A collection of
+values still projects, and EF Core translates the quantifiers as primitive collections.
+
+Clearer: a quantifier naming "Assignments[]" rather than "Assignments" is refused as KeyInvalid, with the
+condition to write instead, where it used to fail as an empty index.
 
 The companion packages are released alongside at the same version.
 		</PackageReleaseNotes>

@@ -4,7 +4,7 @@
 		<Description>OData support for Weequery. Turns a Weequery condition tree into an OData $filter expression, so the same filter a caller sends to your database can be sent to an OData service. Emits plain text, so it works with any client or none. No dependencies.</Description>
 		<PackageTags>weequery;odata;filter;query-options;iqueryable;filtering;sorting;paging;dynamic-query;query-language</PackageTags>
 		<PackageReleaseNotes>
-No changes of its own. Released alongside Weequery 3.1.0, and requires it.
+Added: ODataField.ForValues, for a collection of values, whose element is named Value inside a quantifier and written as the lambda's variable: Tags/any(d1: d1 eq 'red'). Targets .NET 10 and .NET 11. Requires Weequery 3.2.0.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

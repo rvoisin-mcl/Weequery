@@ -1,114 +1,104 @@
 # Weequery.Benchmarks
 
-*[produces a stopwatch]*
-
-You asked what [Weequery](https://github.com/rvoisin-mcl/Weequery) costs you. It is a fair question, it is very
-nearly the only fair question anybody has asked me all week, and I have had it **measured** rather than merely
-asserted.
+Measures what [Weequery](https://github.com/rvoisin-mcl/Weequery) costs, with BenchmarkDotNet.
 
 ```bash
 dotnet run -c Release --project Weequery.Benchmarks
 ```
 
-Everything runs, and the results land in `BenchmarkDotNet.Artifacts/results/`. The GitHub flavoured markdown in
-there is what [BENCHMARKS.md](../BENCHMARKS.md) is made of.
+This runs every benchmark and writes the results to `BenchmarkDotNet.Artifacts/results/`. The GitHub flavoured
+markdown there is the source of [BENCHMARKS.md](../BENCHMARKS.md).
 
-**Nothing here ships.** It is not packable, nothing that ships references it, and it takes no dependency of its
-own beyond BenchmarkDotNet. It exists to hold me to account, which I permit, occasionally, under supervision.
+**Nothing here ships.** The project is not packable and nothing that ships references it. Its dependencies are
+BenchmarkDotNet and the libraries the comparison benchmarks measure against: Fop, Gridify, Sieve and
+System.Linq.Dynamic.Core.
 
-## What is measured, and why these things
+## What is measured
 
-The performance claim has two halves, and only one of them is a benchmark at all.
+The performance claim has two halves, and only one of them needs a benchmark.
 
-**The half that is already proven** is execution. `ComparisonOperatorsEmitTheSameStatementAsHandWrittenLinq`,
-over in the test suite, shows that for the comparison operators I emit byte for byte the statement a hand
-written `Where` emits. A server handed identical SQL cannot run it more slowly. That is a stronger argument than
-any timing I could offer you, because it does not depend in the slightest on the machine it was made on.
+**Execution is already proven.** `ComparisonOperatorsEmitTheSameStatementAsHandWrittenLinq`, in the test suite,
+shows that for the comparison operators Weequery emits byte for byte the statement a hand-written `Where` emits. A
+server given identical SQL cannot run it more slowly, and unlike a timing, that argument does not depend on the
+machine.
 
-**The half left to measure** is everything on this side of the wire: reading the caller's filter, resolving the
-allow-list, and building the expression tree. That is what these are for.
+**Everything on the client side of the wire is measured here:** reading the caller's filter, resolving the
+allow-list, and building the expression tree.
 
-| | |
+| Benchmark | Measures |
 |---|---|
-| `ParsingBenchmarks` | reading a condition out of text, and writing one back |
-| `ExpressionBenchmarks` | turning a condition into an expression tree, the cost that is genuinely mine |
-| `BindingBenchmarks` | declaring the allow-list, three ways, which do not cost the same |
-| `PipelineBenchmarks` | a whole request, from text to a query ready to enumerate, nothing executed |
-| `FilteringBenchmarks` | actually filtering rows, against a hand written query over the same rows |
-| `GuardBenchmarks` | where the per row cost goes: the null guard, the expression tree, or neither |
-| `TranslationBenchmarks` | writing the condition out as an Elasticsearch query or an OData `$filter` |
-| `TransportBenchmarks` | getting a condition across the wire, as an object graph and as a string |
+| `ParsingBenchmarks` | Reading a condition out of text, and writing one back |
+| `ExpressionBenchmarks` | Turning a condition into an expression tree, the cost that is Weequery's own |
+| `BindingBenchmarks` | Declaring the allow-list, three ways, which do not cost the same |
+| `PipelineBenchmarks` | A whole request, from text to a query ready to enumerate, nothing executed |
+| `FilteringBenchmarks` | Filtering rows, against a hand-written query over the same rows |
+| `GuardBenchmarks` | Where the per-row cost goes: the null guard, the expression tree, or neither |
+| `TranslationBenchmarks` | Writing the condition out as an Elasticsearch query or an OData `$filter` |
+| `TransportBenchmarks` | Getting a condition across the wire, as an object graph and as a string |
 
-Every one of them reports allocations as well as time, and for a library that sits in a request path the
-allocation column is usually the more interesting of the two. Look at it.
+Every benchmark reports allocations as well as time. For a library in a request path the allocation column is
+usually the more significant of the two.
 
-All of them run against the same four conditions, in [Workloads.cs](Workloads.cs), so that a figure from one
-table can be read against a figure from another. The parse cost and the build cost of the same filter are two
-halves of one number, and they only add up if both halves measured the same string.
+All benchmarks use the same four conditions, defined in [Workloads.cs](Workloads.cs), so a figure in one table can
+be read against a figure in another. The parse cost and the build cost of a filter are two halves of one number,
+and only add up if both measured the same string.
 
-| | |
+| Workload | Condition |
 |---|---|
 | **Simple** | `Pay > 10000`, the floor |
-| **Typical** | three terms and a string operator, which is what a filter bar sends |
-| **Complex** | nesting, a list, a range, a null test and a negation, the advanced search |
+| **Typical** | Three terms and a string operator, what a filter bar sends |
+| **Complex** | Nesting, a list, a range, a null test and a negation, an advanced search |
 | **Quantified** | `Assignments Any (...)`, the one shape that reaches into another type |
 
-### The model is deliberately not the test model
+### A separate model
 
-`Henchman` is defined here rather than borrowed from the test suite, and that is not an oversight. Half of what
-these measure is the *size of the model*, how many bindings get resolved and how far a path walks, so sharing one
-would mean that a property somebody added to cover a parsing edge case silently moved every published figure,
-and nobody on earth would connect the two. I have enough unexplained results in my life.
+`Henchman` is defined here rather than borrowed from the test suite. Part of what these benchmarks measure is the
+*size of the model*: how many bindings are resolved and how far a path walks. With a shared model, a property added
+to cover a parsing edge case would silently move every published figure.
 
-## Reading the results honestly
+## Interpreting the results
 
-*[leans forward]*
+**`FilteringBenchmarks` compares a compiled delegate against a compiled lambda**, the right pair for "what does a
+row cost", but **not all of the ratio is Weequery's; `GuardBenchmarks` breaks it down.** A delegate from
+`Expression.Compile` is a `DynamicMethod`, which the JIT does not inline into the calling loop; a C# lambda is an
+ordinary method, which it does. That gap belongs to .NET. Running the identical predicate three ways, as a lambda,
+as a compiled expression, and through Weequery, shows most of it in the compilation rather than in the library.
+Read that table before quoting this one.
 
-Now pay attention, because this is where people embarrass themselves.
+**A compiled predicate is not quite the expression a provider receives.** `BuildDelegate` writes caller values in
+as constants; `BuildExpression` reads them from a holder so that EF Core turns them into query parameters rather
+than SQL literals. Both select the same rows. Constants are cheaper to compile and marginally cheaper per row, and
+there is no parameter worth preserving when nothing translates the expression. `ExpressionBenchmarks` prices both,
+and the difference accounts for most of the distance between a tree Weequery builds and one the C# compiler builds.
 
-**`FilteringBenchmarks` compares a compiled delegate against a compiled lambda**, which is the right pair for
-"what does a row cost", but **the ratio it gives is not all mine, and `GuardBenchmarks` is where I take it
-apart.** A delegate from `Expression.Compile` is a `DynamicMethod` that the JIT will not inline into the loop
-calling it, where a C# lambda is an ordinary method that it will. That gap belongs to .NET, not to me. Running
-the identical predicate three ways, as a lambda, as a compiled expression, and through me, shows most of it
-sitting in the compilation rather than in this library. Read that table before you quote this one.
+**The three rows using `AsQueryable` are not a fair comparison, and are included to show why.** LINQ to Objects
+compiles the expression tree *on every enumeration*. That cost does not change when the row count changes by a
+factor of a hundred, and passing the same expression object twice does not avoid it, because it is not per-row
+work. A ratio against one of those rows measures `Expression.Compile` more than Weequery, and **flatters** Weequery,
+since both sides pay the same compile and the difference between them disappears into it. Their one use is as the
+argument for `BuildDelegate` over `Build` when the data is already in memory. None of it applies against a real
+provider, because EF Core caches its query plans.
 
-**A compiled predicate is not quite the expression a provider gets.** `BuildDelegate` writes caller values in as
-constants, where `BuildExpression` reads them out of a holder so that EF Core makes them query parameters
-instead of SQL literals. The same rows are selected either way; the constants are cheaper to compile and
-marginally cheaper per row, and there is no parameter worth preserving when nothing is going to translate the
-thing. `ExpressionBenchmarks` prices both, and the difference is larger than it looks: it is most of the distance
-between a tree I build and one the C# compiler does.
+**Benchmarks run in memory, not against a database.** A database benchmark would mostly measure the database. The
+execution case is made by the SQL shape tests described above.
 
-**The three rows using `AsQueryable` are not a fair comparison, and they are in the table to show you why.** LINQ
-to Objects compiles the expression tree *every single time it enumerates*. That cost does not move when the row
-count moves by a factor of a hundred, and handing it the same expression object twice does not help either,
-because it is not per row work. A ratio taken against one of those would say far more about `Expression.Compile`
-than about me, and it would **flatter** me, since both sides pay the same compile and the difference between
-them vanishes into it. I decline to be flattered. They are worth exactly one thing: they are the argument for
-`BuildDelegate` over `Build` when the data is already in memory. Against a real provider none of it applies,
-because EF Core caches its query plans.
+### Comparison with other libraries
 
-**In memory, not against a database.** A database benchmark would mostly measure the database, and I have no
-interest in publishing a table about somebody else's disk. The execution case is made by the SQL shape tests, as
-above.
+`ComparisonBenchmarks` places Weequery beside Sieve, Fop and Gridify on what all four can express: a filter, a sort
+and a page. It is kept apart from the main set deliberately.
 
-**One set is measured against other libraries**, and it is fenced off on purpose. `ComparisonBenchmarks` puts me
-beside Sieve, Fop and Gridify on the intersection of what all four can express: a filter, a sort and a page.
+Cross-library filtering benchmarks commonly run a few filters over a couple of dozen rows through `AsQueryable` and
+report *milliseconds*. The filtering itself takes microseconds; the rest is `Expression.Compile`, which
+`EnumerableQuery` pays on every enumeration and every library pays equally. That compresses all but the genuine
+outliers into a narrow band around 1.00, which is mostly a ratio of compile costs. This table therefore uses a
+hand-written predicate as its baseline, taking no filter string and using no library, so the floor is visible and
+every other row reads as a distance from it rather than a ranking. For the per-row question, use the tables that
+answer it without a compile in the way.
 
-The hazard it was kept out of the main set for is still there. The cross-library filtering benchmarks in this
-space run a few filters over a couple of dozen rows through `AsQueryable` and report *milliseconds*, where the
-filtering itself is microseconds and the rest is `Expression.Compile`, which `EnumerableQuery` pays on every
-enumeration and which every library present pays equally. That compresses everything except the genuine outliers
-into a narrow band around 1.00, which is mostly a ratio of compile costs and tells you nothing whatsoever. So my
-table carries a hand written predicate as its baseline, taking no filter string and using no library at all,
-which makes the floor visible and turns every other row into a distance from it rather than a ranking among
-themselves. Read it that way or do not read it. And take the per row question to the tables that answer it
-without a compile standing in the way.
-
-**Absolute numbers belong to the machine that produced them.** BenchmarkDotNet writes the CPU, the OS and the
-runtime above every table, and that header is not decoration. It is the only thing that lets a reader tell a real
-regression from a different laptop. Do not quote a figure from here without it. I will find out.
+> [!IMPORTANT]
+> **Absolute numbers belong to the machine that produced them.** BenchmarkDotNet writes the CPU, OS and runtime
+> above every table, and that header is the only way to tell a real regression from a different machine. Do not
+> quote a figure without it.
 
 ## Publishing a run
 
@@ -117,36 +107,31 @@ dotnet run -c Release --project Weequery.Benchmarks
 cp BenchmarkDotNet.Artifacts/results/*-report-github.md <somewhere>
 ```
 
-Regenerate [BENCHMARKS.md](../BENCHMARKS.md) from a quiet machine. Nothing else running, on mains power, and not
-on a laptop that thermally throttles halfway through and hands you a fiction. It takes about fifteen minutes.
-Find something to do.
+Regenerate [BENCHMARKS.md](../BENCHMARKS.md) on a quiet machine: nothing else running, on mains power, and not on a
+laptop that thermally throttles partway through. A full run takes about fifteen minutes.
 
-For a quick look while you are changing something, the short job cuts that to about two minutes at the cost of
-the confidence intervals:
+| Option | Effect |
+|---|---|
+| `-- --job Short` | About two minutes, at the cost of the confidence intervals; for a quick check during changes |
+| `-- --filter *ExpressionBenchmarks*` | Runs one table rather than all of them |
 
 ```bash
 dotnet run -c Release --project Weequery.Benchmarks -- --job Short
 ```
 
-And to run one table rather than all of them:
-
 ```bash
 dotnet run -c Release --project Weequery.Benchmarks -- --filter *ExpressionBenchmarks*
 ```
 
-Every other BenchmarkDotNet argument works too, `--list` included. They are passed straight through, untouched.
+All other BenchmarkDotNet arguments, `--list` included, are passed through unchanged.
 
-## Regression detection, and what it can honestly catch
+## Regression detection
 
-The full JSON export exists so that a build can compare one run against the last. Two things are worth knowing
-before you go wiring that up in a fit of enthusiasm:
+The full JSON export exists so that a build can compare one run against the previous one. Two constraints apply:
 
-**A GitHub hosted runner is a shared vCPU.** Run to run drift of tens of percent is entirely normal and has
-nothing whatsoever to do with the code. A tight alert threshold on one of those trains everybody to ignore the
-alert, which is strictly worse than having no alert at all. Set it loose (200%, to catch a cliff rather than a
-wobble) and read the trend across many runs for anything smaller.
-
-**Benchmarks do not belong on every pull request.** Fifteen minutes per push, for numbers that noisy, buys you
-very nearly nothing. A nightly schedule and a manual trigger is the right shape, and it keeps the
-`contents: write` permission a results branch needs well away from the build workflow, which has
-`contents: read` and is going to keep it.
+- **A GitHub hosted runner is a shared vCPU.** Run-to-run drift of tens of percent is normal and unrelated to the
+  code. A tight alert threshold teaches everyone to ignore the alert, which is worse than no alert. Set it loose
+  (200%, to catch a cliff rather than a wobble) and read the trend across many runs for smaller changes.
+- **Benchmarks do not belong on every pull request.** Fifteen minutes per push, for numbers that noisy, buys almost
+  nothing. Use a nightly schedule and a manual trigger. This also keeps the `contents: write` permission a results
+  branch needs away from the build workflow, which has `contents: read` and keeps it.

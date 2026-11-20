@@ -1,8 +1,40 @@
 # Weequery.AutoMapper
 
-AutoMapper support for [Weequery](https://github.com/rvoisin-mcl/Weequery). I decide **which rows**. AutoMapper
-decides **what a row looks like**. A tidy division of labour, and the only one in this repository that comes with
-a lawyer.
+AutoMapper support for [Weequery](https://github.com/rvoisin-mcl/Weequery). Weequery decides **which rows** a query
+returns; AutoMapper decides **what a row looks like**. The package projects a filtered, sorted and paged Inquiry
+onto a DTO, and projects only the page.
+
+## Installation
+
+```bash
+dotnet add package Weequery.AutoMapper
+```
+
+> [!IMPORTANT]
+> **AutoMapper is dual licensed, and installing this package means accepting that licence.**
+>
+> AutoMapper was MIT through 14.x. From 15 it is free for individuals, for non-commercial use and for
+> organisations under a revenue threshold; organisations above that threshold must register a paid key at
+> [automapper.io](https://automapper.io). Whether a given organisation is above the threshold is for it to
+> establish.
+>
+> **This package references AutoMapper 15.1.3, which is a licensed version.** It previously referenced 14.0.0 to
+> stay MIT, which exposed it to [CVE-2026-32933](https://github.com/advisories/GHSA-rvv3-g6hj-g44x): an
+> unauthenticated denial of service through uncontrolled recursion on deeply nested object graphs, CVSS 7.5,
+> ending in a `StackOverflowException` and process termination. The CVE affects **every** MIT release and the MIT
+> line will not be patched, so no version of this dependency is both MIT and safe. The licence pays for the patch.
+>
+> The reference is a **minimum, not a pin**: a project already on 16 resolves to 16 with no change here. 15.1.3 is
+> the lowest patched version of the lowest licensed major, the lowest floor that is still safe.
+>
+> If the licence is unsuitable, [`Weequery.Mapster`](../Weequery.Mapster/README.md) and
+> [`Weequery.Mapperly`](../Weequery.Mapperly/README.md) do the same job against MIT mappers. To stay on 14
+> regardless, see [Staying on AutoMapper 14](#staying-on-automapper-14).
+>
+> Weequery itself has no dependencies; this package is separate so that installing Weequery never brings
+> AutoMapper in.
+
+## Example
 
 ```csharp
 var (page, total) = context.Minions
@@ -17,7 +49,7 @@ var matched = await total.FirstOrDefaultAsync();
 var rows    = await page.ToListAsync();
 ```
 
-Only the columns the DTO needs ever leave the database:
+Only the columns the DTO needs leave the database:
 
 ```sql
 SELECT "m"."Name", "m"."Alias", "m"."Pay"
@@ -25,37 +57,79 @@ FROM "Minions" AS "m"
 WHERE "m"."IsActive"
 ```
 
-> [!IMPORTANT]
-> **AutoMapper is dual licensed, and taking this package means taking that licence. Read this before you install
-> anything.** I am telling you now, at the top, in a box, because I refuse to have this conversation later.
->
-> AutoMapper was MIT through 14.x. From 15 it is free for individuals, for non commercial use and for
-> organisations under a revenue threshold, and asks everyone above that line to register a paid key at
-> [automapper.io](https://automapper.io). Whether *you* are above the line is yours to establish. It is not this
-> README's business to guess at your revenue, however curious I may be.
->
-> **This package references 15.1.3, and that is the version with the licence.** It used to reference 14.0.0 to
-> stay MIT, which cost it [CVE-2026-32933](https://github.com/advisories/GHSA-rvv3-g6hj-g44x): an
-> unauthenticated denial of service through uncontrolled recursion on deeply nested object graphs, CVSS 7.5,
-> `StackOverflowException`, process termination. It affects **every** MIT release and the MIT line will never be
-> patched, so there is no version of this dependency that is both MIT and safe. Buying the patch is what the
-> licence is for. I am in the denial-of-service business and even I will not ship you one by accident.
->
-> It is a **minimum, not a pin**, so a project already on 16 resolves to 16 and nothing here needs touching.
-> 15.1.3 is the lowest patched version of the lowest licensed major, which keeps the floor as low as it can
-> honestly go, and I do mean honestly.
->
-> If the licence does not suit you, [`Weequery.Mapster`](../Weequery.Mapster/README.md) and
-> [`Weequery.Mapperly`](../Weequery.Mapperly/README.md) do precisely the same job against MIT mappers, and I
-> will not be offended.
->
-> I have no dependencies myself, and this package is separate so that installing me never drags AutoMapper in
-> behind you.
+## Methods
 
-## If you would rather stay on 14
+| Method | Description |
+|---|---|
+| `ProjectTo<T, TDto>(configuration)` | `Build()`, then AutoMapper's own `ProjectTo`. Returns `IQueryable<TDto>` |
+| `ProjectToPaged<T, TDto>(configuration)` | `BuildPaged()`, with **only the page** projected. Returns `PagedQuery<TDto>` |
 
-You can. It costs two lines and a small amount of dignity. 14.0.0 is the last MIT release, and everything I use
-is present from 14 onwards, so nothing here stops working:
+**`ProjectToPaged` is the reason the package exists.** The unpaged case is already one line without it,
+`inquiry.Build().ProjectTo<MinionSummary>(configuration)`, with a single type argument; `ProjectTo<T, TDto>` needs
+both, because C# infers all of a method's type arguments or none of them. The paged case has no such shortcut and
+one detail that is easy to get wrong (see [Paged projection](#paged-projection)).
+
+## Mapping configuration
+
+Both methods take either a configuration or an `IMapper`, for a caller that has the mapper injected rather than
+the configuration.
+
+`MapperConfiguration`'s constructor is not stable across versions: 14 takes the configuring action, 15 and later
+take it alongside an `ILoggerFactory`. The code that builds the configuration belongs to the application and must
+match the AutoMapper version it references:
+
+```csharp
+new MapperConfiguration(config => config.CreateMap<Minion, MinionSummary>(), loggerFactory);
+```
+
+## Paged projection
+
+`PagedQuery<TDto>` holds an `IQueryable<TDto>` page and an `IQueryable<int>` count. The count is of **rows**, not of
+what is read from them, so it asks the database for a number and reads no column. Nothing of the mapping appears in
+that statement, so a DTO holding something AutoMapper cannot project cannot make the count fail.
+
+- Read the count with `FirstOrDefaultAsync`. `CountAsync` compiles and returns `1`, because it counts the rows of
+  the count query rather than the rows counted. The [core README](../README.md) compares the three endings.
+- Neither query has run when `ProjectToPaged` returns, as with `BuildPaged`.
+
+## Order of operations
+
+Filter, sort, window, **then** project.
+
+Paging is over the entity's own sort; projecting first would leave AutoMapper's output to be sorted by names the
+DTO may not have. This order also lets a sort name a field the DTO does not expose:
+
+```csharp
+.ApplySorts([new Sort("IsActive", SortDirection.Ascending)])   // IsActive is not on MinionSummary
+.ProjectTo<Minion, MinionSummary>(configuration)
+```
+
+The allow-list is unchanged. Conditions and sorts name **binding keys on the entity**, and an unbound field is
+refused as it is anywhere else. The DTO's property names play no part.
+
+## Conflict with ApplyProjection
+
+`ApplyProjection` and a DTO both define what a row holds: one as the keys the caller named, the other as the DTO.
+Honouring both would mean silently dropping the projection, which for a projection that arrived in a request
+discards the caller's intent. `ProjectTo` and `ProjectToPaged` therefore throw:
+
+```
+ProjectTo cannot be used on an Inquiry that has already had ApplyProjection('[Name], [Pay]') called on it:
+the DTO decides what a row holds here, so the projected fields would be silently ignored. Drop one of the two
+```
+
+Use `BuildProjected()` for caller-chosen columns, or a DTO for a fixed shape, not both.
+
+## Versions
+
+Built and tested against **AutoMapper 15.1.3**. The `ProjectTo` surface the package uses is stable across 14, 15
+and 16, so a newer AutoMapper referenced by the application works unchanged. The only code change when moving off
+14 is the `MapperConfiguration` constructor (see [Mapping configuration](#mapping-configuration)).
+
+### Staying on AutoMapper 14
+
+14.0.0 is the last MIT release, and everything the package uses is present from 14 onwards. Override the version
+with two additions to the project file:
 
 ```xml
 <PropertyGroup>
@@ -68,97 +142,25 @@ is present from 14 onwards, so nothing here stops working:
 </ItemGroup>
 ```
 
-The second reference is what picks the version: one you declare yourself beats the one a package you depend on
-asks for. The `NoWarn` is not decoration. Without it, restore **fails**, exit code and all:
+- The direct `AutoMapper` reference selects the version: a reference declared by the project takes precedence over
+  one requested by a package it depends on.
+- The `NoWarn` is required. Without it, restore **fails** with a non-zero exit code:
 
-```
-error NU1605: Detected package downgrade: AutoMapper from 15.1.3 to 14.0.0
-```
+  ```
+  error NU1605: Detected package downgrade: AutoMapper from 15.1.3 to 14.0.0
+  ```
 
-That is NuGet's own default in current SDKs rather than anything I chose, and for once I agree with it entirely:
-a dependency stepping backwards over a security floor ought to cost somebody a deliberate line of configuration.
-`NU1903` then stays on for every restore, reminding you about the CVE. **Leave it on.** Once you have done this,
-that warning is the only thing left in the building that knows which version you are on.
+  This is NuGet's default in current SDKs, not a choice made by this package.
 
-**And no, the floor cannot be 14 while 15 stays the default.** A `Version` is a minimum, and NuGet installs the
-*lowest* version that satisfies it rather than the newest available, so the floor and the default are the same
-number. A floor of 14 would put every consumer on 14, which is exactly where this package started and exactly
-why it moved.
+> [!WARNING]
+> `NU1903` stays on for every restore, reporting the CVE. **Leave it on.** After the override it is the only
+> remaining signal of which AutoMapper version the project is on.
 
-## What it adds
-
-| | |
-|---|---|
-| `ProjectTo<T, TDto>(configuration)` | `Build()`, then AutoMapper's own `ProjectTo`. Returns `IQueryable<TDto>` |
-| `ProjectToPaged<T, TDto>(configuration)` | `BuildPaged()`, with **only the page** projected. Returns `PagedQuery<TDto>` |
-
-Both will also take an `IMapper`, for the caller who has that injected rather than the configuration. I am
-accommodating.
-
-**The paged one is the reason this package exists.** The unpaged case is already a one-liner without me,
-`inquiry.Build().ProjectTo<MinionSummary>(configuration)`, and needs only one type argument, because C# infers
-all of a method's type arguments or none of them. The paged case has no such shortcut and exactly one detail
-that is easy to get wrong.
-
-## Only the page is projected
-
-`PagedQuery<TDto>` holds an `IQueryable<TDto>` page and an `IQueryable<int>` count, and that asymmetry is the
-whole point. A count is of **rows**, not of what you read off them, so it asks the database for a number and
-reads no column at all. Nothing of the mapping appears in that statement, so a DTO holding something AutoMapper
-will not project cannot fail a count that never needed it.
-
-Read the number with `FirstOrDefaultAsync`. `CountAsync` compiles and answers `1`, because it counts the rows of
-the count query rather than the rows counted. The [core README](../README.md) puts the three endings side by
-side, where you may study them at your leisure.
-
-Neither query has run, exactly as `BuildPaged` promised.
-
-## Order of operations
-
-Filter, sort, window, **then** project.
-
-Paging is over the entity's own sort, and projecting first would leave AutoMapper's output to be sorted by names
-the DTO may not even have. My order is also what lets a sort name a field the DTO does not expose at all:
-
-```csharp
-.ApplySorts([new Sort("IsActive", SortDirection.Ascending)])   // IsActive is nowhere on MinionSummary
-.ProjectTo<Minion, MinionSummary>(configuration)
-```
-
-The allow-list is unchanged by any of it. Conditions and sorts still name **binding keys on the entity**, and a
-field nobody bound is refused exactly as it is anywhere else. The DTO's property names have nothing to do with
-this and never did.
-
-## One thing it refuses
-
-`ApplyProjection` and a DTO are two answers to one question. One says a row is the keys the caller named. The
-other says a row is the DTO. Doing both would honour the DTO and drop the projection without a word, which for a
-caller whose projection arrived in a request is a filter's worth of intention quietly discarded. So I refuse:
-
-```
-ProjectTo cannot be used on an Inquiry that has already had ApplyProjection('[Name], [Pay]') called on it:
-the DTO decides what a row holds here, so the projected fields would be silently ignored. Drop one of the two
-```
-
-Use `BuildProjected()` for caller-chosen columns, or a DTO for a fixed shape. Not both. I will not be party to
-both.
-
-## Versions
-
-Built and tested against **AutoMapper 15.1.3**. The `ProjectTo` surface I use is stable across 14, 15 and 16, so
-referencing a newer one in your own project works without a thing changing here.
-
-What is *not* stable is `MapperConfiguration`'s own constructor: 14 took the configuring action, 15 and later
-take it alongside an `ILoggerFactory`. So the code that *builds* your configuration is yours to keep in step,
-not mine:
-
-```csharp
-new MapperConfiguration(config => config.CreateMap<Minion, MinionSummary>(), loggerFactory);
-```
-
-That single line is the whole of what moving off 14 costs you. I have seen people pay more for less.
+> [!NOTE]
+> The floor cannot be 14 while 15 remains the default. A `Version` is a minimum, and NuGet installs the *lowest*
+> version that satisfies it rather than the newest, so the floor and the default are the same number. A floor of
+> 14 would put every consumer on 14, which is the situation the package moved away from.
 
 ## Licence
 
-MIT, same as me. The AutoMapper dependency is emphatically not, see the box above, which I put there for a
-reason.
+MIT, as Weequery. The AutoMapper dependency is not MIT; see [Installation](#installation).

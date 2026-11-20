@@ -1,8 +1,31 @@
 # Weequery.Mapperly
 
-[Mapperly](https://mapperly.riok.app) support for [Weequery](https://github.com/rvoisin-mcl/Weequery). I decide
-**which rows**. Mapperly decides **what a row looks like**, and had decided it before either of us got out of
-bed, because it decides at compile time.
+[Mapperly](https://mapperly.riok.app) support for [Weequery](https://github.com/rvoisin-mcl/Weequery). Weequery
+decides **which rows** a query returns; Mapperly decides **what a row looks like**, at compile time. The package
+projects a filtered, sorted and paged Inquiry onto a DTO, and projects only the page.
+
+## Installation
+
+```bash
+dotnet add package Weequery.Mapperly
+```
+
+Mapperly is MIT, so the package carries no licence obligation beyond its own. For AutoMapper or Mapster,
+[`Weequery.AutoMapper`](../Weequery.AutoMapper/README.md) and [`Weequery.Mapster`](../Weequery.Mapster/README.md)
+do the same job the same way.
+
+**The package does not reference Mapperly.** Mapperly is a source generator with no runtime to call: it writes the
+body of the projection method into the application's own assembly at compile time, so by the time this package is
+involved the mapping is an ordinary method on an ordinary class. The package takes that method, and a dependency
+would add only a second copy of a generator the application already references.
+
+- **The package has no dependencies except Weequery.** Add Mapperly to the application project, where the generator
+  has to run anyway.
+- **Nothing in the package is Mapperly specific.** It accepts a hand-written `Select`, or any function shaped like
+  `IQueryable<T> -> IQueryable<TDto>`. It is named for Mapperly because that is the shape it was built to fit and
+  what its tests exercise; it cannot tell the difference.
+
+## Example
 
 ```csharp
 [Mapper]
@@ -28,7 +51,7 @@ var matched = await total.FirstOrDefaultAsync();
 var rows    = await page.ToListAsync();
 ```
 
-Only the columns the DTO needs ever leave the database:
+Only the columns the DTO needs leave the database:
 
 ```sql
 SELECT "m"."Name", "m"."Alias", "m"."Pay"
@@ -36,52 +59,30 @@ FROM "Minions" AS "m"
 WHERE "m"."IsActive"
 ```
 
-Mapperly is MIT, so there is no licence to inherit and nothing to warn you about. If you use AutoMapper or
-Mapster instead, [`Weequery.AutoMapper`](../Weequery.AutoMapper/README.md) and
-[`Weequery.Mapster`](../Weequery.Mapster/README.md) do the same job the same way.
+## Methods
 
-## What it adds
-
-| | |
+| Method | Description |
 |---|---|
-| `ProjectTo(project)` | `Build()`, then your generated projection. Returns `IQueryable<TDto>` |
+| `ProjectTo(project)` | `Build()`, then the generated projection. Returns `IQueryable<TDto>` |
 | `ProjectToPaged(project)` | `BuildPaged()`, with **only the page** projected. Returns `PagedQuery<TDto>` |
 
-**Neither type argument has to be written out**, unlike the other two companions, which I consider a small
-mercy. The projection arrives as a function, so the entity comes from the Inquiry and the DTO comes from
-whatever that function hands back:
+**Neither type argument is written out**, unlike the other two companions. The projection arrives as a function, so
+the entity type comes from the Inquiry and the DTO type from the function's return type:
 
 ```csharp
 .ProjectTo(mapper.Project)                       // Mapperly
 .ProjectTo<Minion, MinionSummary>(configuration) // the other two
 ```
 
-## It does not reference Mapperly, and that is the point
+The one check the package makes on the function is that it returned a value. A null result would otherwise surface
+as a `NullReferenceException` wherever the query was eventually enumerated, far from the method that produced it.
 
-*[steeples fingers]*
-
-Mapperly is a source generator. It has no runtime to call. It writes the body of your projection method into your
-own assembly at compile time, and by the moment I could do anything about it the mapping is already an ordinary
-method on an ordinary class belonging to you. So what I take is that method, and a dependency here would buy you
-nothing whatsoever except a second copy of a generator you already reference.
-
-Two consequences, and I want both said plainly:
-
-- **This package has no dependencies except me.** Add Mapperly to *your* project, where the generator has to run
-  anyway.
-- **Nothing here is Mapperly specific.** The same call will take a hand written `Select`, or anything else
-  shaped like `IQueryable<T> -> IQueryable<TDto>`. It is named for Mapperly because that is the shape it was
-  built to fit and what its tests exercise, not because it can tell the difference. It cannot. It does not care.
-
-The one thing it does check is that your function returned something at all. A null coming back would otherwise
-surface as a `NullReferenceException` from wherever the query was eventually enumerated, a very long way from
-the method that produced it, and I have been on the receiving end of that sort of thing.
+## Mapping configuration
 
 > [!WARNING]
 > **Configure renames on an object mapping, not on the projection.** Mapperly refuses `[MapProperty]` on a
-> queryable projection method (warning `RMG065`), and a projection left to map by name alone leaves the
-> unmatched member sitting at its default. `MinionSummary.Salary` against `Minion.Pay` comes back as `0`, with a
-> warning and no error:
+> queryable projection method (warning `RMG065`), and a projection mapped by name alone leaves an unmatched member
+> at its default. `MinionSummary.Salary` against `Minion.Pay` comes back as `0`, with a warning and no error:
 >
 > ```csharp
 > [Mapper]
@@ -94,64 +95,58 @@ the method that produced it, and I have been on the receiving end of that sort o
 > }
 > ```
 >
-> Declaring the object mapping beside the projection is what carries the configuration into it. That is
-> Mapperly's rule rather than mine, and I repeat it here only because the failure it produces is a zero rather
-> than an exception, and a zero is a liar.
+> Declaring the object mapping beside the projection carries its configuration into the projection. This is
+> Mapperly's rule, not the package's.
 
-## Only the page is projected
+## Paged projection
 
-`PagedQuery<TDto>` holds an `IQueryable<TDto>` page and an `IQueryable<int>` count, and that asymmetry is the
-whole point. A count is of **rows**, not of what you read off them, so it asks the database for a number and
-reads no column at all. Nothing of the mapping is anywhere in that statement, so a DTO holding something
-Mapperly will not project cannot fail a count that never needed it.
+`PagedQuery<TDto>` holds an `IQueryable<TDto>` page and an `IQueryable<int>` count. The count is of **rows**, not of
+what is read from them, so it asks the database for a number and reads no column. Nothing of the mapping appears in
+that statement, so a DTO holding something Mapperly cannot project cannot make the count fail.
 
-Read the number with `FirstOrDefaultAsync`. `CountAsync` compiles and answers `1`, because it counts the rows of
-the count query rather than the rows counted. The [core README](../README.md) puts the three endings side by
-side.
-
-Neither query has run, exactly as `BuildPaged` promised.
+- Read the count with `FirstOrDefaultAsync`. `CountAsync` compiles and returns `1`, because it counts the rows of
+  the count query rather than the rows counted. The [core README](../README.md) compares the three endings.
+- Neither query has run when `ProjectToPaged` returns, as with `BuildPaged`.
 
 ## Order of operations
 
 Filter, sort, window, **then** project.
 
-Paging is over the entity's own sort, and projecting first would leave the generated output to be sorted by
-names the DTO may not even have. My order is also what lets a sort name a field the DTO does not expose at all:
+Paging is over the entity's own sort; projecting first would leave the generated output to be sorted by names the
+DTO may not have. This order also lets a sort name a field the DTO does not expose:
 
 ```csharp
-.ApplySorts([new Sort("IsActive", SortDirection.Ascending)])   // IsActive is nowhere on MinionSummary
+.ApplySorts([new Sort("IsActive", SortDirection.Ascending)])   // IsActive is not on MinionSummary
 .ProjectTo(mapper.Project)
 ```
 
-The allow-list is unchanged throughout. Conditions and sorts still name **binding keys on the entity**, and a
-field nobody bound is refused exactly as it is anywhere else. The DTO's property names have nothing to do with
-it.
+The allow-list is unchanged. Conditions and sorts name **binding keys on the entity**, and an unbound field is
+refused as it is anywhere else. The DTO's property names play no part.
 
-## One thing it refuses
+## Conflict with ApplyProjection
 
-`ApplyProjection` and a DTO are two answers to one question. One says a row is the keys the caller named. The
-other says a row is the DTO. Doing both would honour the DTO and drop the projection without a word, which for a
-caller whose projection arrived in a request is a filter's worth of intention quietly discarded. So I refuse:
+`ApplyProjection` and a DTO both define what a row holds: one as the keys the caller named, the other as the DTO.
+Honouring both would mean silently dropping the projection, which for a projection that arrived in a request
+discards the caller's intent. `ProjectTo` and `ProjectToPaged` therefore throw:
 
 ```
 ProjectTo cannot be used on an Inquiry that has already had ApplyProjection('[Name], [Pay]') called on it:
 the DTO decides what a row holds here, so the projected fields would be silently ignored. Drop one of the two
 ```
 
-Use `BuildProjected()` for caller-chosen columns, or a DTO for a fixed shape. Not both. Choose.
+Use `BuildProjected()` for caller-chosen columns, or a DTO for a fixed shape, not both.
 
-## One collision, if you use Mapster too
+## Using Mapperly alongside Mapster
 
-Mapster and Mapperly both publish a `MapperAttribute`, so a file carrying `using Mapster;` and
-`using Riok.Mapperly.Abstractions;` will not compile until one `[Mapper]` is qualified. Nothing to do with either
-of my packages, but it is the very first wall you walk into if you are comparing the two, and I would rather you
-heard it from me.
+Mapster and Mapperly both define a `MapperAttribute`, so a file with both `using Mapster;` and
+`using Riok.Mapperly.Abstractions;` does not compile until one `[Mapper]` is qualified. The collision is between the
+two mappers, not in either Weequery package, but it is the first error met when comparing them.
 
 ## Versions
 
-Built and tested against **Riok.Mapperly 4.3.1**, which is a dependency of the *tests* rather than of this
-package. Any version generating an `IQueryable<TDto>` projection method will do.
+Built and tested against **Riok.Mapperly 4.3.1**, a dependency of the *tests* rather than of the package. Any
+version that generates an `IQueryable<TDto>` projection method works.
 
 ## Licence
 
-MIT, same as me and same as Mapperly.
+MIT, as Weequery and Mapperly.

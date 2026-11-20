@@ -1,8 +1,18 @@
 # Weequery.OData
 
-And if what you are pointed at is an OData service, this turns a
-[Weequery](https://github.com/rvoisin-mcl/Weequery) condition into a `$filter`, so the same filter a caller sends
-to your database can be sent somewhere else entirely without anybody rewriting a thing.
+Translates a [Weequery](https://github.com/rvoisin-mcl/Weequery) condition into an OData `$filter`, so the filter a
+caller sends to a database can be sent to an OData service unchanged.
+
+## Installation
+
+```bash
+dotnet add package Weequery.OData
+```
+
+**The package has no dependencies.** A `$filter` is text; the OData client libraries are large, versioned against
+their own EDM model, and not needed to write one. The output goes on a query string.
+
+## Example
 
 ```csharp
 var fields = new ODataFieldSet
@@ -18,24 +28,22 @@ ODataFilter.Write(ConditionFunctions.ParseQuery("IsActive = true AND Pay > 10000
 // "(Active eq true and Salary gt 10000)"
 ```
 
-**No dependencies.** A `$filter` is text. The OData client libraries are enormous, versioned against their own
-EDM model, and entirely unnecessary for writing one. What comes out goes on a query string. That is the whole
-arrangement.
+## Declaring fields
 
-## The allow-list is declared, not derived
+There is no metadata document to derive the allow-list from, so the application declares what each key means. An
+**`ODataField`** has these members:
 
-There is no metadata document to read from here, so **you** say what a key means:
-
-| | |
+| Member | Description |
 |---|---|
-| **Key** | the name a caller writes, matched without regard to case |
-| **Field** | the property's path, slash separated: `Lair/Address/City` |
+| **Key** | The name a caller writes, matched case-insensitively |
+| **Field** | The property's path, slash separated: `Lair/Address/City` |
 | **Kind** | `String`, `Number`, `Boolean`, `Guid`, `Date`, `DateTimeOffset`, `TimeOfDay`, `Duration`, `Enum`, `Collection` |
-| **Collection** | the collection this field lives inside, for quantifiers |
-| **EnumType** | the qualified type name, for `Enum` |
+| **Collection** | The collection this field lives inside, for quantifiers |
+| **ElementKind** | What each element holds, for a collection of values; see `ODataField.ForValues` |
+| **EnumType** | The qualified type name, for `Enum` |
 
-A condition naming a key nobody declared is refused, exactly as an unbound field is. The kind matters rather more
-here than in most places, because **OData writes almost every type differently and gets it wrong loudly**:
+A condition naming an undeclared key is refused, as an unbound field is. The kind matters because **OData writes
+almost every type differently, and a service rejects the wrong form**:
 
 ```
 Name eq 'Alice'                                     String, quoted
@@ -47,37 +55,36 @@ Classification eq Lair.Model.Rank'High'             Enum, qualified where you na
 ShiftLength eq duration'PT8H'                       Duration
 ```
 
-Hand a service the wrong shape and it answers 400, not nothing, which at least has the virtue of being loud. A
-value that would end the expression early, a quote or a comma in what ought to be a bare literal, I refuse here
-instead, where the message can say why rather than leaving some stranger's server to say "no" and nothing else.
+A service sent the wrong form answers 400. A value that would end the expression early, such as a quote or a comma
+in what should be a bare literal, is refused by the package instead, with a message that says why.
 
-## Nulls are translated, not assumed
+## Null semantics
 
-This is the part worth having. **OData disagrees with me about a null, and has the nerve to say so in the
-specification:** *"null values are equal to null and not equal to any other value"*. So `Alias ne 'Ghost'` is
-**true** of a record with no alias. With me it is false, because every comparison I write carries a guard.
+**OData's null semantics differ from Weequery's, and the specification states them:** *"null values are equal to
+null and not equal to any other value"*. Under OData, `Alias ne 'Ghost'` is **true** of a record with no alias;
+under Weequery it is false, because every comparison carries a null guard.
 
-Since one of us has to give way and it is not going to be me, every negative operator goes out with its guard
-beside it:
+To preserve Weequery's meaning, every negative operator is written with its guard:
 
 ```
 Alias <> 'Ghost'      -> (Alias ne null and Alias ne 'Ghost')
 ```
 
-And `NOT` is deliberately **not** guarded, for precisely the reason it is not guarded in the core: negating a
-condition negates its guard along with it, so `NOT (Alias = 'Ghost')` is *meant* to bring the records with no
-alias back.
+`NOT` is deliberately **not** guarded, for the same reason as in the core: negating a condition negates its guard,
+so `NOT (Alias = 'Ghost')` is *meant* to return the records with no alias.
 
 ```
 NOT (Alias = 'Ghost')  ->  not Alias eq 'Ghost'
 ```
 
-That distinction is [the one I make a fuss about](../README.md#how-nulls-behave), and it survives the trip.
-Services vary in how much of this they manage unaided, particularly for the string functions. A guard a service
-would have applied anyway costs you a few characters; depending on one would cost you a different answer per
-service, which is not a trade I would make and not one I will make for you.
+The distinction is described in the core README under [null behaviour](../README.md#null-semantics), and survives
+translation.
 
-## The operators
+> [!NOTE]
+> Services differ in how much of this they handle unaided, particularly for the string functions. An unnecessary
+> guard costs a few characters; relying on the service would give a different answer per service.
+
+## Operators
 
 | Weequery | OData |
 |---|---|
@@ -90,24 +97,25 @@ service, which is not a trade I would make and not one I will make for you.
 | `AND` `OR` `NOT` | `and` `or` `not`, parenthesised so a tree reads back as the tree it was |
 | `Any` `All` `None` | `nav/any(d1: ...)`, `nav/all(d1: ...)`, `not nav/any(d1: ...)` |
 
-**One thing OData does that neither SQL nor a search index manages with any grace:** comparing two properties.
-`Name = [Alias]` becomes `Name eq Alias`, and it simply works. Credit where it is due. I shall not mention it
-again.
+Comparing two properties is supported directly: `Name = [Alias]` becomes `Name eq Alias`.
 
-## Versions
+## OData versions
 
-`ODataVersion.V401` by default, which is what most services have spoken for years. Pass `V4` and two things
-change: `in` is expanded into `(f eq a or f eq b)`, and `IsMatch` is refused outright rather than emitting a
-function 4.0 has never heard of.
+The default is `ODataVersion.V401`. Passing `V4` changes two things:
 
-Worth knowing that the expansion turns a long list into a long URL. A thousand values, which is what I will
-carry, is not something every server will accept on a query string however it is spelled, and discovering that
-in production is nobody's idea of an afternoon.
+- `in` is expanded into `(f eq a or f eq b)`.
+- `IsMatch` is refused, rather than emitting a function 4.0 does not define.
 
-`matchesPattern` is ECMAScript syntax by specification and is one of the more thinly implemented corners of 4.01,
-so a service may well answer 501 to a filter that is perfectly, provably legal. Not my doing.
+> [!WARNING]
+> The expansion turns a long list into a long URL. A thousand values, the maximum Weequery accepts, may exceed what
+> a server accepts on a query string however it is written.
 
-## Quantifiers become lambdas
+`matchesPattern` uses ECMAScript syntax by specification and is thinly implemented in 4.01, so a service may answer
+501 to a filter that is legal.
+
+## Quantifiers over collections
+
+Quantifiers become lambdas:
 
 ```csharp
 new("Assignments", "Assignments", ODataFieldKind.Collection),
@@ -120,29 +128,48 @@ Assignments Any (LairID = 5 AND LairName = 'Volcano')
 Assignments/any(d1: (d1/LairID eq 5 and d1/Lair/Name eq 'Volcano'))
 ```
 
-The whole inner condition goes inside the lambda, which is exactly what my quantifier means: *one* element
-satisfying all of it, not several elements splitting the work between them. `all` over an empty collection is
-true and `any` over one is false, which is what the quantifiers mean of nothing in the core as well, so the three
-of us line up with no assistance whatsoever. It is almost touching.
+The whole inner condition goes inside the lambda, matching the meaning of a Weequery quantifier: *one* element
+satisfying all of it, not several elements each satisfying part.
 
-A field declared inside a collection is only reachable within a quantifier over it, and one declared outside is
-not reachable inside. The two scopes do not leak. They do not leak here for the same reason nothing leaks
-anywhere else in this operation.
+- `all` over an empty collection is true and `any` over one is false, as for the quantifiers in the core.
+- A field declared inside a collection is reachable only within a quantifier over that collection, and a field
+  declared outside is not reachable inside one. The two scopes do not mix.
+
+### A collection of values
+
+A `Collection(Edm.String)`, or a collection of numbers, dates or enums, has no element fields to declare. Declare it
+with `ODataField.ForValues`, giving the kind each element holds. Inside the quantifier the element is named
+**`Value`**, and it is written as the lambda's variable itself:
+
+```csharp
+ODataField.ForValues("Tags",   "Tags",   ODataFieldKind.String),
+ODataField.ForValues("Scores", "Scores", ODataFieldKind.Number),
+ODataField.ForValues("Ranks",  "Ranks",  ODataFieldKind.Enum, "Lair.Model.Rank"),
+```
+```
+Tags   Any  (Value = 'red')                  Tags/any(d1: d1 eq 'red')
+Scores All  (Value >= 50)                    Scores/all(d1: d1 ge 50)
+Scores Any  (Value > 5 AND Value < 10)       Scores/any(d1: (d1 gt 5 and d1 lt 10))
+```
+
+A lambda binds everything inside it to one element, so the whole language works inside it, `AND` included. `Value`
+is the only name available inside one, and means nothing outside it.
 
 ## What it refuses
 
-- **A key nobody declared**, as ever.
-- **An operator that does not fit the declared kind**, `StartsWith` on a number, ordering on a boolean.
-- **A value that cannot be written as its kind**, including one that would end the expression early.
-- **A collection compared** rather than quantified, and a non-collection quantified.
-- **An index** (`Tags[0]`). A `$filter` has no way to address one element of a collection, and I will not
-  pretend otherwise.
-- **A quantifier inside a quantifier.** OData can nest lambdas perfectly well, but a Weequery collection
-  declares no collections of its own, so there is nothing that could possibly have been meant.
-- **Sorting on or selecting a field inside a collection.** `$orderby` would have to say which of the many
-  values, and reading one is `$expand` with a select of its own. Neither is a guess I am willing to make.
+| Refused | Reason |
+|---|---|
+| A key nobody declared | As for an unbound field |
+| An operator that does not fit the declared kind | For example `StartsWith` on a number, ordering on a boolean |
+| A value that cannot be written as its kind | Including one that would end the expression early |
+| A collection compared rather than quantified, or a non-collection quantified | |
+| An index (`Tags[0]`) | A `$filter` cannot address one element of a collection |
+| A quantifier inside a quantifier | OData can nest lambdas, but a Weequery collection declares no collections of its own, so nothing could be meant |
+| Sorting on or selecting a field inside a collection | `$orderby` would have to say which of the many values; reading one is `$expand` with its own select |
 
-## The whole set of query options
+## Query options
+
+`ODataQuery.ToQueryString` writes the full set of query options:
 
 ```csharp
 var parsed = ParsedQuery.Parse(request.Query);
@@ -154,16 +181,15 @@ ODataQuery.ToQueryString(fields, parsed.Condition, parsed.Sorts,
 $filter=Active eq true&$orderby=Salary desc,Name asc&$top=20&$skip=40&$select=Name,Alias
 ```
 
-`Build` hands you the same thing as a dictionary, if you would rather place the options yourself. The order is
-fixed, so the same query gives the same string every single time, which is what makes one comparable and
-cacheable. The first page writes no `$skip`, since skipping nothing is what not saying so already means, and I do
-not pad.
+- `Build` returns the same options as a dictionary, for placing them individually.
+- The order of options is fixed, so the same query always gives the same string, which makes it comparable and
+  cacheable.
+- The first page writes no `$skip`.
 
 > [!IMPORTANT]
-> **Nothing here is percent encoded.** Encoding is the job of whatever builds the URL, and doing it here would
-> mean a caller who does it properly encodes the whole thing twice, which is the sort of quiet catastrophe I
-> refuse to be responsible for.
+> **Nothing is percent encoded.** Encoding is the job of whatever builds the URL; encoding here would make a caller
+> that encodes correctly encode everything twice.
 
 ## Licence
 
-MIT, same as the rest of the operation.
+MIT, as Weequery.

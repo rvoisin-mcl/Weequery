@@ -93,4 +93,54 @@ public class QuantifierProviderTests
         Assert.Contains("@Value", where);
         Assert.Contains("@Value1", where);
     }
+
+    // ---------- a collection of values ----------
+
+    private static string ValuesSql(TestProvider provider, string query)
+    {
+        using var context = CollectionIndexProviderTests.Context(provider);
+
+        var inquiry = context.Shipments
+            .WithWeequery()
+            .BindProperty(shipment => shipment.Id)
+            .BindCollection(shipment => shipment.Tags, "Tags")
+            .BindCollection(shipment => shipment.Counts, "Counts");
+
+        return TestDatabase.StatementOnly(inquiry.ApplyCondition(query).Build().ToQueryString())
+            .Replace("\r", " ")
+            .Replace("\n", " ");
+    }
+
+    /// <summary>
+    /// A List&lt;string&gt; or an int[] is a primitive collection to EF Core, and a quantifier over one translates
+    /// on every provider, each in its own way: OPENJSON on SQL Server, json_each on SQLite, the array itself on
+    /// PostgreSQL. What they share is that the elements stay in the database and the value goes as a parameter.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
+    public void AQuantifierOverValuesTranslates(TestProvider provider)
+    {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
+        foreach (var query in new[] { "Tags Any (Value = 'crimson')", "Tags None (Value = 'crimson')", "Tags All (Value StartsWith 'crimson')" })
+        {
+            var sql = ValuesSql(provider, query);
+
+            Assert.Contains("Tags", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("crimson", sql, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(TestDatabase.AllProviders), MemberType = typeof(TestDatabase))]
+    public void SeveralTestsOnOneNumericElementTranslate(TestProvider provider)
+    {
+        Assert.SkipUnless(TestDatabase.ProviderSqlIsPinned, TestDatabase.ProviderSqlUnpinned);
+
+        var sql = ValuesSql(provider, "Counts Any (Value > 4242 AND Value < 4343) AND Counts All (Value >= 0)");
+
+        Assert.Contains("Counts", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("4242", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("4343", sql, StringComparison.Ordinal);
+    }
 }

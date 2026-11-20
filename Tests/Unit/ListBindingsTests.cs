@@ -163,12 +163,12 @@ public class ListBindingsTests
     {
         var bound = Boxes().WithWeequery().BindResolve().ListBindings();
 
-        // A List<string>, a Dictionary and an int[] are bound and are not collections in this sense, an element
-        // of one having no property worth naming inside a quantifier
-        Assert.Equal(["Slots"], bound.Where(entry => entry.IsCollection).Select(entry => entry.Key));
+        // A List<string> and an int[] are collections too, quantified over the element itself as Value. A
+        // Dictionary is not, its pairs being neither an object with properties nor a value a builder compares
+        Assert.Equal(["Labels", "Scores", "Slots"], bound.Where(entry => entry.IsCollection).Select(entry => entry.Key));
 
         // And an element sorts directly under the collection it belongs to, the qualified key being a prefix of it
-        Assert.Equal(["Id", "Labels", "Scores", "Slots", "Slots[].Label", "Slots[].Weight", "Tallies"],
+        Assert.Equal(["Id", "Labels", "Labels[].Value", "Scores", "Scores[].Value", "Slots", "Slots[].Label", "Slots[].Weight", "Tallies"],
             bound.Select(entry => entry.Key));
 
         // The one they would otherwise be indistinguishable by

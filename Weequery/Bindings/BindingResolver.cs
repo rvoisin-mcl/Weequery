@@ -77,7 +77,8 @@ internal static class BindingResolver
     /// Null for anything that is not a collection of objects, which is the same rule a
     /// <see cref="CollectionBindingSet{TElement}"/> already applies by requiring a class. A string is a sequence
     /// of characters, a dictionary a sequence of pairs, and a list of strings has no property of an element to
-    /// name, so none of the three is one. Index those instead.
+    /// name, so none of the three is one. A list of strings is still quantified over, by the element itself
+    /// rather than a property of it, see <see cref="ValueElementTypeOf"/>.
     /// </para>
     /// </remarks>
     /// <param name="type">the property's declared type</param>
@@ -100,6 +101,68 @@ internal static class BindingResolver
         if (IsContainer(element)) { return null; }                        // a list of lists, which nothing can reach into
 
         return element;
+    }
+
+    /// <summary>
+    /// If an element is a value that can be compared as it is, rather than an object whose properties are what
+    /// gets compared: a string, a number, a date, a Guid, an enum, a bool, or the Nullable of any of them.
+    /// </summary>
+    /// <param name="type">the element type</param>
+    /// <returns></returns>
+    internal static bool IsValueElement(Type type)
+    {
+        return ((type == typeof(string)) || type.IsValueType) && ExpressionBuilder.CanBindPropertyType(type);
+    }
+
+    /// <summary>
+    /// What a collection of values holds, where the property is one a quantifier could ask about through
+    /// <see cref="QuantifiedCondition.ValueKey"/>: <c>Tags Any (Value = 'red')</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other half of <see cref="ElementTypeOf"/>, which turns these away because an element has no property
+    /// to name. A string is not one, being a sequence of characters, and neither is a dictionary, whose pairs are
+    /// not a value any builder compares.
+    /// </para>
+    /// <para>
+    /// <b>Nor is a byte array.</b> It is a blob as far as a database is concerned, a varbinary rather than a
+    /// collection anything could quantify over, so offering <c>Photo Any (Value = 0)</c> would be offering a
+    /// query no provider will translate.
+    /// </para>
+    /// </remarks>
+    /// <param name="type">the property's declared type</param>
+    /// <returns>the element type, or null where this is not a collection of values</returns>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    internal static Type? ValueElementTypeOf(Type type)
+    {
+        if ((type == typeof(string)) || (type == typeof(byte[])) || (!IsContainer(type))) { return null; }
+
+        var element = type.IsArray
+            ? type.GetElementType()
+            : type.GetInterfaces().Append(type)
+                .Where(candidate => candidate.IsGenericType && (candidate.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+                .Select(candidate => candidate.GetGenericArguments()[0])
+                .FirstOrDefault();
+
+        return ((element is not null) && IsValueElement(element)) ? element : null;
+    }
+
+    /// <summary>
+    /// Walk a type from its root, with the bounds and defaults every public entry point applies
+    /// </summary>
+    /// <param name="root">the type to walk</param>
+    /// <param name="maxDepth">bounded here to [0, 16]</param>
+    /// <param name="settings">[OPT] defaulted here, and checked</param>
+    /// <param name="collections">[OPT] where to gather collections, see <see cref="ResolveBindables"/></param>
+    /// <returns>the property requests, in path order</returns>
+    /// <exception cref="WeequeryException">the settings are invalid, or a resolved path does not make a valid key</exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    internal static IReadOnlyList<BindingRequest> Resolve(Type root, int maxDepth, BindingResolutionSettings? settings, List<CollectionBindingRequest>? collections = null)
+    {
+        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings);
+        ThrowIfInvalid(settings);
+
+        return ResolveBindables(new List<BindingRequest>(), root, 0, Math.Min(Math.Max(maxDepth, 0), 16), "", settings, new HashSet<Type>(), collections);
     }
 
     /// <summary>
@@ -275,8 +338,11 @@ internal static class BindingResolver
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static void Elements(Type type, BindingResolutionSettings settings, int elementDepth, string path, List<CollectionBindingRequest> found)
     {
-        if (ElementTypeOf(type) is not { } element) { return; }
-        if (ShouldIgnoreType(element, settings)) { return; }
+        var element = ElementTypeOf(type);
+        var value = (element is null) ? ValueElementTypeOf(type) : null;
+
+        if ((element ?? value) is not { } any) { return; }
+        if (ShouldIgnoreType(any, settings)) { return; }
 
         var marker = $"{path}{BoundBinding.ElementMarker}";
 
@@ -286,12 +352,23 @@ internal static class BindingResolver
         // quantifier goes. That is the difference between this and "Assignments", which removes the name entirely
         if (settings.IgnorePaths.Contains(marker) || settings.IgnorePaths.Contains($"{marker}.")) { return; }
 
+        // A collection of values has one thing to ask about, the element itself, and nothing to walk. Leaving out
+        // "Tags[].Value" leaves nothing inside, which is the same as leaving out "Tags[]"
+        if (value is not null)
+        {
+            if (settings.IgnorePaths.Contains($"{marker}.{QuantifiedCondition.ValueKey}")) { return; }
+
+            found.Add(new(path, KeyFor(path), value, [new BindingRequest(QuantifiedCondition.ValueKey, QuantifiedCondition.ValueKey)]));
+
+            return;
+        }
+
         var scoped = ScopedToElement(settings, marker);
 
-        var bindings = ResolveBindables(new List<BindingRequest>(), element, 0, elementDepth, "", scoped, new HashSet<Type>());
+        var bindings = ResolveBindables(new List<BindingRequest>(), any, 0, elementDepth, "", scoped, new HashSet<Type>());
 
         // Nothing to name inside is nothing to quantify over, and BindCollection refuses an empty set anyway
-        if (bindings.Count > 0) { found.Add(new(path, KeyFor(path), element, bindings)); }
+        if (bindings.Count > 0) { found.Add(new(path, KeyFor(path), any, bindings)); }
     }
 
     /// <summary>

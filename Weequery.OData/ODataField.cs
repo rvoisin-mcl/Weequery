@@ -44,8 +44,9 @@ public enum ODataFieldKind
     Enum,
 
     /// <summary>
-    /// A collection navigation property, which is the only thing a quantifier can be asked about and the only
-    /// thing a comparison cannot. See <see cref="ODataFilter"/>.
+    /// A collection, of objects or of values, which is the only thing a quantifier can be asked about and the only
+    /// thing a comparison cannot. See <see cref="ODataFilter"/>, and <see cref="ODataField.ElementKind"/> for a
+    /// collection of values.
     /// </summary>
     Collection,
 }
@@ -66,6 +67,9 @@ public enum ODataFieldKind
 /// // a collection, and a field inside it, whose path is relative to the element
 /// new ODataField("Assignments", "Assignments", ODataFieldKind.Collection)
 /// new ODataField("LairName", "Lair/Name", Collection: "Assignments")
+///
+/// // a collection of values, whose element is named Value inside the quantifier
+/// ODataField.ForValues("Tags", "Tags", ODataFieldKind.String)
 /// </code>
 /// </remarks>
 /// <param name="Key">the name a caller writes, matched without regard to case</param>
@@ -90,6 +94,47 @@ public record ODataField(
     string? EnumType = null)
     : IFieldKey
 {
+    /// <summary>
+    /// What each element holds, for a <see cref="ODataFieldKind.Collection"/> of values rather than of objects:
+    /// a <c>Collection(Edm.String)</c>, say, rather than a navigation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A collection of values has no field of an element to declare, so the element is named
+    /// <see cref="QuantifiedCondition.ValueKey"/> inside the quantifier and written as the lambda's variable
+    /// itself, with this deciding how a value beside it is written. <see cref="EnumType"/> applies to the
+    /// elements where this is <see cref="ODataFieldKind.Enum"/>.
+    /// <code>
+    /// Tags Any (Value = 'red')      Tags/any(d1: d1 eq 'red')
+    /// </code>
+    /// </para>
+    /// <para>
+    /// Null for a collection of objects, whose fields are declared with <see cref="Collection"/>, and for every
+    /// field that is not a collection at all. See <see cref="ForValues"/>, which sets both halves at once.
+    /// </para>
+    /// </remarks>
+    public ODataFieldKind? ElementKind { get; init; }
+
+    /// <summary>
+    /// A collection of values, such as a <c>Collection(Edm.String)</c>, quantified over as
+    /// <see cref="QuantifiedCondition.ValueKey"/>.
+    /// </summary>
+    /// <param name="key">the name a caller writes</param>
+    /// <param name="field">the property's path, slash separated</param>
+    /// <param name="elementKind">what each element holds</param>
+    /// <param name="enumType">[OPT] the qualified enumeration type, where the elements are an enum</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">the elements are themselves declared a collection</exception>
+    public static ODataField ForValues(string key, string field, ODataFieldKind elementKind, string? enumType = null)
+    {
+        if (elementKind == ODataFieldKind.Collection)
+        {
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"'{key}' cannot hold collections: a collection of values holds values, and Weequery quantifies one level deep");
+        }
+
+        return new ODataField(key, field, ODataFieldKind.Collection, EnumType: enumType) { ElementKind = elementKind };
+    }
+
     /// <summary>Whether the string functions apply to it</summary>
     internal bool IsTextual { get { return (Kind == ODataFieldKind.String) || (Kind == ODataFieldKind.Enum); } }
 

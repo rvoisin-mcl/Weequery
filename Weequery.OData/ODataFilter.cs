@@ -78,6 +78,17 @@ public static class ODataFilter
 }
 
 /// <summary>
+/// The lambda in force inside a quantifier: the variable every path hangs off, and the collection it binds.
+/// </summary>
+/// <param name="Variable">the lambda's variable</param>
+/// <param name="Collection">the key of the collection being quantified over</param>
+/// <param name="Element">
+/// the element itself, for a collection of values, which is named <see cref="QuantifiedCondition.ValueKey"/> and
+/// written as <paramref name="Variable"/>; null for a collection of objects, whose fields are declared
+/// </param>
+internal sealed record ODataLambda(string Variable, string Collection, ODataField? Element);
+
+/// <summary>
 /// The translation itself, which is <see cref="ConditionTranslator{TResult, TScope}"/> filled in with what OData
 /// happens to spell things as.
 /// </summary>
@@ -88,7 +99,7 @@ public static class ODataFilter
 /// <param name="fields">the allow-list</param>
 /// <param name="version">which revision to write for</param>
 internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version)
-    : ConditionTranslator<string, (string Variable, string Collection)?>
+    : ConditionTranslator<string, ODataLambda?>
 {
     /// <inheritdoc/>
     protected override string Dialect { get { return "a $filter"; } }
@@ -130,6 +141,8 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
     /// Any   Assignments/any(d1: d1/LairID eq 5)
     /// All   Assignments/all(d1: d1/LairID eq 5)
     /// None  not Assignments/any(d1: d1/LairID eq 5)
+    ///
+    /// Any   Tags/any(d1: d1 eq 'red')          a collection of values, see ODataField.ElementKind
     /// </code>
     /// <para>
     /// <c>all</c> over an empty collection is true and <c>any</c> over one is false, which is what Weequery's
@@ -137,7 +150,7 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
     /// </para>
     /// </remarks>
     /// <inheritdoc/>
-    protected override string Quantify(QuantifiedCondition quantified, (string Variable, string Collection)? lambda, int depth)
+    protected override string Quantify(QuantifiedCondition quantified, ODataLambda? lambda, int depth)
     {
         if (lambda is not null)
         {
@@ -155,7 +168,13 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
         // nest here, so one name will do.
         const string variable = "d1";
 
-        var inner = Translate(quantified.Condition, (variable, field.Key), ConditionNesting.Descend(depth));
+        // A collection of values has no fields to declare, so its element is made here: named Value, written as
+        // the variable itself, and holding whatever the collection says its elements hold
+        var element = (field.ElementKind is { } kind)
+            ? new ODataField(QuantifiedCondition.ValueKey, variable, kind, field.Key, field.EnumType)
+            : null;
+
+        var inner = Translate(quantified.Condition, new ODataLambda(variable, field.Key, element), ConditionNesting.Descend(depth));
 
         return quantified.Operator switch
         {
@@ -170,14 +189,14 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
     // ---------- comparisons ----------
 
     /// <inheritdoc/>
-    protected override string Compare(IBoundCondition condition, (string Variable, string Collection)? lambda)
+    protected override string Compare(IBoundCondition condition, ODataLambda? lambda)
     {
         if (condition.Index is not null)
         {
             throw new WeequeryException(WeequeryError.NotTranslatable, $"'{condition.Field}[{condition.Index}]' indexes a collection, and a $filter has no way to address one element of one. Ask about the elements with a quantifier, or declare the element's own path as a field");
         }
 
-        var field = fields.Resolve(condition.Field, $"asked '{condition.Operator}'");
+        var field = Resolve(condition.Field, lambda, $"asked '{condition.Operator}'");
 
         if (field.Kind == ODataFieldKind.Collection)
         {
@@ -188,11 +207,10 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
         {
             throw new WeequeryException(WeequeryError.OperatorUnsupported, (lambda is null)
                 ? $"'{field.Key}' is declared inside the collection '{field.Collection}', so it can only be asked about within a quantifier over it"
-                : $"'{field.Key}' is not declared inside '{lambda.Value.Collection}', so it cannot be asked about inside that quantifier");
+                : $"'{field.Key}' is not declared inside '{lambda.Collection}', so it cannot be asked about inside that quantifier");
         }
 
-        // Inside a lambda every path hangs off its variable, and outside there is nothing to hang off
-        var path = (lambda is null) ? field.Field : $"{lambda.Value.Variable}/{field.Field}";
+        var path = PathOf(field, lambda);
 
         var operands = condition.StringifyOperands();
 
@@ -323,7 +341,7 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
     /// The path of a field being compared against, rather than a value. Held to the same scope as the left side,
     /// since a lambda's variable does not reach outside it and nothing outside reaches in.
     /// </summary>
-    private string Path(string key, (string Variable, string Collection)? lambda)
+    private string Path(string key, ODataLambda? lambda)
     {
         var split = ConditionFunctions.SplitIndex(key);
 
@@ -332,14 +350,38 @@ internal sealed class ODataTranslator(ODataFieldSet fields, ODataVersion version
             throw new WeequeryException(WeequeryError.NotTranslatable, $"'{key}' indexes a collection, and a $filter has no way to address one element of one");
         }
 
-        var field = fields.Resolve(split.Key, "compared against");
+        var field = Resolve(split.Key, lambda, "compared against");
 
         if (field.Collection != lambda?.Collection)
         {
-            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field.Key}' cannot be compared against here: it is declared {(field.Collection is null ? "outside any collection" : $"inside '{field.Collection}'")}, and this comparison is {(lambda is null ? "outside one" : $"inside '{lambda.Value.Collection}'")}");
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field.Key}' cannot be compared against here: it is declared {(field.Collection is null ? "outside any collection" : $"inside '{field.Collection}'")}, and this comparison is {(lambda is null ? "outside one" : $"inside '{lambda.Collection}'")}");
         }
 
-        return (lambda is null) ? field.Field : $"{lambda.Value.Variable}/{field.Field}";
+        return PathOf(field, lambda);
+    }
+
+    /// <summary>
+    /// The field a key names here. Inside a quantifier over values that is the element, under
+    /// <see cref="QuantifiedCondition.ValueKey"/>, and nothing else: there are no declared fields inside one.
+    /// </summary>
+    private ODataField Resolve(string key, ODataLambda? lambda, string asked)
+    {
+        if (lambda?.Element is not { } element) { return fields.Resolve(key, asked); }
+
+        if (string.Equals(key, QuantifiedCondition.ValueKey, StringComparison.OrdinalIgnoreCase)) { return element; }
+
+        throw new WeequeryException(WeequeryError.UnboundField, $"'{lambda.Collection}' is a collection of values, so inside a quantifier over it the element is '{QuantifiedCondition.ValueKey}' and there is no '{key}' to ask about");
+    }
+
+    /// <summary>
+    /// Where a field is written: off the lambda's variable inside one, as the variable itself where it is the
+    /// element of a collection of values, and as its own path outside any.
+    /// </summary>
+    private static string PathOf(ODataField field, ODataLambda? lambda)
+    {
+        if (lambda is null) { return field.Field; }
+
+        return ReferenceEquals(field, lambda.Element) ? lambda.Variable : $"{lambda.Variable}/{field.Field}";
     }
 
     private static void RequireTextual(ODataField field, IBoundCondition condition)

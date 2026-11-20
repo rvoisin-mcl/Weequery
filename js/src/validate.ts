@@ -1,4 +1,4 @@
-import { Condition, QuantifiedCondition, isTooDeep, nestingDepth } from './condition.js';
+import { Condition, QuantifiedCondition, isTooDeep, nestingDepth, VALUE_KEY } from './condition.js';
 import { WeequeryError } from './errors.js';
 import {
   BOOLEAN_OPERATORS,
@@ -52,17 +52,37 @@ export interface Binding {
   /** True for a value your code supplies under a name, which is the same for every row and so cannot be sorted on. */
   readonly constant?: boolean;
   /**
-   * What may be asked about one element of this collection, where the server bound it with `BindCollection`.
+   * What may be asked about one element of this collection of objects, where the server bound it with
+   * `BindCollection`.
    *
    * Its presence is what makes this a collection rather than a property: a key with `elements` answers `Any`,
    * `All` and `None` and nothing else, and a key without them answers everything else and no quantifier. The
    * inner list is its own allow-list, exactly as it is on the server, so the two do not leak into each other.
+   * For a collection of values, which has no properties of an element to list, see {@link Binding.values}.
    *
    * ```ts
    * { key: 'Assignments', elements: ['LairID', { key: 'LairName', type: 'string' }] }
    * ```
    */
   readonly elements?: readonly (Binding | string)[];
+  /**
+   * What each element holds, where this is a collection of values rather than of objects: a `List<string>` or
+   * an `int[]` on the server, which has no property of an element to name.
+   *
+   * Inside a quantifier over one the element is named {@link VALUE_KEY}, `Value`, and nothing else is in scope.
+   * Give the element's type where you know it, so its operators are checked as a property's would be, or `{}`
+   * where you do not.
+   *
+   * ```ts
+   * { key: 'Tags', values: 'string' }                          // Tags Any (Value = 'red')
+   * { key: 'Readings', values: { type: 'number', nullable: true } }
+   * ```
+   *
+   * Unlike a collection of objects it is still a property as well, as the server binds one through
+   * `BindResolve`: it can be projected, tested for null and indexed (`Tags[0] = 'red'`). What it cannot be is
+   * compared directly or sorted on, since it holds many values. A binding has `elements` or `values`, never both.
+   */
+  readonly values?: BindingType | ValueElement;
   /**
    * What the server's binding may be used for, see {@link BindingUse}. All three where it is left off, which is
    * what the server defaults to.
@@ -75,6 +95,30 @@ export interface Binding {
    * ```
    */
   readonly use?: BindingUse;
+}
+
+/** One element of a collection of values, see {@link Binding.values}. */
+export interface ValueElement {
+  /** What the element holds, where you know it. */
+  readonly type?: BindingType;
+  /** Whether an element can be null, a `List<string?>` or a `List<int?>`. Unknown by default, so allowed. */
+  readonly nullable?: boolean;
+}
+
+/** If a binding is a collection, of objects or of values, and so answers the quantifiers */
+function isCollection(bound: Binding): boolean {
+  return bound.elements !== undefined || bound.values !== undefined;
+}
+
+/** The allow-list inside a collection: its declared elements, or the one element of a collection of values */
+function elementBindings(bound: Binding): BindingSet {
+  if (bound.values === undefined) {
+    return new BindingSet(bound.elements ?? []);
+  }
+
+  const element: ValueElement = typeof bound.values === 'string' ? { type: bound.values } : bound.values;
+
+  return new BindingSet([{ key: VALUE_KEY, ...element }]);
 }
 
 /** The allow-list, keyed without regard to case, as the server keys it. */
@@ -91,6 +135,12 @@ export class BindingSet {
     const problem = bindingKeyProblem(binding.key);
     if (problem !== null) {
       throw new WeequeryError(problem);
+    }
+
+    if (binding.elements !== undefined && binding.values !== undefined) {
+      throw new WeequeryError(
+        `'${binding.key}' declares both elements and values: a collection holds objects with properties or values without them, not both`,
+      );
     }
 
     const lowered = binding.key.toLowerCase();
@@ -144,7 +194,7 @@ export type DiagnosticCode =
   | 'not-a-collection'
   /** A comparison named a key that is bound as a collection, which the comparison operators cannot be asked. */
   | 'collection-not-comparable'
-  /** A projection named a key that is bound as a collection, which has no single value to read. */
+  /** A projection named a key that is bound as a collection of objects, which has no single value to read. */
   | 'not-projectable'
   /** A condition, an operand or a sort named a key that is bound for projection only. */
   | 'projection-only';
@@ -342,6 +392,21 @@ export function validateCondition(condition: Condition, options: ValidateOptions
           field,
         ),
       );
+    } else if (
+      bound.values !== undefined &&
+      node.index === undefined &&
+      operator !== Operator.IsNull &&
+      operator !== Operator.IsNotNull
+    ) {
+      // A collection of values is a property as well, so it is tested for null and indexed as one; what it cannot
+      // be is compared whole, holding many values where the operators want one
+      diagnostics.push(
+        error(
+          'collection-not-comparable',
+          `'${field}' is a collection of values, so '${name}' cannot be asked of it directly. Use Any, All or None, naming the element as '${VALUE_KEY}'`,
+          field,
+        ),
+      );
     } else if (node.index !== undefined) {
       // The type recorded here is the collection's, and an indexed condition is about one element of it. Guessing
       // the element type from "the binding is a list of something" is not something a BindingSet can do, so the
@@ -393,7 +458,8 @@ export function validateCondition(condition: Condition, options: ValidateOptions
  * ```
  *
  * The allow-list is the same one a condition is checked against, so nothing extra needs declaring. A collection
- * is the one bound thing that cannot be projected: it holds many values and a column holds one.
+ * of objects is the one bound thing that cannot be projected: it holds many rows and a column holds one. A
+ * collection of values projects, being one column to a provider that maps it, see {@link Binding.values}.
  *
  * Malformed text comes back as a `syntax` diagnostic rather than as a throw, so a form can show it beside the
  * input box like everything else here.
@@ -509,7 +575,7 @@ function quantifierScope(
     return null;
   }
 
-  if (bound.elements === undefined) {
+  if (!isCollection(bound)) {
     diagnostics.push(
       error(
         'not-a-collection',
@@ -520,7 +586,7 @@ function quantifierScope(
     return null;
   }
 
-  return new BindingSet(bound.elements);
+  return elementBindings(bound);
 }
 
 function checkOperatorAgainstType(
@@ -583,6 +649,11 @@ export function validateSorts(sorts: readonly Sort[], options: ValidateOptions =
 
       if (bound.sortable === false) {
         diagnostics.push(error('not-sortable', `Cannot sort on '${sort.field}', it has no ordering of its own`, sort.field));
+      } else if (bound.values !== undefined && splitIndex(sort.field).index === undefined) {
+        // One element of it has an ordering, which is what an index picks; the whole collection does not
+        diagnostics.push(
+          error('not-sortable', `Cannot sort on '${sort.field}', it is a collection of values and has no single value to order by`, sort.field),
+        );
       }
     }
   }

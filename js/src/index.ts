@@ -69,6 +69,7 @@ export {
   startsWith,
   toInvariantString,
   validateValueCount,
+  VALUE_KEY,
   walk,
 } from './condition.js';
 export type {
@@ -144,4 +145,5 @@ export type {
   DiagnosticCode,
   ValidateOptions,
   ValidationResult,
+  ValueElement,
 } from './validate.js';

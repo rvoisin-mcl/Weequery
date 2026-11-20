@@ -110,7 +110,6 @@ public partial class Inquiry<T> where T : class
         Expression<Func<T, IEnumerable<TElement>?>> selector,
         string key,
         Action<CollectionBindingSet<TElement>> configure)
-        where TElement : class
     {
         WeequeryException.ThrowIfNull(selector);
         WeequeryException.ThrowIfNullOrEmpty(key);
@@ -180,6 +179,15 @@ public partial class Inquiry<T> where T : class
     /// There is no <see cref="BindingUse"/> here because an element has none: it is tested, and never sorted on
     /// or read back, so the only question is whether it is nameable at all.
     /// </para>
+    /// <para>
+    /// <b>A collection of values</b>, such as a <c>List&lt;string&gt;</c> or an <c>int[]</c>, has nothing to walk.
+    /// The element itself is bound instead, as <see cref="QuantifiedCondition.ValueKey"/>, and the depth and the
+    /// settings have nothing to apply to:
+    /// <code>
+    /// .BindCollection(minion =&gt; minion.Tags, "Tags")
+    /// .ApplyCondition("Tags Any (Value = 'red')")
+    /// </code>
+    /// </para>
     /// </remarks>
     /// <typeparam name="TElement">what the collection holds</typeparam>
     /// <param name="selector">the collection property</param>
@@ -202,11 +210,16 @@ public partial class Inquiry<T> where T : class
         string key,
         int maxDepth = 1,
         BindingResolutionSettings? settings = null)
-        where TElement : class
     {
-        // The element is an entity as far as resolution is concerned, so this is the same walk, one level down.
-        // An element resolving to nothing falls through to the refusal the declaring form already gives.
-        return BindCollection(selector, key, inner => inner.BindProperties(Inquiry<TElement>.ResolveBindables(maxDepth, settings)));
+        // A collection of values has nothing to walk, only the element itself to name, see BindValue
+        if (BindingResolver.IsValueElement(typeof(TElement)))
+        {
+            return BindCollection(selector, key, inner => inner.BindValue());
+        }
+
+        // Otherwise the element is an entity as far as resolution is concerned, so this is the same walk, one level
+        // down. An element resolving to nothing falls through to the refusal the declaring form already gives.
+        return BindCollection(selector, key, inner => inner.BindProperties(BindingResolver.Resolve(typeof(TElement), maxDepth, settings)));
     }
 
     /// <summary>
@@ -269,7 +282,6 @@ public partial class Inquiry<T> where T : class
     [RequiresDynamicCode(AotMessages.RuntimeGenerics)]
     [RequiresUnreferencedCode(AotMessages.BoundByName)]
     private static CollectionBinding<T, TElement> CreateCollectionOf<TElement>(CollectionBindingRequest request)
-        where TElement : class
     {
         var collection = Binding<T>.Create(SharedBindingParameter, request.PropertyPath, bindings: null);
 
@@ -476,11 +488,7 @@ public partial class Inquiry<T> where T : class
     [SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "Per entity type is the point: the bound is one per T and the builders close over T's bindings, so Inquiry<T> is where a caller already is when it needs them.")]
     public static IReadOnlyList<BindingRequest> ResolveBindables(int maxDepth = 1, BindingResolutionSettings? settings = null, BindingUse use = BindingUse.All)
     {
-        maxDepth = Math.Min(Math.Max(maxDepth, 0), 16); // bound to [0,16]
-        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings); // use defaults if nothing provided
-        BindingResolver.ThrowIfInvalid(settings);
-
-        var resolved = BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0, maxDepth, "", settings, new HashSet<Type>());
+        var resolved = BindingResolver.Resolve(typeof(T), maxDepth, settings);
 
         return (use == BindingUse.All) ? resolved : [.. resolved.Select(request => new BindingRequest(request.PropertyPath, request.Key, use))];
     }
@@ -516,12 +524,7 @@ public partial class Inquiry<T> where T : class
     {
         List<CollectionBindingRequest> collections = [];
 
-        settings = (settings is null) ? BindingResolutionSettings.Default : new(settings);
-        BindingResolver.ThrowIfInvalid(settings);
-
-        BindingResolver.ResolveBindables(new List<BindingRequest>(), typeof(T), 0,
-            Math.Min(Math.Max(maxDepth, 0), 16), "", settings,
-            new HashSet<Type>(), collections);
+        BindingResolver.Resolve(typeof(T), maxDepth, settings, collections);
 
         return collections;
     }

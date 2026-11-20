@@ -166,7 +166,10 @@ internal static class ProjectionBuilder<T> where T : class
         //
         // One element of it is a different matter, and the same key answers for that: an index picks a single
         // value, which is exactly what a column holds, so only the bare key is refused here.
-        if ((indexed.Index is null) && collections.ContainsKey(key))
+        //
+        // A collection of values is not refused at all. A List<string> is one column to a provider that maps it,
+        // and it projected before it could be quantified over; binding it for Any as well takes nothing away.
+        if ((indexed.Index is null) && collections.TryGetValue(key, out var collection) && (!BindingResolver.IsValueElement(collection.ElementType)))
         {
             throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{key}' is a collection, and cannot be projected.");
         }

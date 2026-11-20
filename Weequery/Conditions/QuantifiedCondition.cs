@@ -35,6 +35,23 @@ namespace Weequery;
 /// </remarks>
 public class QuantifiedCondition : ICondition, IBound, IConditionContainer<ICondition>
 {
+    /// <summary>
+    /// The name an element goes by inside a quantifier over a collection of values rather than objects, such as a
+    /// <c>List&lt;string&gt;</c> or an <c>int[]</c>, where there is no property of an element to name.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// Tags Any (Value = 'red')
+    /// Scores All (Value &gt;= 50)
+    /// Scores Any (Value &gt; 5 AND Value &lt; 10)
+    /// </code>
+    /// <para>
+    /// Not a reserved word. It is the one key such a collection binds inside, so it means the element there and
+    /// nothing anywhere else, and a model with a property called Value is unaffected outside it.
+    /// </para>
+    /// </remarks>
+    public const string ValueKey = "Value";
+
     /// <summary>Which quantifier this is</summary>
     public Operator Operator { get; init; }
 

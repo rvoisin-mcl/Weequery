@@ -54,6 +54,9 @@ public enum ElasticFieldKind
 /// new ElasticField("Alias", "alias.keyword", ElasticFieldKind.Keyword)
 /// new ElasticField("Pay", "salary", ElasticFieldKind.Number)
 /// new ElasticField("LairName", "assignments.lair.name", ElasticFieldKind.Keyword, Nested: "assignments")
+///
+/// // an array of values, whose element is named Value inside the quantifier
+/// ElasticField.ForValues("Tags", "tags", ElasticFieldKind.Keyword)
 /// </code>
 /// </remarks>
 /// <param name="Key">the name a caller writes, matched without regard to case</param>
@@ -66,6 +69,35 @@ public enum ElasticFieldKind
 public record ElasticField(string Key, string Field, ElasticFieldKind Kind = ElasticFieldKind.Keyword, string? Nested = null)
     : IFieldKey
 {
+    /// <summary>
+    /// If this field is an array of values, such as tags or scores, quantified over as
+    /// <see cref="QuantifiedCondition.ValueKey"/> rather than compared directly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Elasticsearch has no array type: a field holds one value or several under the same mapping, and
+    /// <see cref="Kind"/> describes each of them. No <c>nested</c> mapping is needed or possible for values, and a
+    /// query against the field asks whether <i>any</i> value matches, which is what <c>Any</c> means. See
+    /// <see cref="ElasticQuery"/> for which inner conditions that can answer exactly, and which it refuses.
+    /// </para>
+    /// <para>
+    /// See <see cref="ForValues"/>, which reads better than setting this by hand.
+    /// </para>
+    /// </remarks>
+    public bool HoldsValues { get; init; }
+
+    /// <summary>
+    /// An array of values, quantified over as <see cref="QuantifiedCondition.ValueKey"/>.
+    /// </summary>
+    /// <param name="key">the name a caller writes</param>
+    /// <param name="field">the field's path in the index</param>
+    /// <param name="kind">what each value is, as it is mapped</param>
+    /// <returns></returns>
+    public static ElasticField ForValues(string key, string field, ElasticFieldKind kind = ElasticFieldKind.Keyword)
+    {
+        return new ElasticField(key, field, kind) { HoldsValues = true };
+    }
+
     /// <summary>Whether this field can be asked the substring and pattern operators</summary>
     internal bool IsTextual { get { return (Kind == ElasticFieldKind.Keyword) || (Kind == ElasticFieldKind.Text); } }
 

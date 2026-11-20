@@ -12,7 +12,6 @@ namespace Weequery.Bindings;
 /// <typeparam name="TClass">the entity the collection hangs off</typeparam>
 /// <typeparam name="TElement">what the collection holds</typeparam>
 internal sealed class CollectionBinding<TClass, TElement> : ICollectionBinding<TClass>
-    where TElement : class
 {
     public string Key { get; }
 

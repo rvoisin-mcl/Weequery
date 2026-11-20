@@ -328,10 +328,24 @@ function conjunction(operator: Operator.And | Operator.Or, conditions: readonly 
 }
 
 /**
+ * The name an element goes by inside a quantifier over a collection of values, such as a `List<string>` or an
+ * `int[]`, where there is no property of an element to name.
+ *
+ * ```ts
+ * any('Tags', eq(VALUE_KEY, 'red'))          // Tags Any (Value = 'red')
+ * ```
+ *
+ * Not a reserved word: it is the one key such a collection binds inside, so it means the element there and
+ * nothing anywhere else. See {@link Binding.values} for declaring one.
+ */
+export const VALUE_KEY = 'Value';
+
+/**
  * Build a quantifier over a bound collection.
  *
  * ```ts
  * any('Assignments', and(eq('LairID', 5), eq('IsPrimary', true)))
+ * any('Tags', eq(VALUE_KEY, 'red'))
  * ```
  *
  * @throws {WeequeryError} the operator is not a quantifier, the field is missing, or the tree nests too deep

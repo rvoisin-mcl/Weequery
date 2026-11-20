@@ -131,6 +131,34 @@ internal partial class Binding<TClass>
     }
 
     /// <summary>
+    /// A binding for the element itself rather than a property of it, for a collection of values such as a
+    /// <c>List&lt;string&gt;</c>, keyed <see cref="QuantifiedCondition.ValueKey"/>.
+    /// </summary>
+    /// <remarks>
+    /// The accessor is the parameter, so "Value = 'red'" inside the quantifier reads as <c>t =&gt; t == "red"</c>.
+    /// Everything the constructor derives from an accessor follows from that: a string or a Nullable element can
+    /// be null and is guarded as any property is, and an int cannot and is not.
+    /// </remarks>
+    /// <param name="parameter">the element's parameter, shared by every binding for this element type</param>
+    /// <param name="bindings">[OPT] binding LUT to add to</param>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">TClass is not a value a builder can compare, see <see cref="BindingResolver.IsValueElement"/></exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    public static Binding<TClass> CreateElement(ParameterExpression parameter, Dictionary<string, Binding<TClass>>? bindings)
+    {
+        WeequeryException.ThrowIfNull(parameter);
+
+        if (!BindingResolver.IsValueElement(typeof(TClass)))
+        {
+            throw new WeequeryException(WeequeryError.BindingInvalid, $"'{QuantifiedCondition.ValueKey}' is the element of a collection of values, such as strings or numbers, and a {typeof(TClass).Name} is not one. Bind the properties of a {typeof(TClass).Name} instead");
+        }
+
+        var binding = new Binding<TClass>(parameter, QuantifiedCondition.ValueKey, parameter, typeof(TClass), [], isConstant: false, BindingUse.All, converter: null);
+
+        return AddTo(bindings, binding, QuantifiedCondition.ValueKey);
+    }
+
+    /// <summary>
     /// Create binding for the requested property (as specified by path), optionally adding it to the bindings LUT (optionally with the given key)
     /// </summary>
     /// <param name="parameter">[OPT] all bindings for the same query should share a common parameter</param>

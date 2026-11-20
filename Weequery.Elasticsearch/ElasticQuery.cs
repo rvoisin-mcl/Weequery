@@ -157,8 +157,12 @@ internal sealed class ElasticTranslator(ElasticFieldSet fields) : ConditionTrans
             throw new WeequeryException(WeequeryError.NotTranslatable, $"'{quantified.Field}' is quantified inside another quantifier, and a nested query addresses one path at a time. Flatten the condition, or declare the inner fields against the outer path");
         }
 
-        var path = fields.Resolve(quantified.Field, "quantified over").Nested
-            ?? throw new WeequeryException(WeequeryError.BindingInvalid, $"'{quantified.Field}' is declared without a nested path, so there is nothing for {quantified.Operator} to quantify over. Give the {nameof(ElasticField)} its 'nested' argument");
+        var field = fields.Resolve(quantified.Field, "quantified over");
+
+        if (field.HoldsValues) { return QuantifyValues(quantified, field, depth); }
+
+        var path = field.Nested
+            ?? throw new WeequeryException(WeequeryError.BindingInvalid, $"'{quantified.Field}' is declared without a nested path, so there is nothing for {quantified.Operator} to quantify over. Give the {nameof(ElasticField)} its 'nested' argument, or declare it with {nameof(ElasticField)}.{nameof(ElasticField.ForValues)} if it holds values rather than objects");
 
         var inner = Translate(quantified.Condition, path, ConditionNesting.Descend(depth));
 
@@ -182,6 +186,204 @@ internal sealed class ElasticTranslator(ElasticFieldSet fields) : ConditionTrans
         return new JsonObject { ["nested"] = new JsonObject { ["path"] = path, ["query"] = query } };
     }
 
+    // ---------- an array of values ----------
+
+    /// <summary>
+    /// A quantifier over an array of values, which needs no <c>nested</c> query: a query against the field
+    /// already asks whether any of its values matches.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// That is exactly <c>Any</c> for one test, and <c>None</c> is its negation. What it cannot do is tie two
+    /// tests to the same value: two clauses against one field are each answered by whichever value suits them,
+    /// which is the weaker question. So the condition inside is held to what one value at a time can answer.
+    /// <code>
+    /// Any   (Value = 'red')                   term                 one positive test
+    /// Any   (Value = 'red' OR Value = 'blue') should               some value passes either, which is either passing
+    /// Any   (Value &gt; 5 AND Value &lt; 10)        refused              write Value IsBetween (6, 9)
+    /// Any   (Value &lt;&gt; 'red')                 refused              must_not would mean no value is red
+    /// None  (...)                             must_not(Any)
+    /// All   (Value &gt;= 50)                     must_not(range lt)   no value fails it
+    /// All   (Value &gt; 1 AND Value &lt; 5)        filter of two Alls   every value passing both is every value passing each
+    /// All   (Value &lt; 1 OR Value &gt; 5)         refused              passing one or the other does not come apart
+    /// </code>
+    /// </para>
+    /// <para>
+    /// <c>All</c> is "no value fails", so it needs the failing test written as a query. A range has one, so does
+    /// <see cref="Operator.IsBetween"/> and equality on anything but analysed text; the substring operators and a
+    /// list do not, and are refused with the <c>None</c> that would say the same thing.
+    /// </para>
+    /// <para>
+    /// <b>A null in an array is not indexed</b>, so Elasticsearch cannot see it: <c>Value IsNull</c> is refused,
+    /// and an array holding a null answers <c>All</c> as though the null were not there, where in Weequery the
+    /// null would fail the test.
+    /// </para>
+    /// </remarks>
+    private JsonObject QuantifyValues(QuantifiedCondition quantified, ElasticField field, int depth)
+    {
+        var nested = ConditionNesting.Descend(depth);
+
+        return quantified.Operator switch
+        {
+            Operator.Any => Some(quantified.Condition, field, quantified, nested),
+
+            Operator.None => MustNot(Some(quantified.Condition, field, quantified, nested)),
+
+            Operator.All => Every(quantified.Condition, field, quantified, nested),
+
+            _ => throw new WeequeryException(WeequeryError.OperatorInvalid, $"Operator {quantified.Operator} is not a quantifier"),
+        };
+    }
+
+    /// <summary>
+    /// "Every value passes", as "no value fails". An AND inside comes apart, every value passing both being
+    /// every value passing each, which an OR does not: every value passing one or the other is not every value
+    /// passing either.
+    /// </summary>
+    private JsonObject Every(ICondition condition, ElasticField field, QuantifiedCondition quantified, int depth)
+    {
+        condition = Unwrapped(condition);
+
+        if (condition is IConjunctionCondition { Operator: Operator.And } both)
+        {
+            var nested = ConditionNesting.Descend(depth);
+
+            return Combine(Operator.And, [.. from child in both.Conditions select Every(child, field, quantified, nested)]);
+        }
+
+        return MustNot(SomeFails(condition, field, quantified));
+    }
+
+    /// <summary>
+    /// "Some value passes", for the conditions one value at a time can answer: a positive test, or an OR of them.
+    /// </summary>
+    private JsonObject Some(ICondition condition, ElasticField field, QuantifiedCondition quantified, int depth)
+    {
+        condition = Unwrapped(condition);
+
+        if (condition is IConjunctionCondition { Operator: Operator.Or } either)
+        {
+            var nested = ConditionNesting.Descend(depth);
+
+            return Combine(Operator.Or, [.. from child in either.Conditions select Some(child, field, quantified, nested)]);
+        }
+
+        if (condition is IConjunctionCondition { Operator: Operator.And })
+        {
+            throw Unanswerable(field, quantified, "it ANDs tests together, and two clauses against an array are each answered by whichever value suits them rather than by one value passing both. For a range write Value IsBetween (low, high)");
+        }
+
+        var test = Element(condition, field, quantified);
+
+        if (!PassesOnAValue(test.Operator))
+        {
+            throw Unanswerable(field, quantified, $"'{test.Operator}' is a negative test, and against an array must_not means no value matches rather than some value failing. Ask None with the positive test instead");
+        }
+
+        return Test(field, test, Values(test));
+    }
+
+    /// <summary>
+    /// "Some value fails", which is what All is the negation of. Only the tests whose failure can itself be written
+    /// as a query: a range, a between, and equality on anything that is not analysed text.
+    /// </summary>
+    private static JsonObject SomeFails(ICondition condition, ElasticField field, QuantifiedCondition quantified)
+    {
+        var test = Element(Unwrapped(condition), field, quantified);
+        var values = Values(test);
+
+        switch (test.Operator)
+        {
+            case Operator.LessThan: return Range(field, test, ("gte", values));
+            case Operator.LessThanOrEqual: return Range(field, test, ("gt", values));
+            case Operator.GreaterThan: return Range(field, test, ("lte", values));
+            case Operator.GreaterThanOrEqual: return Range(field, test, ("lt", values));
+
+            case Operator.IsBetween:
+                if (values.Count != 2)
+                {
+                    throw new WeequeryException(WeequeryError.OperandCount, $"Operator {test.Operator} on field '{test.Field}' needs two values but got {values.Count}");
+                }
+
+                // Outside the range on either side
+                return Either(Range(field, test, ("lt", [values[0]])), Range(field, test, ("gt", values[1..])));
+
+            case Operator.Equals when field.Kind == ElasticFieldKind.Boolean:
+                var flag = Value(field, Only(values, test), test).GetValue<bool>();
+
+                return new JsonObject { ["term"] = new JsonObject { [field.Field] = !flag } };
+
+            case Operator.Equals when field.Kind != ElasticFieldKind.Text:
+                // A value other than this one is below it or above it, which a keyword orders as well as a number
+                var value = Only(values, test);
+
+                return Either(Range(field, test, ("lt", [value])), Range(field, test, ("gt", [value])));
+
+            default:
+                throw Unanswerable(field, quantified, $"All needs the values that fail '{test.Operator}' written as a query, which the Query DSL has for a range, IsBetween, and = on a field that is not analysed text. Ask None with the opposite test instead");
+        }
+    }
+
+    private static JsonObject Either(JsonObject first, JsonObject second)
+    {
+        return Bool(new JsonObject { ["should"] = new JsonArray(first, second), ["minimum_should_match"] = 1 });
+    }
+
+    /// <summary>A condition with its packing, and any AND or OR of one, taken off, since neither changes what it asks</summary>
+    private static ICondition Unwrapped(ICondition condition)
+    {
+        while (true)
+        {
+            if (condition is PackedCondition packed) { condition = packed.Unpack(); continue; }
+
+            if ((condition is IConjunctionCondition conjunction) && (conjunction.Conditions.Count == 1)) { condition = conjunction.Conditions[0]; continue; }
+
+            return condition;
+        }
+    }
+
+    /// <summary>
+    /// The one test inside, which has to name the element and nothing else
+    /// </summary>
+    private static IBoundCondition Element(ICondition condition, ElasticField field, QuantifiedCondition quantified)
+    {
+        if (condition is not IBoundCondition test || (condition is QuantifiedCondition))
+        {
+            throw Unanswerable(field, quantified, condition switch
+            {
+                INotCondition => "it negates a test, and against an array must_not means no value matches rather than some value failing. Ask None instead",
+                IConjunctionCondition => "every value passing one test or another cannot be told apart from every value passing either, against an array. Ask None with the opposite of both instead",
+                _ => "an array of values holds no collections to quantify over",
+            });
+        }
+
+        if (!string.Equals(test.Field, QuantifiedCondition.ValueKey, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new WeequeryException(WeequeryError.UnboundField, $"'{field.Key}' is an array of values, so inside a quantifier over it the element is '{QuantifiedCondition.ValueKey}' and there is no '{test.Field}' to ask about");
+        }
+
+        if (test.Index is not null)
+        {
+            throw Unanswerable(field, quantified, $"'{QuantifiedCondition.ValueKey}' is a single value, and has nothing to index");
+        }
+
+        return test;
+    }
+
+    /// <summary>The operators that pass on a value, so the ones "any value passes" can be asked of directly</summary>
+    private static bool PassesOnAValue(Operator op)
+    {
+        return op is Operator.Equals or Operator.IsIn
+            or Operator.LessThan or Operator.LessThanOrEqual or Operator.GreaterThan or Operator.GreaterThanOrEqual or Operator.IsBetween
+            or Operator.StartsWith or Operator.EndsWith or Operator.Contains or Operator.IsMatch
+            or Operator.IsNotNull;
+    }
+
+    private static WeequeryException Unanswerable(ElasticField field, QuantifiedCondition quantified, string why)
+    {
+        return new WeequeryException(WeequeryError.NotTranslatable, $"'{field.Key} {quantified.Operator} (...)' cannot be written against an array of values: {why}");
+    }
+
     // ---------- comparisons ----------
 
     /// <inheritdoc/>
@@ -196,11 +398,26 @@ internal sealed class ElasticTranslator(ElasticFieldSet fields) : ConditionTrans
 
         var field = fields.Resolve(condition.Field, $"asked '{condition.Operator}'");
 
+        // An array of values answers "does any of them match", whatever was asked, so a direct comparison would
+        // quietly be a quantifier. Said rather than done, as it is for a collection anywhere else
+        if (field.HoldsValues)
+        {
+            throw new WeequeryException(WeequeryError.OperatorUnsupported, $"'{field.Key}' is an array of values, so '{condition.Operator}' cannot be asked of it directly. Use Any, All or None, naming the element as '{QuantifiedCondition.ValueKey}'");
+        }
+
         if ((nested is not null) && (field.Nested != nested))
         {
             throw new WeequeryException(WeequeryError.BindingInvalid, $"'{field.Key}' is not declared under the nested path '{nested}', so it cannot be asked about inside that quantifier");
         }
 
+        return Test(field, condition, Values(condition));
+    }
+
+    /// <summary>
+    /// The values a comparison holds, refusing one against another field
+    /// </summary>
+    private static List<string> Values(IBoundCondition condition)
+    {
         var operands = condition.StringifyOperands();
 
         if (operands.Any(operand => operand.NamesProperty))
@@ -208,8 +425,16 @@ internal sealed class ElasticTranslator(ElasticFieldSet fields) : ConditionTrans
             throw new WeequeryException(WeequeryError.NotTranslatable, $"'{condition.Field}' is compared against another field, and the Query DSL cannot compare two fields without a script. Compare against a value");
         }
 
-        var values = (from operand in operands select operand.Value).ToList();
+        return [.. from operand in operands select operand.Value];
+    }
 
+    /// <summary>
+    /// One operator against a field that has already been resolved and checked
+    /// </summary>
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "ElasticQuery.Build and ElasticSearchBody.Build declare this, and they are the only way here; ConditionTranslator does not require it of a translator, so this override cannot say that it does")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "ElasticQuery.Build and ElasticSearchBody.Build declare this, and they are the only way here; ConditionTranslator does not require it of a translator, so this override cannot say that it does")]
+    private static JsonObject Test(ElasticField field, IBoundCondition condition, List<string> values)
+    {
         return condition.Operator switch
         {
             Operator.IsNull => MustNot(Exists(field)),

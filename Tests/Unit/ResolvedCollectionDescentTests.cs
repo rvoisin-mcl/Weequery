@@ -178,25 +178,33 @@ public class ResolvedCollectionDescentTests
 
     // ---------- what it decides is quantifiable ----------
 
+    /// <summary>
+    /// A collection of objects is entered and its element walked; a collection of values binds the element itself,
+    /// as Value, there being no property of one to name
+    /// </summary>
     [Fact]
-    public void OnlyACollectionOfObjectsIsEntered()
+    public void ACollectionOfObjectsOrOfValuesIsEntered()
     {
-        var found = Inquiry<Box>.ResolveBindableCollections();
+        var found = Inquiry<Box>.ResolveBindableCollections().ToDictionary(collection => collection.Key);
 
-        Assert.Equal(["Slots"], found.Select(collection => collection.Key));
-        Assert.Equal(typeof(Slot), Assert.Single(found).ElementType);
+        Assert.Equal(["Labels", "Scores", "Slots"], found.Keys.Order());
+
+        Assert.Equal(typeof(Slot), found["Slots"].ElementType);
+        Assert.Equal(typeof(string), found["Labels"].ElementType);
+        Assert.Equal(typeof(int), found["Scores"].ElementType);
+
+        Assert.Equal([QuantifiedCondition.ValueKey], found["Labels"].Elements.Select(request => request.Key));
+        Assert.Equal([QuantifiedCondition.ValueKey], found["Scores"].Elements.Select(request => request.Key));
     }
 
     /// <summary>
-    /// A list of strings, a dictionary and an array of numbers have no property of an element to name
+    /// A dictionary is a sequence of pairs, which neither have a property worth naming nor are a value a builder
+    /// compares, so it is indexed rather than quantified
     /// </summary>
-    [Theory]
-    [InlineData("Labels")]
-    [InlineData("Tallies")]
-    [InlineData("Scores")]
-    public void ASequenceWithNothingToNameInsideIsNotEntered(string key)
+    [Fact]
+    public void ADictionaryIsNotEntered()
     {
-        Assert.DoesNotContain(key, Inquiry<Box>.ResolveBindableCollections().Select(collection => collection.Key));
+        Assert.DoesNotContain("Tallies", Inquiry<Box>.ResolveBindableCollections().Select(collection => collection.Key));
     }
 
     /// <summary>

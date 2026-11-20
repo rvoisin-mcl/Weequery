@@ -24,10 +24,13 @@ namespace Weequery;
 /// which belong to the query rather than to one level of it and can be bound on the outer
 /// <see cref="Inquiry{T}"/> where the whole condition can reach them.
 /// </para>
+/// <para>
+/// <b>A collection of values</b>, such as a <c>List&lt;string&gt;</c>, has no property of an element to name, so
+/// it binds the element itself instead, see <see cref="BindValue"/>.
+/// </para>
 /// </remarks>
 /// <typeparam name="TElement">what the collection holds</typeparam>
 public sealed class CollectionBindingSet<TElement>
-    where TElement : class
 {
     /// <summary>
     /// The one parameter every binding for this element type hangs off, which is what lets a predicate built
@@ -109,10 +112,51 @@ public sealed class CollectionBindingSet<TElement>
     {
         WeequeryException.ThrowIfNull(bindingRequests);
 
+        var values = BindingResolver.IsValueElement(typeof(TElement));
+
         foreach (var request in bindingRequests)
         {
+            // A collection of values has no properties, so "Value" there can only mean the element, which is the
+            // request resolution makes for one, see BindValue
+            if (values && string.Equals(request.PropertyPath, QuantifiedCondition.ValueKey, StringComparison.OrdinalIgnoreCase))
+            {
+                BindValue();
+                continue;
+            }
+
             Binding<TElement>.Create(SharedParameter, request.PropertyPath, Bindings, request.Key);
         }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Bind the element itself, for a collection of values rather than objects, so a condition inside the
+    /// quantifier can name it as <see cref="QuantifiedCondition.ValueKey"/>.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// .BindCollection(minion =&gt; minion.Tags, "Tags", inner =&gt; inner.BindValue())
+    /// .ApplyCondition("Tags Any (Value = 'red')")
+    /// </code>
+    /// <para>
+    /// Every operator the element's type supports is available, as it would be on a property of that type, and
+    /// several can be put to the same element at once: <c>Scores Any (Value &gt; 5 AND Value &lt; 10)</c> asks
+    /// for one score between the two, not one above 5 and some other one below 10.
+    /// </para>
+    /// <para>
+    /// <see cref="Inquiry{T}.BindCollection{TElement}(Expression{Func{T, IEnumerable{TElement}}}, string, int, BindingResolutionSettings)"/>,
+    /// and <see cref="Inquiry{T}.BindResolve"/>, do this on their own for a collection of values.
+    /// </para>
+    /// </remarks>
+    /// <returns></returns>
+    /// <exception cref="WeequeryException">
+    /// the element is an object rather than a value, such as a string, a number, a date, a Guid, an enum or a bool
+    /// </exception>
+    [RequiresUnreferencedCode(AotMessages.BoundByName)]
+    public CollectionBindingSet<TElement> BindValue()
+    {
+        Binding<TElement>.CreateElement(SharedParameter, Bindings);
 
         return this;
     }
